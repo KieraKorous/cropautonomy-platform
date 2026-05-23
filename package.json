@@ -4,12 +4,12 @@
   "private": true,
   "packageManager": "pnpm@10.12.1",
   "scripts": {
-    "dev": "corepack pnpm --parallel --filter @gaia/cropautonomy-web --filter @gaia/gaiabots-web dev",
-    "dev:cropautonomy": "corepack pnpm --filter @gaia/cropautonomy-web dev",
-    "dev:gaiabots": "corepack pnpm --filter @gaia/gaiabots-web dev",
-    "build": "corepack pnpm -r build",
-    "lint": "corepack pnpm -r lint",
-    "typecheck": "corepack pnpm -r typecheck"
+    "dev": "pnpm --parallel --filter @gaia/cropautonomy-web --filter @gaia/gaiabots-web dev",
+    "dev:cropautonomy": "pnpm --filter @gaia/cropautonomy-web dev",
+    "dev:gaiabots": "pnpm --filter @gaia/gaiabots-web dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck"
   },
   "devDependencies": {
     "typescript": "5.9.3"
