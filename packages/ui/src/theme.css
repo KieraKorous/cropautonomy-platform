@@ -1,4 +1,11 @@
 @import "tailwindcss";
+@source "./components/**/*.{ts,tsx}";
+
+@theme {
+  --color-leaf-soft: #a8d3b4;
+  --color-shell-deep: #0f1411;
+}
+
 @plugin "daisyui";
 @plugin "daisyui/theme" {
   name: "gaia-field";

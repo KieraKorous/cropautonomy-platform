@@ -1,154 +1,313 @@
-const metrics = [
-  ["August 2026", "prototype target"],
-  ["Multi-tenant", "portal foundation"],
-  ["AI scans", "first platform workflow"]
+import {
+  AudienceCard,
+  BrainIcon,
+  CameraIcon,
+  ChartIcon,
+  CheckList,
+  CtaSection,
+  FeatureCard,
+  FeatureRow,
+  GlobeIcon,
+  LeadForm,
+  MediaSplit,
+  RoadmapList,
+  RoverIcon,
+  Section,
+  SectionIntro,
+  ShieldIcon,
+  type RoadmapMilestone
+} from "@gaia/ui";
+
+const HERO_IMAGE =
+  "https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=1600&q=80";
+const FIELD_IMAGE =
+  "https://images.unsplash.com/photo-1625246333195-78d9c38ad449?w=1400&q=80";
+const AUDIENCE_IMAGES = {
+  farms: "https://images.unsplash.com/photo-1605000797499-95a51c5269ae?w=900&q=80",
+  business: "https://images.unsplash.com/photo-1464226184884-fa280b87c399?w=900&q=80",
+  research: "https://images.unsplash.com/photo-1532187863486-abf9dbad1b69?w=900&q=80",
+  robotics: "https://images.unsplash.com/photo-1473625247510-8ceb1760943f?w=900&q=80"
+} as const;
+
+const features = [
+  {
+    icon: <CameraIcon />,
+    title: "Crop scans & imaging",
+    body: "Capture imagery from a phone, drone, or rover. Every scan is linked to a field, zone, and crop — searchable across the whole organization.",
+    bullets: [
+      "Mobile capture & bulk upload",
+      "Drone & rover ingestion",
+      "Field, zone, and crop linkage"
+    ]
+  },
+  {
+    icon: <BrainIcon />,
+    title: "AI crop analysis",
+    body: "Queued analysis workflows turn each scan into a structured report — visible stress, suspected disease, nutrient concerns, and confidence scores you can act on.",
+    bullets: [
+      "Asynchronous analysis queue",
+      "Health summary with confidence",
+      "Notifications on completion"
+    ]
+  },
+  {
+    icon: <RoverIcon />,
+    title: "Devices & robotics",
+    body: "Model devices, missions, and telemetry from day one — so when GAIA-R rovers and GAIA-D drones come online, your platform is already ready to receive them.",
+    bullets: [
+      "Device taxonomy from day one",
+      "Telemetry, routes, missions",
+      "GAIA-R and GAIA-D ready"
+    ]
+  }
 ];
 
-const capabilities = [
-  "Crop scan intake for uploaded and mobile-captured imagery",
-  "Farm, field, and organization data models from the start",
-  "AI-assisted health reports with queued analysis workflows",
-  "Robotics-ready architecture for future GAIA device telemetry"
+const fieldValueProps = [
+  {
+    icon: <GlobeIcon />,
+    title: "Works offline-first",
+    body: "Capture and queue scans without connectivity. Syncs back when you're in range."
+  },
+  {
+    icon: <ShieldIcon />,
+    title: "Roles built for real teams",
+    body: "Owners, managers, technicians, agronomists, and viewers — each with the access they need."
+  },
+  {
+    icon: <ChartIcon />,
+    title: "A history you can trust",
+    body: "Every scan, analysis, and field note is preserved and searchable across seasons."
+  }
+];
+
+const audiences = [
+  {
+    title: "Farms & growers",
+    body: "Track every field across the season — scans, notes, conditions, and crop history in one place your whole operation can reach.",
+    image: AUDIENCE_IMAGES.farms
+  },
+  {
+    title: "Agricultural businesses",
+    body: "Coordinate across multiple farms, contractors, and regions — with the visibility and access controls a real organization needs.",
+    image: AUDIENCE_IMAGES.business
+  },
+  {
+    title: "Research & institutions",
+    body: "Run structured field trials with persistent scan history, exportable datasets, and reproducible AI analysis pipelines.",
+    image: AUDIENCE_IMAGES.research
+  },
+  {
+    title: "Robotics collaborators",
+    body: "Plug rover, drone, and sensor platforms into a tenant-aware ingestion layer designed for telemetry and missions from day one.",
+    image: AUDIENCE_IMAGES.robotics
+  }
+];
+
+const roadmap: RoadmapMilestone[] = [
+  {
+    when: "Now",
+    quarter: "Q2 2026",
+    title: "Public landing pages & early access",
+    body: "CropAutonomy.com and GAIAbots.ai live, lead capture wired to durable storage and email notifications, brand and design system established.",
+    status: "Shipped",
+    statusTone: "success"
+  },
+  {
+    when: "Next",
+    quarter: "Q3 2026",
+    title: "Portal foundation & first farms",
+    body: "Multi-tenant portal with organizations, farms, fields, and roles. Crop scan ingestion from web upload. Early access partners begin onboarding into staging.",
+    status: "In progress",
+    statusTone: "accent"
+  },
+  {
+    when: "August 2026",
+    quarter: "Prototype target",
+    title: "End-to-end intelligence workflow",
+    body: "Upload a scan, queue an AI analysis, deliver a structured crop health report, notify the field team. The first complete loop from camera to action, on a real farm.",
+    status: "Planned",
+    statusTone: "secondary"
+  },
+  {
+    when: "Beyond",
+    quarter: "Late 2026 →",
+    title: "GAIA devices & autonomous field operations",
+    body: "GAIA-R rover and GAIA-D drone telemetry integration, mission scheduling, expanded sensor families, deeper environmental modeling, and the path toward genuinely autonomous field execution.",
+    status: "Exploring",
+    statusTone: "muted"
+  }
 ];
 
 export default function Home() {
   return (
-    <main className="gaia-shell">
-      <section className="gaia-container grid min-h-screen content-center gap-12 py-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
-        <div>
-          <p className="mb-4 text-sm font-semibold uppercase tracking-[0.22em] text-primary">
-            Coming soon under active development
-          </p>
-          <h1 className="max-w-4xl text-5xl font-semibold leading-[1.02] text-neutral md:text-7xl">
-            CropAutonomy
-          </h1>
-          <p className="mt-6 max-w-2xl text-xl leading-8 text-base-content/78">
-            Autonomous agricultural intelligence for farms, fields, and the
-            next generation of robotics-enabled crop operations.
-          </p>
-          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-            <a className="btn btn-primary" href="#early-access">
-              Request early access
-            </a>
-            <a className="btn btn-outline" href="https://gaiabots.ai">
-              Explore GaiaBots
-            </a>
-          </div>
-          <dl className="mt-10 grid gap-3 sm:grid-cols-3">
-            {metrics.map(([value, label]) => (
-              <div className="gaia-panel rounded-box p-4" key={value}>
-                <dt className="text-lg font-semibold text-neutral">{value}</dt>
-                <dd className="text-sm text-base-content/65">{label}</dd>
-              </div>
-            ))}
-          </dl>
-        </div>
-
-        <div className="gaia-panel rounded-box p-5 shadow-sm">
-          <div className="rounded-box border border-base-300 bg-neutral p-5 text-neutral-content">
-            <div className="flex items-center justify-between border-b border-white/10 pb-4">
-              <span className="font-semibold">Field intelligence stack</span>
-              <span className="badge badge-success">prototype</span>
-            </div>
-            <div className="mt-5 grid gap-3">
-              {capabilities.map((capability) => (
-                <div
-                  className="rounded-field border border-white/10 bg-white/[0.04] p-4 text-sm leading-6"
-                  key={capability}
-                >
-                  {capability}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="border-y border-base-300 bg-base-100/70 py-16">
-        <div className="gaia-container grid gap-8 lg:grid-cols-[0.9fr_1.1fr]">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-primary">
-              Platform direction
-            </p>
-            <h2 className="mt-3 text-3xl font-semibold text-neutral">
-              Built as infrastructure, not generic SaaS.
-            </h2>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            {[
-              "Multi-tenant organizations for farms and agricultural groups",
-              "Supabase-backed data, storage, realtime, and edge workflows",
-              "Clerk identity with CropAutonomy-owned membership and roles",
-              "pg-boss queues, Resend email, and PostHog interaction analytics"
-            ].map((item) => (
-              <div className="gaia-panel rounded-box p-5" key={item}>
-                <p className="leading-7 text-base-content/75">{item}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="gaia-container py-16" id="early-access">
-        <div className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr]">
-          <div>
-            <h2 className="text-3xl font-semibold text-neutral">
-              Join the early access list.
-            </h2>
-            <p className="mt-4 text-lg leading-8 text-base-content/72">
-              We are gathering input from farms, agricultural businesses,
-              research teams, and robotics collaborators while the prototype
-              comes together.
-            </p>
-          </div>
-          <LeadForm />
-        </div>
-      </section>
-    </main>
+    <>
+      <Hero />
+      <Features />
+      <FieldStory />
+      <Audiences />
+      <Roadmap />
+      <Cta />
+    </>
   );
 }
 
-function LeadForm() {
+function Hero() {
   return (
-    <form action="/api/leads" className="gaia-panel rounded-box p-5">
-      <div className="grid gap-4 md:grid-cols-2">
-        <label className="form-control">
-          <span className="label-text">Name</span>
-          <input className="input input-bordered" name="name" required />
-        </label>
-        <label className="form-control">
-          <span className="label-text">Email</span>
-          <input className="input input-bordered" name="email" required type="email" />
-        </label>
+    <section className="bg-base-100">
+      <div className="mx-auto grid w-full max-w-[1440px] gap-12 px-6 py-16 lg:grid-cols-[600px_1fr] lg:items-center lg:gap-16 lg:px-16 lg:py-24">
+        <div className="flex flex-col">
+          <span className="mb-7 inline-flex items-center gap-2 self-start rounded-full bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary">
+            <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+            Now in active development · prototype Aug 2026
+          </span>
+          <h1 className="mb-6 text-5xl font-semibold leading-tight tracking-tight text-neutral md:text-6xl">
+            Autonomous agricultural intelligence for the modern farm.
+          </h1>
+          <p className="mb-9 max-w-xl text-lg leading-7 text-base-content/70">
+            CropAutonomy is the platform farms, growers, and research teams will use to scan crops, analyze field conditions with AI, and coordinate the next generation of agricultural robotics — all in one workspace.
+          </p>
+          <div className="mb-8 flex flex-wrap items-center gap-3">
+            <a className="btn btn-primary rounded-md px-5" href="#early-access">
+              Request early access
+            </a>
+            <a
+              className="btn btn-outline rounded-md border-base-content/20 px-5 text-neutral hover:bg-base-200 hover:text-neutral"
+              href="#platform"
+            >
+              See the platform
+            </a>
+          </div>
+          <p className="text-sm leading-6 text-base-content/55">
+            Built for farms, agricultural businesses, agronomy teams, and research institutions. No credit card needed for the access list.
+          </p>
+        </div>
+        <div className="relative h-[420px] overflow-hidden rounded-xl bg-primary md:h-[520px] lg:h-[560px]">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            alt="Golden hour sunlight across a working farm field"
+            className="h-full w-full object-cover"
+            loading="eager"
+            src={HERO_IMAGE}
+          />
+        </div>
       </div>
-      <label className="form-control mt-4">
-        <span className="label-text">Organization</span>
-        <input className="input input-bordered" name="organization" />
-      </label>
-      <label className="form-control mt-4">
-        <span className="label-text">Interest</span>
-        <select className="select select-bordered" name="interest" defaultValue="farm_or_grower">
-          <option value="farm_or_grower">Farm or grower</option>
-          <option value="agricultural_business">Agricultural business</option>
-          <option value="research_institution">Research institution</option>
-          <option value="robotics_collaborator">Robotics collaborator</option>
-          <option value="investor_or_partner">Investor or partner</option>
-          <option value="technical_contributor">Technical contributor</option>
-          <option value="other">Other</option>
-        </select>
-      </label>
-      <label className="form-control mt-4">
-        <span className="label-text">Message</span>
-        <textarea className="textarea textarea-bordered min-h-28" name="message" />
-      </label>
-      <label className="label mt-4 cursor-pointer justify-start gap-3">
-        <input className="checkbox checkbox-primary" name="consent" required type="checkbox" />
-        <span className="label-text">I agree to receive development updates.</span>
-      </label>
-      <input name="source" type="hidden" value="cropautonomy.com" />
-      <button className="btn btn-primary mt-5 w-full sm:w-auto" type="submit">
-        Request early access
-      </button>
-    </form>
+    </section>
+  );
+}
+
+function Features() {
+  return (
+    <Section id="platform" tone="warm">
+      <SectionIntro
+        align="center"
+        eyebrow="What we're building"
+        lead="Crop intelligence, environmental data, and device coordination — designed to work together from day one, on every farm."
+        title="One platform for the whole field operation."
+      />
+      <div className="grid gap-5 md:grid-cols-3">
+        {features.map((feature) => (
+          <FeatureCard key={feature.title} {...feature} />
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+function FieldStory() {
+  return (
+    <Section tone="light">
+      <MediaSplit contentWidth="narrow" image={FIELD_IMAGE} imageAlt="Close-up of young crops growing in dark soil">
+        <span className="mb-3 block text-sm font-semibold text-primary">
+          Designed with the field in mind
+        </span>
+        <h2 className="mb-5 text-3xl font-semibold leading-tight tracking-tight text-neutral md:text-4xl">
+          Made for the people who actually walk the rows.
+        </h2>
+        <p className="mb-7 text-lg leading-7 text-base-content/70">
+          Spotty cell coverage. Dust on the lens. A scout with one hand on a clipboard. CropAutonomy is being built around the realities of the field — not the comforts of an office dashboard.
+        </p>
+        <div className="flex flex-col gap-5">
+          {fieldValueProps.map((row) => (
+            <FeatureRow key={row.title} {...row} />
+          ))}
+        </div>
+      </MediaSplit>
+    </Section>
+  );
+}
+
+function Audiences() {
+  return (
+    <Section id="audiences" tone="warm">
+      <SectionIntro
+        accessory={
+          <a className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary" href="#early-access">
+            Joining the access list →
+          </a>
+        }
+        eyebrow="Who it's for"
+        title="Built for everyone responsible for the harvest."
+      />
+      <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-4">
+        {audiences.map((audience) => (
+          <AudienceCard key={audience.title} {...audience} />
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+function Roadmap() {
+  return (
+    <Section id="roadmap" tone="light">
+      <div className="grid gap-12 lg:grid-cols-[360px_1fr] lg:gap-16">
+        <div>
+          <span className="mb-3 block text-sm font-semibold text-primary">Where we are</span>
+          <h2 className="mb-5 text-3xl font-semibold leading-tight tracking-tight text-neutral md:text-4xl">
+            A platform being built in the open.
+          </h2>
+          <p className="text-base leading-7 text-base-content/70">
+            We are early. The roadmap below is what's real, what's next, and what we're aiming at for the August 2026 working prototype.
+          </p>
+        </div>
+        <RoadmapList items={roadmap} />
+      </div>
+    </Section>
+  );
+}
+
+function Cta() {
+  return (
+    <CtaSection id="early-access">
+      <div className="flex flex-col lg:pt-3.5">
+        <span className="mb-3 text-sm font-semibold text-leaf-soft">Early access</span>
+        <h2 className="mb-5 text-4xl font-semibold leading-tight tracking-tight md:text-5xl">
+          Join the people we're building this with.
+        </h2>
+        <p className="mb-8 text-base leading-7 text-neutral-content/72">
+          Tell us what you grow, where you grow it, and what would matter most. We'll keep you on the inside of CropAutonomy as it comes together — and reach out when there's something real to put in your hands.
+        </p>
+        <CheckList
+          items={[
+            "Direct line to the team — no marketing drip",
+            "First access to the August 2026 prototype",
+            "Optional partnership for research and robotics teams"
+          ]}
+          size="md"
+          tone="light"
+        />
+      </div>
+      <LeadForm
+        defaultInterest="farm_or_grower"
+        placeholders={{
+          name: "Avery Lindgren",
+          email: "avery@lindgrenfamilyfarm.com",
+          organization: "Lindgren Family Farm · 1,240 acres · MN",
+          message:
+            "We're scouting corn and soybeans on six fields this season. Curious about anything that would let our agronomist see scan history across years."
+        }}
+        source="cropautonomy.com"
+      />
+    </CtaSection>
   );
 }

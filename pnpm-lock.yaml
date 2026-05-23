@@ -142,6 +142,9 @@ importers:
 
   packages/ui:
     dependencies:
+      '@gaia/domain':
+        specifier: workspace:*
+        version: link:../domain
       '@tailwindcss/postcss':
         specifier: 4.3.0
         version: 4.3.0
@@ -151,6 +154,19 @@ importers:
       tailwindcss:
         specifier: 4.3.0
         version: 4.3.0
+    devDependencies:
+      '@types/react':
+        specifier: 19.2.7
+        version: 19.2.7
+      '@types/react-dom':
+        specifier: 19.2.3
+        version: 19.2.3(@types/react@19.2.7)
+      react:
+        specifier: 19.2.0
+        version: 19.2.0
+      react-dom:
+        specifier: 19.2.0
+        version: 19.2.0(react@19.2.0)
 
 packages:
 

@@ -7,9 +7,20 @@
     ".": "./src/index.ts",
     "./theme.css": "./src/theme.css"
   },
+  "dependencies": {
+    "@gaia/domain": "workspace:*"
+  },
   "peerDependencies": {
     "@tailwindcss/postcss": "4.3.0",
     "daisyui": "5.5.20",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
     "tailwindcss": "4.3.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.3",
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
   }
 }
