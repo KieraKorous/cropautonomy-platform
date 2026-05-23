@@ -73,10 +73,12 @@ The CropAutonomy portal includes:
 - authenticated application shell
 - organization management
 - farms and fields
-- crop scan workflows
+- crop scan workflows — phone capture and bulk upload (branded **Field Capture**) is the v1 capture input; drone, rover, and sensor sources are modeled in the schema and arrive as the GAIA hardware lineup matures
 - analysis reports
 - notifications
 - future device and fleet management
+
+All capture sources — operator phone captures (Field Capture), GAIA-R rover, GAIA-D drone, GAIA-S sensor — write into the same `captures` surface and run through the same asynchronous analysis pipeline. The source is metadata on the capture, not a separate code path.
 
 ### Backend Services
 
@@ -105,6 +107,8 @@ Robotics and edge systems include:
 - simulated telemetry sources
 - edge inference
 - local capture and sync workflows
+
+Note: operator phone capture (Field Capture) is not a robotics/edge client — it lives in the portal as a browser/PWA flow. It shares the downstream `captures` surface but is not part of the device taxonomy. Do not introduce a "GAIA-U" / "GAIA-Handheld" device family.
 
 ## Architectural Principles
 

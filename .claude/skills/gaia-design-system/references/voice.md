@@ -32,6 +32,21 @@ Coming soon, active development, prototype target August 2026. Always present th
 - "We are early"
 - "What's real, what's next"
 
+### Field Capture — the named first capture method
+
+**Field Capture** is the locked product name for the phone-camera + bulk-upload capture method on the CropAutonomy platform. It is the first capture method on the build sequence (the visible loop in the Aug 2026 prototype) — but it is **not yet built** and **not the platform centerpiece**.
+
+Hard rules when referencing Field Capture in copy:
+
+- Use the name **Field Capture** (two words, title case).
+- Frame in future / roadmap tense: "Field Capture is the first capture method we're building", "the v1 input method for the Aug 2026 prototype", "phone capture and bulk upload, planned". Never present tense as a functional claim ("scout with the camera in your pocket today", "get back disease pressure", "Field Capture lets your team…").
+- Field Capture is **one of multiple planned capture inputs** alongside GAIA-D drone, GAIA-R rover, GAIA-S sensor, and future sources. They all feed the same downstream pipeline.
+- Do **not** label it GAIA-U, GAIA-User, or GAIA-Handheld. The GAIA-{R,D,S,C,E,A} taxonomy is reserved for GAIAbots-manufactured hardware. If a GAIA-letter codename is ever needed internally, prefer GAIA-H or GAIA-V — but the public name remains Field Capture.
+- Do **not** position CropAutonomy as a mobile-first product or a phone scouting app. The platform centerpiece is autonomous agricultural intelligence delivered by the GAIA device lineup; Field Capture is the input that can be built first because it does not depend on hardware.
+- Do **not** contrast Field Capture as "available" against GAIA-R/D as "coming." Both are in development; Field Capture is just earlier in the build sequence.
+
+On GAIAbots surfaces: reference Field Capture as one of the planned input channels into the shared CropAutonomy pipeline alongside GAIA-R and GAIA-D — but never as a GAIAbots device, and never on the device grid.
+
 ## GAIAbots — the robotics / hardware brand
 
 The robotics arm of the CropAutonomy ecosystem. GAIA-R rover, GAIA-D drone, and a documented expansion family (GAIA-S sensor station, GAIA-C control hub, GAIA-E edge compute, GAIA-A autonomous actuator). Voice is **precise, technical, exploratory, credible, field-aware**.

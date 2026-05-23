@@ -185,7 +185,7 @@ function Connect() {
           </h2>
         </div>
         <p className="max-w-sm text-base leading-6 text-neutral-content/70">
-          GAIAbots devices are not standalone tools. Telemetry, scans, and missions land in the same multi-tenant platform farms already use for their crop intelligence.
+          GAIAbots devices are not standalone tools. Telemetry, scans, and missions will land in the same multi-tenant platform that ingests operator-captured imagery (Field Capture on CropAutonomy) — one pipeline, multiple input sources.
         </p>
       </header>
       <div className="grid gap-6 rounded-2xl border border-neutral-content/10 bg-shell-deep p-6 lg:grid-cols-[280px_auto_1fr_auto_240px] lg:gap-0 lg:items-stretch lg:p-9">
@@ -287,7 +287,7 @@ function DiagramPlatformCard() {
       <div className="flex flex-col gap-3 rounded-lg bg-primary p-6 text-primary-content">
         <h3 className="text-lg font-semibold">Telemetry & vision ingestion</h3>
         <p className="text-sm leading-5 text-primary-content/80">
-          All device data lands in tenant-aware storage, runs through queued AI analysis, and surfaces as structured crop intelligence inside the same workspace farms use for manual scans.
+          All device data — and operator-captured imagery via Field Capture — will land in tenant-aware storage, run through queued AI analysis, and surface as structured crop intelligence inside the same workspace.
         </p>
         <div className="mt-2 flex flex-wrap gap-2">
           {["Ingestion API", "Scan storage", "Mission scheduler", "AI analysis queue"].map((tag) => (

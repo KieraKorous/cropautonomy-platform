@@ -14,3 +14,6 @@ export * from "./components/Roadmap";
 export * from "./components/Header";
 export * from "./components/Footer";
 export * from "./components/LeadForm";
+export * from "./components/AppShell";
+export * from "./components/StatCard";
+export * from "./components/MapPanel";

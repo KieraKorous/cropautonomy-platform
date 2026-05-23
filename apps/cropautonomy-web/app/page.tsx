@@ -33,11 +33,11 @@ const features = [
   {
     icon: <CameraIcon />,
     title: "Crop scans & imaging",
-    body: "Capture imagery from a phone, drone, or rover. Every scan is linked to a field, zone, and crop — searchable across the whole organization.",
+    body: "Field Capture — phone camera and bulk upload — is the first capture method we're building. Drone, rover, and sensor inputs will join the same pipeline as the GAIA device lineup comes online. Every scan links to a field, zone, and crop, searchable across the whole organization.",
     bullets: [
-      "Mobile capture & bulk upload",
-      "Drone & rover ingestion",
-      "Field, zone, and crop linkage"
+      "Field Capture (phone & bulk upload) — v1 method",
+      "GAIA-D drone & GAIA-R rover ingestion — planned",
+      "Field, zone, and crop linkage on every capture"
     ]
   },
   {
@@ -123,8 +123,8 @@ const roadmap: RoadmapMilestone[] = [
   {
     when: "August 2026",
     quarter: "Prototype target",
-    title: "End-to-end intelligence workflow",
-    body: "Upload a scan, queue an AI analysis, deliver a structured crop health report, notify the field team. The first complete loop from camera to action, on a real farm.",
+    title: "Field Capture end-to-end",
+    body: "Field Capture is the visible loop in the August 2026 prototype: capture or upload from a phone, queue an AI analysis, deliver a structured crop health report, notify the field team. The first complete pass through the platform — built first because it doesn't depend on hardware.",
     status: "Planned",
     statusTone: "secondary"
   },

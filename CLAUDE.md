@@ -8,6 +8,7 @@ pnpm workspace monorepo (`pnpm@10.12.1`, Node toolchain) building toward a multi
 
 - `apps/cropautonomy-web` — Next.js 16 / React 19 landing for `cropautonomy.com` (port 3000)
 - `apps/gaiabots-web` — Next.js 16 / React 19 landing for `gaiabots.ai` (port 3001)
+- `apps/portal-web` — Next.js 16 / React 19 authenticated portal for `app.cropautonomy.com` (port 3002). Separate deployable from the marketing apps — do not merge. Vercel for v0, GKE long-term.
 - `packages/config` — shared `next.config.mjs`, `postcss.config.mjs`, and `tsconfig.json` re-exported via subpath exports (`@gaia/config/next`, `/postcss`, `/tsconfig`)
 - `packages/domain` — pure TypeScript domain types (`PublicLead`, `LeadInterest`, `LeadSource`)
 - `packages/leads` — server-side `capturePublicLead()` that fans out to Supabase + Resend via `Promise.allSettled`
@@ -54,8 +55,10 @@ These are explicit project decisions, not generic advice — follow them:
 
 - **Auth**: Clerk for identity. Do **not** use Supabase Auth. Do **not** treat Clerk organizations as the source of truth for platform membership — model org/farm/field/device/membership tables yourself.
 - **Backend runtime choice**: Fastify (Node), Python (vision/AI), or Go (telemetry/ingestion). Express is disallowed by default.
-- **Queueing**: pg-boss. **Email**: Resend. **Analytics**: PostHog. **Hosting target**: GKE long-term, Cloudflare acceptable for landing pages.
+- **Queueing**: pg-boss. **Email**: Resend. **Analytics**: PostHog. **Hosting target**: GKE long-term, Cloudflare acceptable for landing pages, Vercel for the portal v0.
 - **Multi-tenancy from day one** — never hard-code single-org/single-farm assumptions, even in marketing-adjacent code.
+- **Real-time is a core capability, not bolted on** — the portal is an operations console; operators must see device and Field Capture activity live. Subscribe and publish through `packages/realtime` (planned), never import `@supabase/supabase-js` realtime APIs directly in app or device code. v0 transport is Supabase Realtime for state events + WebRTC for Field Capture media; the abstraction exists so the transport is swappable when Supabase Realtime is outgrown. See `docs/architecture/realtime-strategy.md`.
+- **Map provider**: Mapbox GL JS via `react-map-gl/mapbox`. No MapLibre or Google Maps fallback. `NEXT_PUBLIC_MAPBOX_TOKEN` is required at portal runtime.
 - **Design posture**: industrial, agricultural, precise, calm. Avoid generic SaaS dashboard aesthetics, playful consumer visuals, or claims that overstate hardware readiness.
 - Keep public marketing pages structurally separate from authenticated platform concerns.
 
@@ -66,6 +69,6 @@ When you make decisions that affect repo structure, env vars, API boundaries, sc
 `docs/README.md` is the index. For non-trivial work, read the relevant doc first rather than inferring from code — the code is intentionally thin relative to the planned architecture:
 
 - `docs/project-vision.md`, `docs/product-roadmap.md`
-- `docs/architecture/` (overview, monorepo-strategy, authentication-and-tenancy, data-and-storage-strategy, queueing-email-analytics, deployment-strategy, robotics-and-edge-architecture)
+- `docs/architecture/` (overview, monorepo-strategy, authentication-and-tenancy, data-and-storage-strategy, queueing-email-analytics, realtime-strategy, deployment-strategy, robotics-and-edge-architecture)
 - `docs/product/` (landing-pages-prd, cropautonomy-platform-prd, gaiabots-knowledge-base-prd)
 - `docs/brand/` for tone, palette rationale, and brand briefs

@@ -145,3 +145,61 @@ export function ChartIcon(props: IconProps) {
     </Base>
   );
 }
+
+export function HomeIcon(props: IconProps) {
+  return (
+    <Base size={16} {...props}>
+      <path d="M3 12 12 3l9 9" />
+      <path d="M5 10v10h14V10" />
+    </Base>
+  );
+}
+
+export function FarmIcon(props: IconProps) {
+  return (
+    <Base size={16} {...props}>
+      <path d="M3 21h18" />
+      <path d="M5 21V8l7-5 7 5v13" />
+      <path d="M9 21v-6h6v6" />
+    </Base>
+  );
+}
+
+export function ChecklistIcon(props: IconProps) {
+  return (
+    <Base size={16} {...props}>
+      <path d="M9 11l3 3 8-8" />
+      <path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9" />
+    </Base>
+  );
+}
+
+export function CogIcon(props: IconProps) {
+  return (
+    <Base size={16} {...props}>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </Base>
+  );
+}
+
+export function LiveIcon(props: IconProps) {
+  return (
+    <Base size={16} {...props}>
+      <circle cx="12" cy="12" r="2" />
+      <path d="M8.5 8.5a5 5 0 0 0 0 7" />
+      <path d="M15.5 15.5a5 5 0 0 0 0-7" />
+      <path d="M5.5 5.5a9 9 0 0 0 0 13" />
+      <path d="M18.5 18.5a9 9 0 0 0 0-13" />
+    </Base>
+  );
+}
+
+export function MapPinIcon(props: IconProps) {
+  return (
+    <Base size={13} {...props}>
+      <path d="M12 22s-8-6-8-13a8 8 0 0 1 16 0c0 7-8 13-8 13z" />
+      <circle cx="12" cy="9" r="2.5" />
+    </Base>
+  );
+}

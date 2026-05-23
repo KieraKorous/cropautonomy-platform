@@ -22,6 +22,7 @@ For deeper context see:
 - [references/palette.md](references/palette.md) — full token list (DaisyUI + custom) with usage notes
 - [references/components.md](references/components.md) — `@gaia/ui` inventory: every export, its props, and when to reach for it
 - [references/voice.md](references/voice.md) — brand voice for CropAutonomy and GAIAbots with copy do/don't
+- [references/portal.md](references/portal.md) — portal/dashboard patterns (AppShell, StatCard, DataTable, MapPanel) + map provider decision (Mapbox GL JS via react-map-gl, MapLibre fallback)
 
 ## Hard rules (non-negotiable)
 
@@ -132,7 +133,7 @@ Full voice guide with examples in [references/voice.md](references/voice.md). Ca
 
 ## What's NOT in this skill (yet)
 
-- Portal/authenticated UI patterns — those haven't been built yet. When the portal lands, grow this skill to cover dashboard shells, table patterns, empty states, and form layouts beyond lead capture.
+- **Portal/authenticated UI patterns** — partially covered in [references/portal.md](references/portal.md): AppShell, StatCard, DataTable, MapPanel are documented and either implemented in `@gaia/ui` or in flight. Empty states, form layouts beyond lead capture, and detail-page conventions still need to be added as they're built.
 - Knowledge base templates — when `gaiabots.ai` grows beyond the landing page.
 - Email templates — Resend is in the stack but no template system exists yet.
 

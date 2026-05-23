@@ -66,8 +66,27 @@ Future edge clients should:
 - avoid assuming constant network availability
 - use durable local queues
 - report health and diagnostic events
+- publish events against logical channels and typed event schemas defined in `packages/realtime`, **not** against a transport-specific SDK (see [Realtime Strategy](./realtime-strategy.md)). A rover firmware that calls `supabase.channel(...)` directly is a firmware update away from a forced rewrite when the transport changes
+- treat the realtime channel as the live view of state, and the durable telemetry POST as the source of truth — if the live channel is unreachable, the device still uploads, and the platform recovers the state from the durable record
+
+## Field Capture as an Edge Client
+
+The first edge client that exists today is **Field Capture** — an operator's phone running a capture session. It is the first concrete test of these principles:
+
+- It publishes session lifecycle events (started, paused, resumed, completed) into `org.{orgId}.capture.{sessionId}.state`
+- It opens a WebRTC peer for the live camera preview shown in the portal's Live page; signaling rides on `org.{orgId}.capture.{sessionId}.signal`
+- Captured assets upload durably (resumable, offline-tolerant) and are the source of truth — the live preview is operator awareness, not the record
+
+GAIA-R, GAIA-D, and future device families should adopt the same patterns. The device class is metadata; the contract is the same.
 
 ## Telemetry Principles
+
+Telemetry has two layers, and they must not be conflated:
+
+- **Durable telemetry** — append-first writes to Postgres (eventually a time-series-friendly table or external store). This is the record.
+- **Live telemetry** — typed events published to realtime channels for operator dashboards. This is the live view.
+
+The device emits both from the same logical event. The durable write must not depend on the live channel being reachable; the live channel must not be treated as a recoverable log.
 
 Telemetry should be:
 
@@ -77,6 +96,7 @@ Telemetry should be:
 - queryable by time range
 - suitable for dashboards
 - robust enough for intermittent connectivity
+- published as typed events on logical channels (`org.{orgId}.device.{deviceId}.telemetry`) for the live view, via the abstraction in `packages/realtime`
 
 ## Prototype Recommendation
 

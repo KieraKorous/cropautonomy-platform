@@ -55,7 +55,11 @@ Avoid:
 - Upcoming agricultural robotics systems
 - GAIA-R for ground-level crop intelligence
 - GAIA-D for aerial field intelligence
-- Built to connect with CropAutonomy
+- Built to connect with CropAutonomy — captures from GAIA-R and GAIA-D land in the same `captures` surface as operator-supplied phone imagery (Field Capture on `cropautonomy.com`), running through the same analysis pipeline
 - Future home of device knowledge and documentation
 - Prototype target: August 2026 where applicable
+
+## Capture Channel Note
+
+Handheld / operator capture (phone camera + bulk upload — known as **Field Capture** on `cropautonomy.com`) is one of the planned input channels into the platform alongside the GAIA device lineup. It is **not** a GAIAbots device. Do **not** add a "GAIA-U" / "GAIA-User" / "GAIA-Handheld" card to the device grid. The GAIA-letter taxonomy is reserved for GAIAbots-manufactured hardware. Operator capture can be referenced in architecture/pipeline context (e.g., "GAIA-R imagery and operator capture feed the same analysis pipeline") without being listed as a device family.
 

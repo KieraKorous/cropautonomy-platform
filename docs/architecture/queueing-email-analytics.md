@@ -14,6 +14,18 @@ Initial queues may include:
 - `notification.create`
 - `telemetry.ingest`
 
+## Queueing vs Realtime
+
+pg-boss and the realtime layer ([Realtime Strategy](./realtime-strategy.md)) are complementary, not interchangeable. Pick the right one and don't blur the boundary:
+
+| Need | Use | Why |
+|------|-----|-----|
+| Work must run even if nobody is watching, with retries and idempotency | pg-boss | Durable, recoverable, observable |
+| Tell every watching operator something just happened | Realtime | Ephemeral, low-latency, fan-out |
+| Both — durable work plus live progress feedback | pg-boss runs the work; the worker publishes progress events to Realtime as it goes | Each layer does one job well |
+
+Example: `scan.analysis.requested` is a pg-boss job. As the worker processes it, it publishes `scan.progress` events to `org.{orgId}.scan.{scanId}.progress` so the operator sees the bar advance. If the operator closes the tab, the job still completes; if the worker crashes, pg-boss retries; the real-time channel is purely the live feedback layer.
+
 ## Queueing Principles
 
 - Do not run slow AI work inline with user requests.
@@ -22,6 +34,7 @@ Initial queues may include:
 - Capture failure details for debugging.
 - Use retries for transient failures.
 - Avoid queue payloads that contain large binary data; store assets and pass references.
+- When a job has user-visible progress, publish realtime events from inside the worker. The job is the source of truth; the events are the live view of it.
 
 ## Email: Resend
 
@@ -74,6 +87,9 @@ Initial portal events:
 - `scan_analysis_requested`
 - `scan_analysis_viewed`
 - `device_viewed`
+- `live_page_viewed`
+- `live_stream_opened`
+- `live_stream_closed`
 
 ## Analytics Principles
 

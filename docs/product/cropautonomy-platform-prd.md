@@ -52,15 +52,17 @@ The platform should model:
 
 ### Crop Scans
 
-Crop scans are the first core intelligence workflow.
+Crop scans are the first core intelligence workflow. All scan sources feed a single `captures` surface — the source (phone, drone, rover, sensor) is metadata on the capture, not a separate product line.
 
-Scan sources may include:
+Planned scan sources (none shipped yet as of 2026-05-23):
 
-- uploaded images
-- mobile camera capture
-- drone imagery
-- rover imagery
-- future sensor packages
+- mobile camera capture and bulk image/video upload — branded **Field Capture**, the **v1 input method** being built for the Aug 2026 prototype
+- drone imagery (GAIA-D) — planned
+- rover imagery (GAIA-R) — planned
+- sensor station data (GAIA-S) — planned
+- future sensor packages and third-party device integrations
+
+Field Capture is **not** a GAIA-letter device — it is the phone/upload input method into the platform. It is the first capture source on the build sequence because it does not depend on hardware readiness.
 
 ### AI Analysis
 
@@ -85,6 +87,19 @@ Users should receive notifications for:
 - account or organization events
 - future device or telemetry events
 
+### Live Operations
+
+The portal includes a **Live** surface — a real-time operator view of everything currently active across the organization's fleet and field operations.
+
+Live shows:
+
+- in-flight **Field Capture** sessions with live camera preview (WebRTC), operator identity, and current location
+- registered GAIA devices (rovers, drones, sensor stations) reporting active status, with live telemetry overlay
+- in-progress AI analysis jobs, with detection events streaming in as they're found
+- recent alerts and events across the org
+
+Live is a **core surface**, not a future enhancement. The architecture supporting it — typed event channels, transport-abstracted realtime, WebRTC for media — is set up in Phase 1 so every later surface inherits live behavior by default. See [Realtime Strategy](../architecture/realtime-strategy.md).
+
 ### Device Readiness
 
 Even before physical devices are available, the platform should reserve model concepts for:
@@ -103,12 +118,13 @@ The target prototype should include:
 - authenticated portal shell
 - organization membership
 - farm and field setup
-- image upload or capture
-- queued AI analysis
+- **Field Capture** — phone-camera capture and bulk image/video upload (the v1 capture input method, the visible loop in the prototype demo)
+- queued AI analysis with live progress events into the realtime layer
 - result display
 - basic notifications
 - analytics
-- early device or telemetry placeholder model
+- **Live page** wired end-to-end against `packages/realtime` — active Field Capture sessions appear with WebRTC preview, map position, and live detection count
+- early device or telemetry placeholder model (so GAIA-R/D/S captures can join the same surface later without re-architecting)
 
 ## Non-Goals for Prototype
 
@@ -124,8 +140,8 @@ The August 2026 prototype does not need:
 ## Success Criteria
 
 - A farm or organization can be created.
-- A user can upload or capture a crop image.
+- A user can upload or capture a crop image via the Field Capture flow.
 - The system can process the scan in the background.
 - The user can see an analysis result.
-- The architecture can clearly grow toward device telemetry and robotics integration.
+- The architecture can clearly grow toward device telemetry and robotics integration — a future GAIA-R rover capture or GAIA-D drone capture lands in the same `captures` surface, runs the same analysis queue, and produces the same report shape as a Field Capture upload.
 

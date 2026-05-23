@@ -30,6 +30,7 @@ Those landing pages are only the starting point. The documentation in this folde
 - [Authentication and Tenancy](./architecture/authentication-and-tenancy.md)
 - [Data and Storage Strategy](./architecture/data-and-storage-strategy.md)
 - [Queueing, Email, and Analytics](./architecture/queueing-email-analytics.md)
+- [Realtime Strategy](./architecture/realtime-strategy.md)
 - [Deployment Strategy](./architecture/deployment-strategy.md)
 - [Robotics and Edge Architecture](./architecture/robotics-and-edge-architecture.md)
 

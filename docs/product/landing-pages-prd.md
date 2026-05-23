@@ -28,7 +28,7 @@ Both landing pages must:
 
 Primary message:
 
-CropAutonomy is an autonomous agricultural intelligence platform for farms, agricultural businesses, and field teams.
+CropAutonomy is an autonomous agricultural intelligence platform for farms, agricultural businesses, and field teams. The long-term centerpiece is the GAIA device lineup (rovers, drones, sensors, edge compute). **Field Capture** — phone capture and bulk upload — is the first capture method on the build sequence and the visible loop being built for the Aug 2026 prototype. Field Capture is not yet available; the landing collects early-access interest only.
 
 Audience:
 
@@ -42,13 +42,21 @@ Audience:
 
 Content priorities:
 
-- coming soon / active development
-- autonomous agricultural intelligence
-- crop scanning and AI analysis
-- future portal for farms and organizations
-- field data, environmental intelligence, and robotics readiness
-- August 2026 prototype target
+- coming soon / active development (whole platform, including Field Capture)
+- autonomous agricultural intelligence as the headline identity
+- the GAIA device lineup as the long-term centerpiece
+- the planned capture pipeline that takes in multiple sources (phone, drone, rover, sensor), all feeding the same downstream analysis
+- **Field Capture** as the first capture method being built — name it, but do **not** describe it in present tense ("scout fields with your phone today") and do **not** treat it as a centerpiece or H1. It earns a mention inside the features/methods and roadmap sections.
+- AI crop analysis and environmental insight (planned)
+- August 2026 prototype target — the first end-to-end demo, with Field Capture as the visible loop
 - early access lead capture
+
+Hard NOs for CropAutonomy copy:
+
+- do not write "Field Capture lets your team scout fields today" or any present-tense functional claim
+- do not write "the camera in your pocket is the product" or any mobile-first framing
+- do not contrast Field Capture as "available" against GAIA-R/D as "coming" — both are in development; Field Capture is just earlier in the sequence
+- do not introduce a "GAIA-U" or "GAIA-User" device naming for phone capture
 
 Calls to action:
 
