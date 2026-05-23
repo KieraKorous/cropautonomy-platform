@@ -1,0 +1,11 @@
+{
+  "name": "@gaia/config",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./next": "./next.config.mjs",
+    "./postcss": "./postcss.config.mjs",
+    "./tsconfig": "./tsconfig.json"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "@gaia/leads",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@gaia/domain": "workspace:*",
+    "@supabase/supabase-js": "2.87.0",
+    "resend": "6.6.0"
+  }
+}

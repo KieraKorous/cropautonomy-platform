@@ -1,0 +1,67 @@
+@import "tailwindcss";
+@plugin "daisyui";
+@plugin "daisyui/theme" {
+  name: "gaia-field";
+  default: true;
+  prefersdark: false;
+  color-scheme: light;
+
+  --color-base-100: #f7f5ef;
+  --color-base-200: #e8e2d4;
+  --color-base-300: #d3c8b4;
+  --color-base-content: #18211c;
+
+  --color-primary: #244f37;
+  --color-primary-content: #f7f5ef;
+  --color-secondary: #263c4a;
+  --color-secondary-content: #f7f5ef;
+  --color-accent: #b26b2c;
+  --color-accent-content: #fff8ed;
+  --color-neutral: #171b19;
+  --color-neutral-content: #f7f5ef;
+
+  --color-info: #2f6f8f;
+  --color-info-content: #f5fbff;
+  --color-success: #2f6b45;
+  --color-success-content: #f4fff8;
+  --color-warning: #a86f18;
+  --color-warning-content: #fff8e8;
+  --color-error: #914037;
+  --color-error-content: #fff5f3;
+
+  --radius-selector: 0.375rem;
+  --radius-field: 0.375rem;
+  --radius-box: 0.5rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+:root {
+  --gaia-ink: #111613;
+  --gaia-panel: #fbfaf6;
+  --gaia-border: rgba(24, 33, 28, 0.16);
+}
+
+body {
+  background:
+    linear-gradient(180deg, rgba(36, 79, 55, 0.08), rgba(247, 245, 239, 0) 36rem),
+    #f7f5ef;
+  color: var(--gaia-ink);
+}
+
+.gaia-shell {
+  min-height: 100vh;
+}
+
+.gaia-container {
+  width: min(1120px, calc(100% - 2rem));
+  margin-inline: auto;
+}
+
+.gaia-panel {
+  border: 1px solid var(--gaia-border);
+  background: rgba(251, 250, 246, 0.78);
+}

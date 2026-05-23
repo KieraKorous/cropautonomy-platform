@@ -1,0 +1,17 @@
+{
+  "name": "gaia-platform",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.12.1",
+  "scripts": {
+    "dev": "corepack pnpm --parallel --filter @gaia/cropautonomy-web --filter @gaia/gaiabots-web dev",
+    "dev:cropautonomy": "corepack pnpm --filter @gaia/cropautonomy-web dev",
+    "dev:gaiabots": "corepack pnpm --filter @gaia/gaiabots-web dev",
+    "build": "corepack pnpm -r build",
+    "lint": "corepack pnpm -r lint",
+    "typecheck": "corepack pnpm -r typecheck"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}
