@@ -93,7 +93,7 @@ These are explicit project decisions, not generic advice — follow them:
 - **`captures` is the unified observation record** across all sources (phone, drone, rover, sensor). The older `crop_scans` / `scan_assets` split is deprecated. Schema + upload protocol in `docs/architecture/capture-pipeline.md`.
 - **Cross-subdomain SSO via Clerk satellite domains** — primary `app.cropautonomy.com`, satellite `field.cropautonomy.com`, session cookie scoped to `.cropautonomy.com`. See `docs/architecture/authentication-and-tenancy.md § Cross-Surface SSO`.
 - **Map provider**: Mapbox GL JS via `react-map-gl/mapbox`. No MapLibre or Google Maps fallback. `NEXT_PUBLIC_MAPBOX_TOKEN` is required at portal runtime.
-- **Design posture**: industrial, agricultural, precise, calm. Avoid generic SaaS dashboard aesthetics, playful consumer visuals, or claims that overstate hardware readiness.
+- **Design posture**: industrial, agricultural, precise, calm. Avoid generic SaaS dashboard aesthetics, playful consumer visuals, or claims that overstate hardware readiness. Per-app `PRODUCT.md` + `DESIGN.md` live at `apps/<app>/` (not at the repo root). Run `/impeccable …` commands from inside the target app directory (or set `IMPECCABLE_CONTEXT_DIR`) so the context loader picks up the right files; running from the repo root finds nothing and produces generic output.
 - Keep public marketing pages structurally separate from authenticated platform concerns.
 
 When you make decisions that affect repo structure, env vars, API boundaries, schema, auth, deployment, design tokens, brand messaging, device taxonomy, or background jobs — update the corresponding doc under `docs/`.
