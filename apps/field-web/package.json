@@ -1,0 +1,36 @@
+{
+  "name": "@gaia/field-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host field.lvh.me --port 5173",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host field.lvh.me --port 5173",
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@clerk/clerk-react": "5.61.3",
+    "@gaia/realtime": "workspace:*",
+    "@gaia/ui": "workspace:*",
+    "idb": "8.0.0",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "react-router-dom": "6.28.0",
+    "tus-js-client": "4.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.3.0",
+    "@tailwindcss/vite": "4.3.0",
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "4.3.4",
+    "daisyui": "5.5.20",
+    "tailwindcss": "4.3.0",
+    "typescript": "5.9.3",
+    "vite": "5.4.11",
+    "vite-plugin-pwa": "0.21.1",
+    "workbox-window": "7.3.0"
+  }
+}

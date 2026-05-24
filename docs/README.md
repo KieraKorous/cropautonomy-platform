@@ -21,6 +21,7 @@ Those landing pages are only the starting point. The documentation in this folde
 
 - [Landing Pages PRD](./product/landing-pages-prd.md)
 - [CropAutonomy Platform PRD](./product/cropautonomy-platform-prd.md)
+- [Field Capture PRD](./product/field-capture-prd.md)
 - [GaiaBots Knowledge Base PRD](./product/gaiabots-knowledge-base-prd.md)
 
 ## Architecture Documents
@@ -29,8 +30,11 @@ Those landing pages are only the starting point. The documentation in this folde
 - [Monorepo Strategy](./architecture/monorepo-strategy.md)
 - [Authentication and Tenancy](./architecture/authentication-and-tenancy.md)
 - [Data and Storage Strategy](./architecture/data-and-storage-strategy.md)
+- [Database Schema](./architecture/database-schema.md)
 - [Queueing, Email, and Analytics](./architecture/queueing-email-analytics.md)
 - [Realtime Strategy](./architecture/realtime-strategy.md)
+- [`packages/realtime` Spec](./architecture/realtime-package-spec.md)
+- [Capture Pipeline](./architecture/capture-pipeline.md)
 - [Deployment Strategy](./architecture/deployment-strategy.md)
 - [Robotics and Edge Architecture](./architecture/robotics-and-edge-architecture.md)
 

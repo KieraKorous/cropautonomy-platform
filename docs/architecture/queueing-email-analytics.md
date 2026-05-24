@@ -4,6 +4,24 @@
 
 Use pg-boss for durable background work backed by Postgres.
 
+### pg-boss installation
+
+pg-boss installs into the **same Supabase Postgres database** as the application schema, under its own dedicated `pgboss` schema. Sibling-database isolation was considered and rejected for v0:
+
+- Sibling DB adds a second Postgres to provision, back up, monitor, and migrate.
+- Cross-DB transactions are not available, so "create capture row + enqueue analysis job" loses atomicity. Same-DB lets workers do this in a single transaction.
+- The DB is the bottleneck under load, not the queue schema. Splitting it doesn't relieve the real pressure.
+
+Revisit when there is a concrete reason — workers saturating the primary's connection pool, retention growth on `pgboss.job` impacting backup windows, or a need to run pg-boss workers in a network segment that can't reach the application DB.
+
+Initialization order:
+
+1. Apply our own migrations (`packages/db/migrations/000N_*.sql`).
+2. Start pg-boss with a service-role connection string. On first run, pg-boss creates `pgboss` schema and its internal tables automatically (`new PgBoss(connectionString).start()`).
+3. Workers register handlers and run continuously.
+
+We do **not** ship a migration for pg-boss — its schema is owned by the library and may change between versions. No grants are required beyond what the service role already has.
+
 Initial queues may include:
 
 - `lead.capture.received`

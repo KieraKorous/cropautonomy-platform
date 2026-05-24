@@ -1,0 +1,94 @@
+# Supabase CLI config for the CropAutonomy platform database.
+#
+# Migrations live in the existing `packages/db/migrations/` directory, not the
+# default `supabase/migrations/` location, so the SQL is co-located with the
+# rest of the @gaia/db package. The CLI is pointed at that directory via
+# `[db.migrations].schema_paths` below.
+#
+# Local development:
+#   pnpm --filter @gaia/db db:start    -- boots a local stack
+#   pnpm --filter @gaia/db db:reset    -- reapplies migrations
+#   pnpm --filter @gaia/db types:generate
+#
+# Remote workflow:
+#   supabase link --project-ref <ref>
+#   pnpm --filter @gaia/db db:push
+
+project_id = "cropautonomy-platform"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "storage", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 15
+
+[db.migrations]
+# Sourced from packages/db/migrations/. The path is relative to this file.
+schema_paths = ["../migrations"]
+
+[db.seed]
+enabled = false
+
+[studio]
+enabled = true
+port = 54323
+
+[storage]
+enabled = true
+file_size_limit = "5GiB"
+
+# Storage buckets - matches docs/architecture/data-and-storage-strategy.md.
+[storage.buckets.scan-originals]
+public = false
+file_size_limit = "5GiB"
+
+[storage.buckets.scan-derived]
+public = false
+file_size_limit = "1GiB"
+
+[storage.buckets.reports]
+public = false
+file_size_limit = "100MiB"
+
+[storage.buckets.device-artifacts]
+public = false
+file_size_limit = "1GiB"
+
+[storage.buckets.public-brand-assets]
+public = true
+file_size_limit = "50MiB"
+
+[auth]
+# We do not use Supabase Auth. Clerk is the identity provider. The auth service
+# stays enabled because Supabase Realtime / Storage rely on its JWT verification
+# path, but we accept Clerk-issued JWTs via the third-party auth config below.
+enabled = true
+site_url = "http://localhost:3002"
+
+[auth.third_party.clerk]
+enabled = true
+# The Clerk JWKS endpoint for your instance. Set per environment.
+# Local dev points at the Clerk development instance; production points at the
+# production frontend API.
+domain = "env(CLERK_FRONTEND_API_DOMAIN)"
+
+[realtime]
+enabled = true
+# Postgres changes are intentionally disabled at the policy level (no schema
+# is exposed). All realtime traffic uses broadcast channels published from
+# server code -- see docs/architecture/realtime-strategy.md.
+
+[functions]
+enabled = false
+
+[analytics]
+enabled = false
+
+[experimental.webhooks]
+enabled = false

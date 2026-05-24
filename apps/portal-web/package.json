@@ -11,9 +11,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@clerk/nextjs": "6.36.2",
     "@gaia/config": "workspace:*",
     "@gaia/domain": "workspace:*",
+    "@gaia/realtime": "workspace:*",
     "@gaia/ui": "workspace:*",
+    "@supabase/supabase-js": "2.87.0",
     "@tailwindcss/postcss": "4.3.0",
     "daisyui": "5.5.20",
     "mapbox-gl": "3.16.0",
@@ -21,7 +24,9 @@
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-map-gl": "8.0.4",
-    "tailwindcss": "4.3.0"
+    "svix": "1.42.0",
+    "tailwindcss": "4.3.0",
+    "zod": "3.23.8"
   },
   "devDependencies": {
     "@types/node": "24.10.1",

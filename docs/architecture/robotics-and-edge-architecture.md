@@ -71,13 +71,19 @@ Future edge clients should:
 
 ## Field Capture as an Edge Client
 
-The first edge client that exists today is **Field Capture** — an operator's phone running a capture session. It is the first concrete test of these principles:
+The first edge client that exists today is **Field Capture** — the operator-facing field application, shipped as a dedicated installable PWA at `field.cropautonomy.com` (`apps/field-web`, planned). See [Field Capture PRD](../product/field-capture-prd.md).
+
+It is intentionally a **separate product surface** from the portal, not a route inside it. The portal is for people watching operations; the field PWA is for people doing them. Treating them as the same product leads to a bloated experience that's wrong for both audiences.
+
+As an edge client, it is the first concrete test of the principles above:
 
 - It publishes session lifecycle events (started, paused, resumed, completed) into `org.{orgId}.capture.{sessionId}.state`
 - It opens a WebRTC peer for the live camera preview shown in the portal's Live page; signaling rides on `org.{orgId}.capture.{sessionId}.signal`
-- Captured assets upload durably (resumable, offline-tolerant) and are the source of truth — the live preview is operator awareness, not the record
+- Captured assets upload durably (resumable, offline-tolerant via IndexedDB queue) and are the source of truth — the live preview is operator awareness, not the record
+- It signs upload requests so the platform can attribute captures to a specific operator + device
+- It tolerates offline and intermittent connectivity by design (Background Sync where supported, polling fallback elsewhere)
 
-GAIA-R, GAIA-D, and future device families should adopt the same patterns. The device class is metadata; the contract is the same.
+GAIA-R, GAIA-D, and future device families should adopt the same patterns. The device class is metadata; the contract is the same. The field PWA proves the contract before hardware ships.
 
 ## Telemetry Principles
 

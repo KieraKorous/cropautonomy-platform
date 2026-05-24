@@ -22,9 +22,10 @@ Design early for:
 - memberships
 - farms
 - fields
+- zones
 - crop types
-- scans
-- scan assets
+- **captures** — the unified observation record across all sources (phone, drone, rover, sensor). See [Capture Pipeline](./capture-pipeline.md) for the full schema. Replaces the older `crop_scans` + `scan_assets` split.
+- **capture_sessions** — operator live sessions
 - analysis jobs
 - analysis results
 - devices
@@ -32,36 +33,47 @@ Design early for:
 - notifications
 - audit events
 
-Initial migration:
+Migrations live in `packages/db/migrations/`. See [Database Schema](./database-schema.md) for the full reference. Current ordering:
 
-- `packages/db/migrations/0001_public_leads.sql` creates `public.public_leads` for landing-page lead capture.
+- `0001_public_leads.sql` — marketing-side lead capture (pre-existing).
+- `0002_platform_core.sql` — extensions, identity, tenancy, roles, permissions, and the seeded permission set.
+- `0003_geography_and_devices.sql` — farms, fields, zones, crop types, crop plantings, devices.
+- `0004_captures_and_analysis.sql` — capture sessions, captures, analysis jobs, analysis results. Schema for `captures` and `capture_sessions` is copied verbatim from [Capture Pipeline](./capture-pipeline.md).
+- `0005_telemetry_notifications_audit.sql` — telemetry, notifications, audit log.
+- `0006_rls_policies.sql` — RLS enabled and org-scoped read policies attached.
 
 ## Storage Buckets
 
-Likely buckets:
+Buckets:
 
-- `scan-originals`
-- `scan-derived`
-- `reports`
-- `device-artifacts`
-- `public-brand-assets`
+- `scan-originals` — original capture media (photos, video, burst frames). Object paths are server-chosen and lead with `org/{orgId}/capture/{captureId}` so cross-tenant access is structurally impossible. Authenticated users have no direct read; they fetch via signed URLs minted server-side per request. See [Capture Pipeline](./capture-pipeline.md) for the full path convention and signed-URL upload protocol.
+- `scan-derived` — thumbnails, transcoded video, processed derivatives. Same `org/{orgId}/…` path prefix discipline.
+- `reports` — generated PDF/HTML analysis reports.
+- `device-artifacts` — device firmware logs, calibration files, telemetry archives.
+- `public-brand-assets` — the only bucket with public-read; for marketing-site imagery.
 
-Original uploaded files should be retained unless policy says otherwise. Derived assets should be linked back to source assets and analysis jobs.
+Original uploaded files should be retained unless policy says otherwise. Derived assets should be linked back to source captures and analysis jobs.
 
-## Scan Data
+## Capture Data
 
-A crop scan should preserve:
+A capture (the unit-of-observation record) should preserve:
 
 - organization
 - farm
 - field
-- capture source
-- uploader or device
-- timestamp
-- location if available
-- original image or media assets
-- analysis status
-- analysis output
+- zone (optional)
+- crop type (optional)
+- capture session (optional, but required for live-preview workflows)
+- capture source (`field_capture_pwa`, `gaia_r`, `gaia_d`, `gaia_s`, `bulk_upload`, `integration`)
+- uploader user or source device
+- on-device captured timestamp + server uploaded timestamp
+- location and GPS accuracy if available
+- media type (photo, burst frame, video) and media metadata (size, mime, checksum, video duration, burst index)
+- storage bucket + path
+- lifecycle status (`pending_upload` → `uploading` → `uploaded` → `analysis_queued` → `analysis_running` → `analyzed` | `failed`)
+- link to the analysis job + results
+
+Full schema and lifecycle in [Capture Pipeline](./capture-pipeline.md).
 
 ## Telemetry Data
 

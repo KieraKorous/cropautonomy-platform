@@ -1,0 +1,33 @@
+@import "@gaia/ui/theme.css";
+
+/* Field-specific layer: the palette and DaisyUI base come from @gaia/ui;
+   the overrides below adapt the surface for one-handed outdoor use without
+   forking the brand theme.
+
+   - Disable text selection on chrome to avoid accidental glove selections
+   - Honor the safe-area insets so capture controls clear iOS notch / nav bar
+   - Larger default tap target sizing for HUD pills and capture controls */
+
+:root {
+  --field-hud-height: 56px;
+  --field-controls-height: 168px;
+}
+
+html,
+body {
+  height: 100svh;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  touch-action: manipulation;
+}
+
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}

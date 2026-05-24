@@ -8,6 +8,7 @@
     "dev:cropautonomy": "pnpm --filter @gaia/cropautonomy-web dev",
     "dev:gaiabots": "pnpm --filter @gaia/gaiabots-web dev",
     "dev:portal": "pnpm --filter @gaia/portal-web dev",
+    "dev:field": "pnpm --filter @gaia/field-web dev",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck"

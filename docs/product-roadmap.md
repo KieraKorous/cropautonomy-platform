@@ -57,18 +57,19 @@ The August 2026 prototype demonstrates the end-to-end capture → analysis → r
 
 Goals:
 
-- Build phone-camera capture and bulk image/video upload flows — the Field Capture experience.
+- Build and ship the **Field Capture PWA** (`apps/field-web`, Vite + React + Workbox, served at `field.cropautonomy.com`) — photo / burst / video capture, live preview sessions over WebRTC, offline queue with resumable upload, minimal operator HUD. This is a separate product surface from the portal, not "the portal on a phone." See [Field Capture PRD](./product/field-capture-prd.md).
 - Store capture assets in Supabase Storage, linked to field, zone, and crop. Schema accommodates non-phone capture sources from day one.
 - Queue AI analysis jobs with pg-boss. Workers publish `scan.progress` and `scan.detection` events through `packages/realtime` so operators watch detections arrive live.
 - Save analysis results in Postgres alongside the originating capture.
 - Generate structured crop health reports — visible stress, suspected disease, nutrient concerns, stand counts where applicable, confidence scores.
 - Notify users (Resend + in-app) when analysis completes.
-- Add mobile/PWA behavior tuned for field use — offline queueing, dust/glare-tolerant UI, one-handed capture.
-- Wire the Live page end-to-end: active Field Capture sessions appear there with a live WebRTC preview, position on the map, and current detection count. This is the visible payoff of the realtime architecture in the prototype demo.
+- Wire the portal's Live page end-to-end against the field PWA: active Field Capture sessions appear there with a live WebRTC preview, position on the map, and current detection count. This is the visible payoff of the realtime + edge-client architecture in the prototype demo.
 
 Exit criteria:
 
-- A user can capture or upload crop imagery from a phone in the field (the Field Capture flow).
+- A field tech can install the Field Capture PWA to their home screen, sign in once, and start capturing within ~10 seconds.
+- Captures work offline and upload durably when connectivity returns.
+- Live preview sessions from the PWA are watchable in the portal's Live page within ~1s of start.
 - The system can process imagery asynchronously under realistic mobile/connectivity constraints.
 - The portal can display useful, structured analysis results.
 - The data model is shaped so future GAIA-R/D/S captures join the same `captures` surface without re-architecting.

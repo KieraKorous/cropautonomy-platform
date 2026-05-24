@@ -7,7 +7,7 @@ Path: `apps/cropautonomy-web`
 Local dev:
 
 ```powershell
-corepack pnpm dev:cropautonomy
+pnpm dev:cropautonomy
 ```
 
 Expected URL:
@@ -23,7 +23,7 @@ Path: `apps/gaiabots-web`
 Local dev:
 
 ```powershell
-corepack pnpm dev:gaiabots
+pnpm dev:gaiabots
 ```
 
 Expected URL:

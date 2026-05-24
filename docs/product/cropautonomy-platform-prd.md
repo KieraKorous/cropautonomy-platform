@@ -56,13 +56,13 @@ Crop scans are the first core intelligence workflow. All scan sources feed a sin
 
 Planned scan sources (none shipped yet as of 2026-05-23):
 
-- mobile camera capture and bulk image/video upload — branded **Field Capture**, the **v1 input method** being built for the Aug 2026 prototype
+- mobile camera capture and bulk image/video upload — branded **Field Capture**, the **v1 input method** being built for the Aug 2026 prototype. Ships as a dedicated installable PWA at `field.cropautonomy.com` ([Field Capture PRD](./field-capture-prd.md)), not as a route inside the portal.
 - drone imagery (GAIA-D) — planned
 - rover imagery (GAIA-R) — planned
 - sensor station data (GAIA-S) — planned
 - future sensor packages and third-party device integrations
 
-Field Capture is **not** a GAIA-letter device — it is the phone/upload input method into the platform. It is the first capture source on the build sequence because it does not depend on hardware readiness.
+Field Capture is **not** a GAIA-letter device — it is the phone/upload input method into the platform. It is the first capture source on the build sequence because it does not depend on hardware readiness. It is shipped as a separate product surface (the field PWA) because field techs need a focused capture experience, not the full portal on a phone.
 
 ### AI Analysis
 
@@ -118,12 +118,12 @@ The target prototype should include:
 - authenticated portal shell
 - organization membership
 - farm and field setup
-- **Field Capture** — phone-camera capture and bulk image/video upload (the v1 capture input method, the visible loop in the prototype demo)
+- **Field Capture PWA** at `field.cropautonomy.com` — installable, offline-capable capture app with photo/burst/video and live WebRTC preview (the v1 capture input method, the visible loop in the prototype demo). See [Field Capture PRD](./field-capture-prd.md).
 - queued AI analysis with live progress events into the realtime layer
 - result display
 - basic notifications
 - analytics
-- **Live page** wired end-to-end against `packages/realtime` — active Field Capture sessions appear with WebRTC preview, map position, and live detection count
+- **Live page** in the portal wired end-to-end against `packages/realtime` — active Field Capture sessions from the PWA appear with WebRTC preview, map position, and live detection count
 - early device or telemetry placeholder model (so GAIA-R/D/S captures can join the same surface later without re-architecting)
 
 ## Non-Goals for Prototype
