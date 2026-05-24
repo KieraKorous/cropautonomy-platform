@@ -1,0 +1,24 @@
+diff --git a/dist/cjs/server/keyless-custom-headers.js b/dist/cjs/server/keyless-custom-headers.js
+--- a/dist/cjs/server/keyless-custom-headers.js
++++ b/dist/cjs/server/keyless-custom-headers.js
+@@ -90,7 +90,7 @@ function getNextVersion() {
+     return void 0;
+   }
+ }
+-function formatMetadataHeaders(metadata) {
++async function formatMetadataHeaders(metadata) {
+   const headers2 = new Headers();
+   if (metadata.nodeVersion) {
+     headers2.set("Clerk-Node-Version", metadata.nodeVersion);
+diff --git a/dist/esm/server/keyless-custom-headers.js b/dist/esm/server/keyless-custom-headers.js
+--- a/dist/esm/server/keyless-custom-headers.js
++++ b/dist/esm/server/keyless-custom-headers.js
+@@ -67,7 +67,7 @@ function getNextVersion() {
+     return void 0;
+   }
+ }
+-function formatMetadataHeaders(metadata) {
++async function formatMetadataHeaders(metadata) {
+   const headers2 = new Headers();
+   if (metadata.nodeVersion) {
+     headers2.set("Clerk-Node-Version", metadata.nodeVersion);

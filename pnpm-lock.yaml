@@ -4,6 +4,11 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  '@clerk/nextjs@6.36.2':
+    hash: e5336c9f145b09f6786732b35bc4a80e74643c8a10c6cfed32a65258b944dd11
+    path: patches/@clerk__nextjs@6.36.2.patch
+
 importers:
 
   .:
@@ -169,7 +174,7 @@ importers:
     dependencies:
       '@clerk/nextjs':
         specifier: 6.36.2
-        version: 6.36.2(next@16.2.6(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
+        version: 6.36.2(patch_hash=e5336c9f145b09f6786732b35bc4a80e74643c8a10c6cfed32a65258b944dd11)(next@16.2.6(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
       '@gaia/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -4327,7 +4332,7 @@ snapshots:
       react-dom: 19.2.0(react@19.2.0)
       tslib: 2.8.1
 
-  '@clerk/nextjs@6.36.2(next@16.2.6(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react-dom@19.2.0(react@19.2.0))(react@19.2.0)':
+  '@clerk/nextjs@6.36.2(patch_hash=e5336c9f145b09f6786732b35bc4a80e74643c8a10c6cfed32a65258b944dd11)(next@16.2.6(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react-dom@19.2.0(react@19.2.0))(react@19.2.0)':
     dependencies:
       '@clerk/backend': 2.33.4(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
       '@clerk/clerk-react': 5.61.3(react-dom@19.2.0(react@19.2.0))(react@19.2.0)

@@ -17,5 +17,10 @@
   },
   "devDependencies": {
     "typescript": "5.9.3"
+  },
+  "pnpm": {
+    "patchedDependencies": {
+      "@clerk/nextjs@6.36.2": "patches/@clerk__nextjs@6.36.2.patch"
+    }
   }
 }
