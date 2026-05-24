@@ -66,8 +66,8 @@ export function SettingsPage() {
             Environment
           </p>
           <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs text-base-content/70">
-            <dt>Portal API</dt>
-            <dd className="font-mono">{env.portalApiBase}</dd>
+            <dt>API base</dt>
+            <dd className="font-mono">{env.apiBase}</dd>
             <dt>Supabase</dt>
             <dd className="truncate font-mono">{env.supabase.url}</dd>
             <dt>STUN</dt>

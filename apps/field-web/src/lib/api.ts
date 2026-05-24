@@ -1,4 +1,5 @@
 import { env } from "../env.js";
+import { getApiToken } from "./auth.js";
 
 export interface ReserveCaptureRequest {
   farmId?: string | null;
@@ -50,15 +51,16 @@ export interface SessionStartResponse {
 }
 
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const url = `${env.portalApiBase}${path}`;
-  const response = await fetch(url, {
-    ...init,
-    credentials: "include",
-    headers: {
-      "content-type": "application/json",
-      ...(init.headers ?? {})
-    }
-  });
+  const url = `${env.apiBase}${path}`;
+  const token = await getApiToken();
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    ...((init.headers as Record<string, string> | undefined) ?? {})
+  };
+  if (token) headers.authorization = `Bearer ${token}`;
+
+  const response = await fetch(url, { ...init, headers });
+
   if (!response.ok) {
     let detail = "";
     try {
@@ -73,25 +75,28 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export const api = {
   reserveCapture: (body: ReserveCaptureRequest) =>
-    call<ReserveCaptureResponse>("/api/captures", {
+    call<ReserveCaptureResponse>("/v1/captures", {
       method: "POST",
       body: JSON.stringify(body)
     }),
   finalizeCapture: (id: string, body: FinalizeCaptureRequest) =>
     call<{ captureId: string; analysisJobId: string; status: string }>(
-      `/api/captures/${id}/finalize`,
+      `/v1/captures/${id}/finalize`,
       { method: "POST", body: JSON.stringify(body) }
     ),
   startSession: (body: SessionStartRequest) =>
-    call<SessionStartResponse>("/api/capture-sessions", {
+    call<SessionStartResponse>("/v1/capture-sessions", {
       method: "POST",
       body: JSON.stringify(body)
     }),
   patchSession: (
     id: string,
-    action: { action: "pause"; reason?: string } | { action: "resume" } | { action: "end"; reason?: string }
+    action:
+      | { action: "pause"; reason?: string }
+      | { action: "resume" }
+      | { action: "end"; reason?: string }
   ) =>
-    call<{ sessionId: string; action: string }>(`/api/capture-sessions/${id}`, {
+    call<{ sessionId: string; action: string }>(`/v1/capture-sessions/${id}`, {
       method: "PATCH",
       body: JSON.stringify(action)
     })

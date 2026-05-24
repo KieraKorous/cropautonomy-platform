@@ -20,7 +20,8 @@ const schema = z.object({
   LEADS_NOTIFY_TO: z.string().email(),
   LEADS_NOTIFY_FROM: z.string().min(1),
 
-  CLERK_SECRET_KEY: z.string().optional(),
+  CLERK_SECRET_KEY: z.string().min(1),
+  CLERK_PUBLISHABLE_KEY: z.string().min(1),
   CLERK_FRONTEND_API_DOMAIN: z.string().optional(),
 
   BUILD_COMMIT: z.string().default("dev"),

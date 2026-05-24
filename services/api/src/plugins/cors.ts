@@ -7,8 +7,20 @@ export interface CorsPluginOptions {
   config: Config;
 }
 
+// In dev, allow any localhost / *.localhost / *.lvh.me origin on any port.
+// lvh.me resolves to 127.0.0.1 and supports subdomain cookies, which is how
+// the Clerk satellite setup is exercised locally (field.lvh.me <-> app.lvh.me).
+// In prod, only the explicit CORS_ORIGINS allowlist applies.
+const DEV_PATTERNS: readonly RegExp[] = [
+  /^https?:\/\/localhost(:\d+)?$/,
+  /^https?:\/\/[a-z0-9-]+\.localhost(:\d+)?$/,
+  /^https?:\/\/lvh\.me(:\d+)?$/,
+  /^https?:\/\/[a-z0-9-]+\.lvh\.me(:\d+)?$/
+];
+
 const corsPlugin: FastifyPluginAsync<CorsPluginOptions> = async (app, opts) => {
   const allowed = new Set(opts.config.CORS_ORIGINS);
+  const isDev = opts.config.NODE_ENV !== "production";
 
   await app.register(cors, {
     origin(origin, cb) {
@@ -17,6 +29,10 @@ const corsPlugin: FastifyPluginAsync<CorsPluginOptions> = async (app, opts) => {
         return;
       }
       if (allowed.has(origin)) {
+        cb(null, true);
+        return;
+      }
+      if (isDev && DEV_PATTERNS.some((re) => re.test(origin))) {
         cb(null, true);
         return;
       }

@@ -9,6 +9,7 @@ import {
 
 import { App } from "./App.js";
 import { env } from "./env.js";
+import { getApiToken } from "./lib/auth.js";
 import { MissingEnvScreen } from "./components/MissingEnvScreen.js";
 import "./styles/app.css";
 
@@ -33,7 +34,13 @@ if (env.missing.length > 0) {
   });
   configurePublishFromClient({
     kind: "proxy",
-    config: { endpoint: `${env.portalApiBase}/api/realtime/publish` }
+    config: {
+      endpoint: `${env.apiBase}/v1/realtime/publish`,
+      getAuthHeader: async () => {
+        const token = await getApiToken();
+        return token ? `Bearer ${token}` : undefined;
+      }
+    }
   });
 
   root.render(

@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
+import { Wordmark } from "@gaia/ui";
 
 import { Hud } from "../components/Hud.js";
 import { useActiveSession } from "../lib/session.js";
@@ -49,6 +50,7 @@ export function SessionPickerPage() {
     <div className="flex h-full flex-col">
       <Hud queueCount={0} sessionStatus="off" />
       <main className="safe-bottom flex flex-1 flex-col gap-6 px-6 py-8">
+        <Wordmark brand="cropautonomy" />
         <div>
           <p className="text-xs uppercase tracking-wider text-base-content/55">
             Field Capture

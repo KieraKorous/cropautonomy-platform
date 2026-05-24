@@ -1,6 +1,6 @@
 // Centralized env var access. All field-web env vars are public (VITE_-prefixed)
 // since the PWA is purely client-side. Sensitive values (service-role keys)
-// live exclusively in the portal API.
+// live exclusively in services/api.
 //
 // Missing required vars don't throw at module-eval time — that would crash
 // the bundle and leave the user with a blank page. Instead the missing keys
@@ -8,7 +8,7 @@
 // renders a diagnostic screen so the operator sees what to set.
 
 const DEFAULTS = {
-  VITE_PORTAL_API_BASE: "http://app.lvh.me:3002",
+  VITE_API_BASE: "http://localhost:8080",
   VITE_CLERK_SATELLITE_DOMAIN: "field.lvh.me:5173",
   VITE_CLERK_SIGN_IN_URL: "http://app.lvh.me:3002/sign-in",
   VITE_STUN_URLS: "stun:stun.l.google.com:19302"
@@ -36,7 +36,7 @@ function requireKey(key: (typeof REQUIRED_KEYS)[number]): string {
 }
 
 export const env = {
-  portalApiBase: read("VITE_PORTAL_API_BASE", DEFAULTS.VITE_PORTAL_API_BASE),
+  apiBase: read("VITE_API_BASE", DEFAULTS.VITE_API_BASE),
   clerk: {
     publishableKey: requireKey("VITE_CLERK_PUBLISHABLE_KEY"),
     satelliteDomain: read(

@@ -8,10 +8,9 @@
 import { validateForPublish, type RealtimeEventInput } from "../events.js";
 
 export interface ProxyTransportConfig {
-  endpoint: string; // absolute URL e.g. https://app.cropautonomy.com/api/realtime/publish
-  // The browser sends cookies automatically when same-site or scoped to the
-  // shared parent domain. Override with a bearer-token getter if needed.
-  getAuthHeader?: () => string | undefined;
+  endpoint: string; // absolute URL e.g. https://api.cropautonomy.com/v1/realtime/publish
+  // Bearer-token getter. May be sync or async; called before each publish.
+  getAuthHeader?: () => string | undefined | Promise<string | undefined>;
 }
 
 export async function publishViaProxy(
@@ -23,12 +22,11 @@ export async function publishViaProxy(
   const headers: Record<string, string> = {
     "content-type": "application/json"
   };
-  const authHeader = config.getAuthHeader?.();
+  const authHeader = await config.getAuthHeader?.();
   if (authHeader) headers.authorization = authHeader;
 
   const response = await fetch(config.endpoint, {
     method: "POST",
-    credentials: "include",
     headers,
     body: JSON.stringify({ channel: channelName, event })
   });
