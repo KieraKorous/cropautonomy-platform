@@ -113,14 +113,14 @@ Custom org roles (future) are why the schema is relational. The cost of changing
 
 ## Client posture
 
-The browser does not get a Supabase database client. All Postgres reads and writes from app code go through portal API routes that use `@gaia/db/server` (service role) after running permission checks against `@gaia/db/permissions`. See [Authentication and Tenancy § Client posture](./authentication-and-tenancy.md#client-posture-no-browser-supabase-database-client) for the full rationale.
+The browser does not get a Supabase database client. All Postgres reads and writes go through `services/api` (Fastify at `api.cropautonomy.com`), which uses `@gaia/db/server` (service role) after running permission checks against `@gaia/db/permissions`. `apps/portal-web` is a UI runtime — it does not import `@gaia/db/server` either; its server-side renders fetch from `api.cropautonomy.com` like any other client. See [API Architecture](./api-architecture.md) for the full rule and [Authentication and Tenancy § Client posture](./authentication-and-tenancy.md#client-posture-no-browser-supabase-database-client) for the rationale.
 
 The browser does still talk to Supabase for two narrow purposes, both routed through the architecturally-permitted package boundary:
 
 - Realtime broadcast subscriptions via `@gaia/realtime` (the only legal importer of the Supabase realtime SDK).
-- Storage uploads/downloads via signed URLs minted by portal API.
+- Storage uploads/downloads via signed URLs minted by `services/api`.
 
-This is why the package exports are `@gaia/db/server`, `@gaia/db/permissions`, and `@gaia/db/types` — no `@gaia/db/client`.
+This is why the package exports are `@gaia/db/server`, `@gaia/db/permissions`, and `@gaia/db/types` — no `@gaia/db/client`. And the only consumers of `@gaia/db/server` are `services/api` and `services/workers`.
 
 ## pg-boss
 

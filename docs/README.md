@@ -28,6 +28,7 @@ Those landing pages are only the starting point. The documentation in this folde
 
 - [Architecture Overview](./architecture/architecture-overview.md)
 - [Monorepo Strategy](./architecture/monorepo-strategy.md)
+- [API Architecture](./architecture/api-architecture.md)
 - [Authentication and Tenancy](./architecture/authentication-and-tenancy.md)
 - [Data and Storage Strategy](./architecture/data-and-storage-strategy.md)
 - [Database Schema](./architecture/database-schema.md)

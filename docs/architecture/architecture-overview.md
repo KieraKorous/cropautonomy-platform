@@ -92,11 +92,14 @@ Backend services include:
 - telemetry ingestion
 - storage operations
 
-Suggested runtime fit:
+The browser-facing API surface is `services/api` (Fastify); all browser data paths funnel through it (no `@gaia/db` client in any UI app). Background work runs in `services/workers` (pg-boss consumers). See [API Architecture](./api-architecture.md) for the full rule, the surface/runtime table, and the standards (envelope, errors, auth, pagination, idempotency) that govern every endpoint on `api.cropautonomy.com`.
 
-- Fastify: public API services, lead capture endpoints, lightweight web backend services
-- Python: model inference, image preprocessing, computer vision pipelines, experimentation
-- Go: telemetry ingestion, concurrent processing, device gateways, durable systems services
+Runtime fit by workload:
+
+- **Fastify (Node)** — `services/api`. Long-lived containers on GKE.
+- **Node long-lived** — `services/workers`. pg-boss consumers; shares the Dockerfile with `services/api` in v0.
+- **Python** — `services/vision`. Model inference, image preprocessing, computer vision pipelines. Called by workers, not browsers.
+- **Go** — `services/telemetry`. Device ingestion, high-concurrency systems work. Called by devices, not browsers.
 
 ### Robotics and Edge
 

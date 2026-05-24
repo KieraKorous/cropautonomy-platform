@@ -365,6 +365,7 @@ function Cta() {
         />
       </div>
       <LeadForm
+        apiUrl={`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"}/v1/leads`}
         copy={{
           submitLabel: "Request updates",
           consentLabel: "I agree to receive development updates from GAIAbots.",

@@ -40,14 +40,16 @@ Supabase is configured to accept Clerk-issued JWTs as the auth source (Supabase 
 
 ### Client posture: no browser Supabase database client
 
-Browser code does **not** talk to Postgres directly. There is no `@gaia/db/client` and no anon-key Supabase database client in any app. All Postgres reads and writes from the browser go through portal API routes (`app.cropautonomy.com/api/...`) that authenticate the Clerk session, resolve permissions via `@gaia/db/permissions`, and use `@gaia/db/server` (service role) to hit the database.
+Browser code does **not** talk to Postgres directly. There is no `@gaia/db/client` and no anon-key Supabase database client in any app. All Postgres reads and writes go through `services/api` at `api.cropautonomy.com` — Fastify, long-lived containers on GKE — which authenticates the Clerk session, resolves permissions via `@gaia/db/permissions`, and uses `@gaia/db/server` (service role) to hit the database. See [API Architecture](./api-architecture.md) for the full architectural statement.
+
+`apps/portal-web` is a UI runtime, not the API. Even its server-side renders (RSCs, server actions) fetch from `api.cropautonomy.com` rather than importing `@gaia/db/server` directly. The only consumers of `@gaia/db/server` are `services/api` and `services/workers`.
 
 Two narrow exceptions ride directly on the Clerk JWT, both architecturally contained:
 
 - **Realtime subscriptions** — `@gaia/realtime` (and only `@gaia/realtime`) imports the Supabase realtime SDK. The hook authenticates with the anon key + Clerk JWT to subscribe to `org.{orgId}.…` broadcast channels. See [Realtime Strategy § Anti-patterns](./realtime-strategy.md#anti-patterns-to-avoid).
-- **Storage uploads** — the browser PUTs / TUSes file bytes to a presigned URL that portal API minted. No Supabase SDK auth on the browser side; the URL itself is the capability.
+- **Storage uploads** — the browser PUTs / TUSes file bytes to a presigned URL that `services/api` minted. No Supabase SDK auth on the browser side; the URL itself is the capability.
 
-Why no database client: the only thing the browser would gain is bypassing one API hop. The cost is that permission logic spreads across two layers (RLS in Postgres + `@gaia/db/permissions` on the server) and stays in sync only by discipline. Funneling everything through API routes gives one authorization layer to audit and a clean place to log, rate-limit, and shape responses.
+Why no database client: the only thing the browser would gain is bypassing one API hop. The cost is that permission logic spreads across two layers (RLS in Postgres + `@gaia/db/permissions` on the server) and stays in sync only by discipline. Funneling everything through `services/api` gives one authorization layer to audit and a clean place to log, rate-limit, and shape responses.
 
 ### JWT template (Clerk → Supabase)
 

@@ -298,6 +298,7 @@ function Cta() {
         />
       </div>
       <LeadForm
+        apiUrl={`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"}/v1/leads`}
         defaultInterest="farm_or_grower"
         placeholders={{
           name: "Avery Lindgren",

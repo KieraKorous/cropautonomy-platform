@@ -1,13 +1,18 @@
 // Server-side Supabase client.
 //
-// Wraps @supabase/supabase-js with the SERVICE ROLE key. Use only in:
-//   - Next.js route handlers / server actions (portal app.cropautonomy.com)
-//   - pg-boss worker code
-//   - Edge / Fastify services running with the service role credential
+// Wraps @supabase/supabase-js with the SERVICE ROLE key. The ONLY legal
+// importers are:
+//   - services/api  (Fastify HTTP API at api.cropautonomy.com)
+//   - services/workers  (pg-boss consumer process)
 //
-// NEVER import this from browser code. The service role key bypasses RLS and
-// must never reach the client. Bundlers do not stop you from importing it -
-// the import path discipline is enforced by review.
+// Do NOT import this from any apps/* code, including portal-web server-side
+// (RSCs, server actions). portal-web is a UI runtime; its server renders
+// fetch from api.cropautonomy.com like every other client. See
+// docs/architecture/api-architecture.md.
+//
+// The service role key bypasses RLS and must never reach the browser.
+// Bundlers do not stop you from importing it - the import path discipline is
+// enforced by review.
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "../types/database.ts";
