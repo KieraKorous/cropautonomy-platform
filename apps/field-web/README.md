@@ -7,7 +7,9 @@ and [`docs/product/field-capture-prd.md`](../../docs/product/field-capture-prd.m
 
 ## What it does
 
-- Operator signs in (Clerk satellite of `app.cropautonomy.com`), starts a
+- Operator signs in via the portal — `field.cropautonomy.com` shares the
+  `.cropautonomy.com`-scoped Clerk session cookie with
+  `app.cropautonomy.com` (no Clerk satellite domain involved). Then starts a
   session, captures photos / bursts / videos. Each capture is tagged with
   org / field / GPS / operator / timestamp.
 - Captures save to IndexedDB **immediately** regardless of connectivity.
@@ -37,8 +39,9 @@ You will need:
   [`apps/portal-web/.env.example`](../portal-web/.env.example)
 - `.env.local` in `apps/field-web` populated per
   [`apps/field-web/.env.example`](./.env.example)
-- A Clerk app with `app.lvh.me:3002` as primary and `field.lvh.me:5173`
-  as satellite (see [`CLERK_SETUP.md`](../../CLERK_SETUP.md))
+- A Clerk app with `app.lvh.me:3002` as the primary application domain and
+  `http://field.lvh.me:5173` in Authorized Origins (no satellite domain —
+  see [`CLERK_SETUP.md`](../../CLERK_SETUP.md))
 - A Supabase project with the migrations from `packages/db/migrations/`
   applied and a `scan-originals` bucket (see [`CAPTURES_SETUP.md`](../../CAPTURES_SETUP.md))
 
@@ -54,7 +57,7 @@ You will need:
 ```
 src/
 ├── App.tsx                 — router; signed-out users get redirected to portal sign-in
-├── main.tsx                — bootstrap; configures @gaia/realtime + Clerk satellite
+├── main.tsx                — bootstrap; configures @gaia/realtime + ClerkProvider (shared root-cookie session, not satellite)
 ├── env.ts                  — env var access (all VITE_* prefixed)
 ├── components/Hud.tsx      — HUD strip shared by every page
 ├── pages/                  — SessionPicker, Capture, Queue, Settings

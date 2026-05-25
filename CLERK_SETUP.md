@@ -4,12 +4,15 @@ Two surfaces share one Clerk identity:
 
 - **Primary** — `app.cropautonomy.com` (`apps/portal-web`). Hosts the canonical
   `/sign-in[[...]]` and `/sign-up[[...]]` routes.
-- **Satellite** — `field.cropautonomy.com` (`apps/field-web`). Redirects
-  signed-out users to the primary's sign-in route, then comes back.
+- **Subdomain peer** — `field.cropautonomy.com` (`apps/field-web`). Reads the
+  same root-scoped session cookie. Signed-out users are redirected to the
+  primary's sign-in route, then bounced back.
 
-The session cookie is scoped to `.cropautonomy.com` so it flows to both. Local
-dev uses `app.lvh.me:3002` + `field.lvh.me:5173` (cookie scoped to `.lvh.me`)
-so the same handoff works without certificate gymnastics.
+The session cookie is scoped to `.cropautonomy.com` so it flows to both
+subdomains naturally — this is a stock Clerk feature, **not** the paid
+satellite-domain product. Local dev uses `app.lvh.me:3002` +
+`field.lvh.me:5173` (cookie scoped to `.lvh.me`) so the same handoff works
+without certificate gymnastics.
 
 This file is the **one-time human setup**. Once the Clerk dashboard +
 environment files match what's below, both apps just work.
@@ -28,22 +31,37 @@ environment files match what's below, both apps just work.
   **Secret Key**. Note the **frontend API domain** under "API Keys" — it
   looks like `<slug>.accounts.dev`.
 
-## 2. Configure satellite domain
+## 2. Configure subdomain origins (no satellite)
 
-In the Clerk dashboard for this application:
+Satellite domains are a paid Clerk feature and are only required for SSO
+across **different root domains**. For `app.cropautonomy.com` ↔
+`field.cropautonomy.com` (same root), Clerk's session cookie is scoped to
+`.cropautonomy.com` and both subdomains read it directly. Configure them as
+authorized origins instead.
 
-**Domains** → **Add satellite domain**.
+In the Clerk dashboard:
 
-| Stage | Primary | Satellite |
-|---|---|---|
-| Local dev | `app.lvh.me:3002` | `field.lvh.me:5173` |
-| Production | `app.cropautonomy.com` | `field.cropautonomy.com` |
+**Domains** (primary application domain):
+
+| Stage | Primary |
+|---|---|
+| Local dev | `app.lvh.me:3002` |
+| Production | `app.cropautonomy.com` |
 
 `lvh.me` is a public DNS name that always resolves to `127.0.0.1`. No
 host-file edits required.
 
-You will be prompted to confirm that the satellite shares the same Clerk
-instance. Yes.
+**Authorized Origins / CORS** — add the field PWA's host alongside the portal:
+
+| Stage | Add |
+|---|---|
+| Local dev | `http://field.lvh.me:5173` |
+| Production | `https://field.cropautonomy.com` |
+
+Do **not** add `field.cropautonomy.com` as a satellite domain — that path
+requires extra DNS (`clerk.field.cropautonomy.com` CNAME) and is a paid
+feature. The shared-cookie approach gives the same SSO behavior for free
+on same-root subdomains.
 
 ## 3. Configure paths
 
@@ -144,7 +162,6 @@ Copy from [`.env.example`](apps/field-web/.env.example):
 ```ini
 VITE_PORTAL_API_BASE=http://app.lvh.me:3002
 VITE_CLERK_PUBLISHABLE_KEY=pk_test_...            # same as portal
-VITE_CLERK_SATELLITE_DOMAIN=field.lvh.me:5173
 VITE_CLERK_SIGN_IN_URL=http://app.lvh.me:3002/sign-in
 
 VITE_SUPABASE_URL=https://<project>.supabase.co
@@ -165,7 +182,7 @@ pnpm --filter @gaia/field-web dev     # http://field.lvh.me:5173
 ```
 
 1. Open `http://app.lvh.me:3002` — you should be redirected to `/sign-in`. Sign up.
-2. Open `http://field.lvh.me:5173` in the same browser — should land you straight on the session picker, no auth prompt. That's the satellite SSO working.
+2. Open `http://field.lvh.me:5173` in the same browser — should land you straight on the session picker, no auth prompt. That's the shared `.lvh.me`-scoped session cookie working.
 3. In Supabase, check `select * from public.users` — your Clerk user should be there. If not, the webhook didn't reach the local app (check ngrok / your tunnel).
 4. Start a session in the field PWA. It will POST to
    `http://app.lvh.me:3002/api/capture-sessions` and you should see a new row in `public.capture_sessions` with `status = 'live'`.
@@ -178,8 +195,8 @@ a UI for creating that — for dev, insert one by hand against `public.organizat
 ## Production checklist (not for v0 — for when you cut the prod Clerk instance)
 
 - [ ] Create production Clerk instance, point custom domain (`clerk.cropautonomy.com`).
-- [ ] Add `app.cropautonomy.com` (primary) and `field.cropautonomy.com` (satellite).
-- [ ] Update Authorized Origins: `https://app.cropautonomy.com`, `https://field.cropautonomy.com`.
+- [ ] Set `app.cropautonomy.com` as the primary application domain.
+- [ ] Add `https://app.cropautonomy.com` and `https://field.cropautonomy.com` to Authorized Origins. Do NOT add `field.cropautonomy.com` as a satellite domain (paid feature, not needed for same-root subdomains).
 - [ ] Re-issue webhook signing secret; update `CLERK_WEBHOOK_SECRET` on Vercel.
 - [ ] Set production env vars on Vercel for both apps.
 - [ ] Verify the Supabase third-party auth provider URL points to

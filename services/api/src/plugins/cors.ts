@@ -9,7 +9,8 @@ export interface CorsPluginOptions {
 
 // In dev, allow any localhost / *.localhost / *.lvh.me origin on any port.
 // lvh.me resolves to 127.0.0.1 and supports subdomain cookies, which is how
-// the Clerk satellite setup is exercised locally (field.lvh.me <-> app.lvh.me).
+// the cross-subdomain Clerk session is exercised locally
+// (field.lvh.me <-> app.lvh.me share .lvh.me-scoped cookies).
 // In prod, only the explicit CORS_ORIGINS allowlist applies.
 const DEV_PATTERNS: readonly RegExp[] = [
   /^https?:\/\/localhost(:\d+)?$/,

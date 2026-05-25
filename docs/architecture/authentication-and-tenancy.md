@@ -17,16 +17,20 @@ The CropAutonomy platform has two authenticated surfaces today and will likely h
 
 A single Clerk sign-in must work across both. The user who signs in to the portal in the morning should not be prompted again when they open the field PWA in the afternoon.
 
-**Implementation posture (Clerk satellite domains):**
+**Implementation posture (shared-cookie subdomains, no Clerk satellite):**
 
-- **Primary domain:** `app.cropautonomy.com`. The portal hosts Clerk's sign-in, sign-up, account, and password reset routes. This is where the primary `<ClerkProvider>` lives without `isSatellite`.
-- **Satellite domain:** `field.cropautonomy.com`. The field PWA wraps its app in `<ClerkProvider isSatellite domain="field.cropautonomy.com" signInUrl="https://app.cropautonomy.com/sign-in">`. When a signed-out user opens the field PWA, Clerk redirects to the portal's sign-in route, then back to the PWA after auth.
-- **Session cookie scope:** `.cropautonomy.com` (leading dot) so the cookie is sent to both subdomains. Marketing sites (`cropautonomy.com`, `gaiabots.ai`) do not read the cookie but it being present is harmless.
-- **Clerk dashboard config:** add `field.cropautonomy.com` as a satellite domain on the production instance. Add both `https://app.cropautonomy.com` and `https://field.cropautonomy.com` to authorized origins. Add the portal's `/sign-in` and `/sign-up` URLs as the canonical auth routes.
+Clerk's satellite-domain feature is paid and only required for SSO across **different root domains** (e.g. `cropautonomy.com` ↔ `gaiabots.ai`). Both surfaces here live under the same root, so the session cookie scoped to `.cropautonomy.com` is read directly by both subdomains and SSO works on the free tier.
+
+- **Primary domain:** `app.cropautonomy.com`. The portal hosts Clerk's sign-in, sign-up, account, and password reset routes. `<ClerkProvider publishableKey={…} />` with no `isSatellite`.
+- **Subdomain peer:** `field.cropautonomy.com`. The field PWA wraps its app in `<ClerkProvider publishableKey={…} signInUrl="https://app.cropautonomy.com/sign-in" />`. Same publishable key as the portal. No `isSatellite`, no `domain`. When a signed-out user opens the field PWA, the `<RedirectToSignIn />` fallback navigates to the portal's sign-in route; after auth, Clerk sets the `.cropautonomy.com` cookie and the redirect back to the PWA sees an authenticated session immediately.
+- **Session cookie scope:** `.cropautonomy.com` (leading dot) so the cookie is sent to both subdomains. This is the default behavior when the Clerk Frontend API is hosted at `clerk.cropautonomy.com` for the primary domain. Marketing sites (`cropautonomy.com`, `gaiabots.ai`) do not read the cookie but it being present is harmless.
+- **Clerk dashboard config:** the production instance has `app.cropautonomy.com` as the single primary application domain. Both `https://app.cropautonomy.com` and `https://field.cropautonomy.com` are added to authorized origins / CORS. The portal's `/sign-in` and `/sign-up` are the canonical auth routes. **Do not** add `field.cropautonomy.com` as a satellite — that requires extra DNS (`clerk.field.cropautonomy.com` CNAME) and Clerk's paid plan.
 - **JWT bridge to Supabase:** the same Clerk JWT carries `org_id` and identity context into Supabase Realtime subscriptions and Supabase Storage signed-URL fetches (so the field PWA can publish to `org.{orgId}.…` channels and read its own storage without minting a separate session). See [§ Supabase JWT Bridge](#supabase-jwt-bridge) below for the template payload, the active-org mirroring mechanism, and the Supabase config side.
-- **Local dev:** use the Clerk development instance with the satellite domain set to `field.localhost:5173` (or whatever port the Vite dev server runs on). The portal stays at `localhost:3002`. The dev session cookie must be scoped to `.localhost` for the cross-port handoff to work; if that's awkward, fall back to running both apps under a single `lvh.me`-style domain in dev.
+- **Local dev:** both apps run under `*.lvh.me` so the dev session cookie is scoped to `.lvh.me` and shared without certificate gymnastics — portal at `app.lvh.me:3002`, field PWA at `field.lvh.me:5173`. `lvh.me` is a public DNS name that always resolves to `127.0.0.1`.
 
-**Sign-out posture:** signing out from either surface signs out from the other. Clerk's satellite domain support handles this via the shared session.
+**Sign-out posture:** signing out from either surface clears the `.cropautonomy.com`-scoped session cookie and signs the user out of the other.
+
+**Future SSO to a different root** (e.g. shared identity with `gaiabots.ai`) is when satellite-domain mode becomes necessary. Until then we deliberately stay on the free shared-cookie path.
 
 **What we don't ship in v0:** organization-scoped sign-in pages (the user picks org after sign-in), magic-link-only flows (we want passwordless OAuth available), and SSO/SCIM (later).
 
