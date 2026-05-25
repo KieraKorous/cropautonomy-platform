@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 
+import { AccountChip } from "./AccountChip.js";
 import {
   useBattery,
   useConnectivity,
@@ -37,6 +38,7 @@ export function Hud({ queueCount, sessionStatus, trackGps = true }: HudProps) {
           <span className="tabular-nums text-neutral">{queueCount}</span>
         </Link>
         <SessionPill status={sessionStatus} />
+        <AccountChip />
       </div>
     </header>
   );

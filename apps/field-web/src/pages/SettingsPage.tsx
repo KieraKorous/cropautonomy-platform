@@ -61,6 +61,18 @@ export function SettingsPage() {
           </section>
         )}
 
+        <section className="rounded-md border border-warning/30 bg-warning/10 p-4">
+          <p className="text-xs uppercase tracking-wider text-warning">
+            Identity (debug)
+          </p>
+          <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs text-base-content/70">
+            <dt>Clerk user ID</dt>
+            <dd className="break-all font-mono">{user?.id ?? "(none)"}</dd>
+            <dt>Publishable key</dt>
+            <dd className="break-all font-mono">{env.clerk.publishableKey}</dd>
+          </dl>
+        </section>
+
         <section className="rounded-md border border-base-content/10 bg-base-100 p-4">
           <p className="text-xs uppercase tracking-wider text-base-content/55">
             Environment
