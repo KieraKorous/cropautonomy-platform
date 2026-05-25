@@ -81,8 +81,15 @@ export async function enqueueCapture(
   record: Omit<QueuedCaptureRecord, "status" | "attempts" | "createdAt" | "updatedAt">
 ): Promise<QueuedCaptureRecord> {
   const now = Date.now();
+  // iOS Safari's IndexedDB stores Blobs as opaque references into a SQLite-backed
+  // BlobStore; camera/MediaRecorder/File handles can be revoked by the OS, which
+  // surfaces later as "error preparing Blob/File data to be stored in object store"
+  // on put() or "Load failed" on fetch(). Materialize to a self-contained Blob
+  // backed by an in-memory ArrayBuffer before persisting.
+  const detachedBlob = await detachBlob(record.blob);
   const full: QueuedCaptureRecord = {
     ...record,
+    blob: detachedBlob,
     status: "queued",
     attempts: 0,
     createdAt: now,
@@ -91,6 +98,11 @@ export async function enqueueCapture(
   const db = await getDb();
   await db.put("captures", full);
   return full;
+}
+
+async function detachBlob(blob: Blob): Promise<Blob> {
+  const buffer = await blob.arrayBuffer();
+  return new Blob([buffer], { type: blob.type });
 }
 
 export async function patchCapture(
@@ -126,6 +138,38 @@ export async function listPendingForUpload(): Promise<QueuedCaptureRecord[]> {
   return all
     .filter((c) => c.status !== "synced")
     .sort((a, b) => a.createdAt - b.createdAt);
+}
+
+// Records left in an in-flight status from a previous run (tab close, crash,
+// navigation mid-reserve) would otherwise sit forever — drain() only re-enters
+// processOne() for records still considered pending. Sweep them at startup:
+// pre-reserve work can safely restart from queued; post-reserve work might
+// have partial server state, so mark failed and let the user decide.
+export async function reapStuckInFlight(staleAfterMs = 30_000): Promise<number> {
+  const db = await getDb();
+  const all = await db.getAll("captures");
+  const now = Date.now();
+  let reaped = 0;
+  for (const record of all) {
+    const inFlight =
+      record.status === "reserving" ||
+      record.status === "uploading" ||
+      record.status === "finalizing";
+    if (!inFlight) continue;
+    if (now - record.updatedAt < staleAfterMs) continue;
+    if (record.status === "reserving" && !record.remoteCaptureId) {
+      await db.put("captures", { ...record, status: "queued", updatedAt: now });
+    } else {
+      await db.put("captures", {
+        ...record,
+        status: "failed",
+        lastError: `Recovered stuck '${record.status}' from previous session.`,
+        updatedAt: now
+      });
+    }
+    reaped += 1;
+  }
+  return reaped;
 }
 
 export async function setSessionState<T>(key: string, value: T): Promise<void> {

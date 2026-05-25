@@ -7,6 +7,7 @@ import {
   deleteCapture,
   listPendingForUpload,
   patchCapture,
+  reapStuckInFlight,
   type QueuedCaptureRecord
 } from "./db.js";
 import { env } from "../env.js";
@@ -32,6 +33,7 @@ async function drain() {
   pendingRequest = false;
   try {
     if (!navigator.onLine) return;
+    await reapStuckInFlight();
     let pending = await listPendingForUpload();
     while (pending.length > 0) {
       if (!navigator.onLine) return;
