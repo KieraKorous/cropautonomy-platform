@@ -15,7 +15,7 @@ FROM node:${NODE_VERSION}-bookworm-slim AS deps
 ARG PNPM_VERSION
 WORKDIR /repo
 
-RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
+RUN npm install -g corepack@latest && corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json .npmrc tsconfig.base.json ./
 COPY patches/ ./patches/
@@ -47,7 +47,7 @@ FROM node:${NODE_VERSION}-bookworm-slim AS build
 ARG PNPM_VERSION
 WORKDIR /repo
 
-RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
+RUN npm install -g corepack@latest && corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 
 # Next.js inlines NEXT_PUBLIC_* into the client bundle at build time, so they
 # must exist here, not at runtime. CI passes them as --build-arg from GitHub

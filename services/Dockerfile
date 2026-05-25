@@ -18,7 +18,7 @@ FROM node:${NODE_VERSION}-bookworm-slim AS deps
 ARG PNPM_VERSION
 WORKDIR /repo
 
-RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
+RUN npm install -g corepack@latest && corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json .npmrc tsconfig.base.json ./
 COPY patches/ ./patches/
