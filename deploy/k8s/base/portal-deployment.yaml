@@ -1,68 +1,68 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: portal
-  namespace: cropautonomy
-  labels:
-    app.kubernetes.io/name: portal
-    app.kubernetes.io/part-of: cropautonomy
-spec:
-  replicas: 1
-  selector:
-    matchLabels: { app.kubernetes.io/name: portal }
-  strategy:
-    type: RollingUpdate
-    rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }
-  template:
-    metadata:
-      labels:
+    name: portal
+    namespace: cropautonomy
+    labels:
         app.kubernetes.io/name: portal
-    spec:
-      serviceAccountName: cropautonomy
-      nodeSelector: { pool: app }
-      tolerations:
-        - key: pool
-          value: app
-          effect: NoSchedule
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 1001
-        seccompProfile: { type: RuntimeDefault }
-      containers:
-        - name: portal
-          image: us-west1-docker.pkg.dev/agconn/cropautonomy/portal:latest
-          ports:
-            - containerPort: 3002
-              name: http
-          envFrom:
-            - configMapRef: { name: cropautonomy-config }
-            - secretRef: { name: cropautonomy-env }
-          resources:
-            requests: { cpu: 100m, memory: 384Mi }
-            limits: { cpu: 500m, memory: 768Mi }
-          startupProbe:
-            tcpSocket: { port: http }
-            failureThreshold: 24
-            periodSeconds: 5
-          livenessProbe:
-            tcpSocket: { port: http }
-            periodSeconds: 30
-            failureThreshold: 3
-          readinessProbe:
-            httpGet: { path: /, port: http }
-            timeoutSeconds: 10
-            periodSeconds: 20
-            failureThreshold: 3
+        app.kubernetes.io/part-of: cropautonomy
+spec:
+    replicas: 1
+    selector:
+        matchLabels: { app.kubernetes.io/name: portal }
+    strategy:
+        type: RollingUpdate
+        rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }
+    template:
+        metadata:
+            labels:
+                app.kubernetes.io/name: portal
+        spec:
+            serviceAccountName: cropautonomy
+            nodeSelector: { pool: app }
+            tolerations:
+                - key: pool
+                  value: app
+                  effect: NoSchedule
+            securityContext:
+                runAsNonRoot: true
+                runAsUser: 1001
+                seccompProfile: { type: RuntimeDefault }
+            containers:
+                - name: portal
+                  image: us-west1-docker.pkg.dev/agconn/cropautonomy/portal:latest
+                  ports:
+                      - containerPort: 8080
+                        name: http
+                  envFrom:
+                      - configMapRef: { name: cropautonomy-config }
+                      - secretRef: { name: cropautonomy-env }
+                  resources:
+                      requests: { cpu: 100m, memory: 384Mi }
+                      limits: { cpu: 500m, memory: 768Mi }
+                  startupProbe:
+                      tcpSocket: { port: http }
+                      failureThreshold: 24
+                      periodSeconds: 5
+                  livenessProbe:
+                      tcpSocket: { port: http }
+                      periodSeconds: 30
+                      failureThreshold: 3
+                  readinessProbe:
+                      httpGet: { path: /, port: http }
+                      timeoutSeconds: 10
+                      periodSeconds: 20
+                      failureThreshold: 3
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: portal
-  namespace: cropautonomy
+    name: portal
+    namespace: cropautonomy
 spec:
-  selector: { app.kubernetes.io/name: portal }
-  ports:
-    - port: 80
-      targetPort: http
-      name: http
-  type: ClusterIP
+    selector: { app.kubernetes.io/name: portal }
+    ports:
+        - port: 80
+          targetPort: http
+          name: http
+    type: ClusterIP
