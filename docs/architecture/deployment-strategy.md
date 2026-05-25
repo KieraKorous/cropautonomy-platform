@@ -57,7 +57,7 @@ Approach:
 
 `apps/portal-web` at `app.cropautonomy.com` runs as a GKE Deployment in the shared cluster from v0. Next.js standalone output (`output: 'standalone'`, set in `apps/portal-web/next.config.mjs` with `outputFileTracingRoot` pointed at the workspace root) keeps the image small and includes the workspace packages it depends on. Portal is a UI runtime — it does not import `@gaia/db/server` or hold the Supabase service-role credential. All data access goes through `api.cropautonomy.com` (see [API Architecture](./api-architecture.md)).
 
-Sizing: `replicas: 1`, `requests: { cpu: 100m, memory: 384Mi }`, `limits: { cpu: 500m, memory: 768Mi }`, HPA `min=1 max=2` @ 70% CPU. Scheduled to the shared `pool=app` taint.
+Sizing: `replicas: 1`, `requests: { cpu: 100m, memory: 384Mi }`, `limits: { cpu: 500m, memory: 768Mi }`, no HPA. Scheduled to the shared `pool=app` taint. Add an HPA when sustained load shows up — at 1–2 users, autoscaling is cognitive overhead with no benefit.
 
 ## Field Capture PWA (GKE)
 
@@ -84,7 +84,7 @@ Independent deployment from the portal is important: pushing a portal dashboard 
 
 Sizing in v0:
 
-- API: `replicas: 1`, `requests: { cpu: 50m, memory: 256Mi }`, `limits: { cpu: 500m, memory: 1Gi }`, HPA `min=1 max=2` @ 70% CPU
+- API: `replicas: 1`, `requests: { cpu: 50m, memory: 256Mi }`, `limits: { cpu: 500m, memory: 1Gi }`, no HPA
 - Workers: `replicas: 1`, `requests: { cpu: 25m, memory: 128Mi }`, `limits: { cpu: 200m, memory: 512Mi }`, no HPA (single pg-boss consumer is the v0 design)
 
 ## Vision and Telemetry (later)

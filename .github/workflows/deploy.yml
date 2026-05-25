@@ -1,182 +1,192 @@
 name: Deploy
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "apps/portal-web/**"
-      - "apps/field-web/**"
-      - "services/api/**"
-      - "services/workers/**"
-      - "services/Dockerfile"
-      - "packages/**"
-      - "deploy/k8s/**"
-      - ".github/workflows/deploy.yml"
-      - "pnpm-lock.yaml"
-      - "pnpm-workspace.yaml"
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: Target environment
-        required: true
-        default: prod
-        type: choice
-        options: [prod]
+    push:
+        branches: [main]
+        paths:
+            - "apps/portal-web/**"
+            - "apps/field-web/**"
+            - "services/api/**"
+            - "services/workers/**"
+            - "services/Dockerfile"
+            - "packages/**"
+            - "deploy/k8s/**"
+            - ".github/workflows/deploy.yml"
+            - "pnpm-lock.yaml"
+            - "pnpm-workspace.yaml"
+    workflow_dispatch:
+        inputs:
+            environment:
+                description: Target environment
+                required: true
+                default: prod
+                type: choice
+                options: [prod]
 
 concurrency:
-  group: deploy-${{ inputs.environment || 'prod' }}
-  cancel-in-progress: false
+    group: deploy-${{ inputs.environment || 'prod' }}
+    cancel-in-progress: false
 
 permissions:
-  contents: read
-  id-token: write
+    contents: read
+    id-token: write
 
 env:
-  REGISTRY: us-west1-docker.pkg.dev
-  AR_PATH: ${{ secrets.GCP_PROJECT_ID }}/cropautonomy
-  TAG: ${{ github.sha }}
+    REGISTRY: us-west1-docker.pkg.dev
+    AR_PATH: ${{ secrets.GCP_PROJECT_ID }}/cropautonomy
+    TAG: ${{ github.sha }}
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        target:
-          - { name: portal,   dockerfile: apps/portal-web/Dockerfile, image: portal }
-          - { name: field,    dockerfile: apps/field-web/Dockerfile,  image: field }
-          - { name: services, dockerfile: services/Dockerfile,        image: services }
-    steps:
-      - uses: actions/checkout@v4
+    build:
+        runs-on: ubuntu-latest
+        timeout-minutes: 30
+        strategy:
+            fail-fast: false
+            matrix:
+                target:
+                    - {
+                          name: portal,
+                          dockerfile: apps/portal-web/Dockerfile,
+                          image: portal,
+                      }
+                    - {
+                          name: field,
+                          dockerfile: apps/field-web/Dockerfile,
+                          image: field,
+                      }
+                    - {
+                          name: services,
+                          dockerfile: services/Dockerfile,
+                          image: services,
+                      }
+        steps:
+            - uses: actions/checkout@v4
 
-      - uses: docker/setup-buildx-action@v3
+            - uses: docker/setup-buildx-action@v3
 
-      - id: auth
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+            - id: auth
+              uses: google-github-actions/auth@v2
+              with:
+                  workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+                  service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
 
-      - uses: google-github-actions/setup-gcloud@v2
-        with:
-          project_id: ${{ secrets.GCP_PROJECT_ID }}
+            - uses: google-github-actions/setup-gcloud@v2
+              with:
+                  project_id: ${{ secrets.GCP_PROJECT_ID }}
 
-      - name: Configure docker for Artifact Registry
-        run: gcloud auth configure-docker ${{ env.REGISTRY }} --quiet
+            - name: Configure docker for Artifact Registry
+              run: gcloud auth configure-docker ${{ env.REGISTRY }} --quiet
 
-      - uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ${{ matrix.target.dockerfile }}
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.AR_PATH }}/${{ matrix.target.image }}:${{ env.TAG }}
-            ${{ env.REGISTRY }}/${{ env.AR_PATH }}/${{ matrix.target.image }}:latest
-          cache-from: type=gha,scope=${{ matrix.target.name }}
-          cache-to: type=gha,scope=${{ matrix.target.name }},mode=max
-          # NEXT_PUBLIC_* (portal) and VITE_* (field) are inlined into the
-          # client bundle at build time, so they must arrive as build-args.
-          # The services Dockerfile ignores unrecognized ARGs (warn-only).
-          build-args: |
-            NODE_VERSION=22.12.0
-            PNPM_VERSION=10.12.1
-            NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
-            NEXT_PUBLIC_MAPBOX_TOKEN=${{ secrets.NEXT_PUBLIC_MAPBOX_TOKEN }}
-            NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-            NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-            NEXT_PUBLIC_API_BASE_URL=https://api.cropautonomy.com
-            VITE_CLERK_PUBLISHABLE_KEY=${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
-            VITE_CLERK_SATELLITE_DOMAIN=field.cropautonomy.com
-            VITE_CLERK_SIGN_IN_URL=https://app.cropautonomy.com/sign-in
-            VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL }}
-            VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY }}
-            VITE_API_BASE=https://api.cropautonomy.com
-            VITE_STUN_URLS=stun:stun.l.google.com:19302
+            - uses: docker/build-push-action@v6
+              with:
+                  context: .
+                  file: ${{ matrix.target.dockerfile }}
+                  push: true
+                  tags: ${{ env.REGISTRY }}/${{ env.AR_PATH }}/${{ matrix.target.image }}:${{ env.TAG }}
+                  cache-from: type=gha,scope=${{ matrix.target.name }}
+                  cache-to: type=gha,scope=${{ matrix.target.name }},mode=max
+                  # NEXT_PUBLIC_* (portal) and VITE_* (field) are inlined into the
+                  # client bundle at build time, so they must arrive as build-args.
+                  # The services Dockerfile ignores unrecognized ARGs (warn-only).
+                  build-args: |
+                      NODE_VERSION=22.12.0
+                      PNPM_VERSION=10.12.1
+                      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+                      NEXT_PUBLIC_MAPBOX_TOKEN=${{ secrets.NEXT_PUBLIC_MAPBOX_TOKEN }}
+                      NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+                      NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+                      NEXT_PUBLIC_API_BASE_URL=https://api.cropautonomy.com
+                      VITE_CLERK_PUBLISHABLE_KEY=${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
+                      VITE_CLERK_SATELLITE_DOMAIN=field.cropautonomy.com
+                      VITE_CLERK_SIGN_IN_URL=https://app.cropautonomy.com/sign-in
+                      VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL }}
+                      VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY }}
+                      VITE_API_BASE=https://api.cropautonomy.com
+                      VITE_STUN_URLS=stun:stun.l.google.com:19302
 
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    environment: ${{ inputs.environment || 'prod' }}
-    steps:
-      - uses: actions/checkout@v4
+    deploy:
+        needs: build
+        runs-on: ubuntu-latest
+        timeout-minutes: 20
+        environment: ${{ inputs.environment || 'prod' }}
+        steps:
+            - uses: actions/checkout@v4
 
-      - id: auth
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+            - id: auth
+              uses: google-github-actions/auth@v2
+              with:
+                  workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+                  service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
 
-      - uses: google-github-actions/setup-gcloud@v2
-        with:
-          project_id: ${{ secrets.GCP_PROJECT_ID }}
+            - uses: google-github-actions/setup-gcloud@v2
+              with:
+                  project_id: ${{ secrets.GCP_PROJECT_ID }}
 
-      - id: gke
-        uses: google-github-actions/get-gke-credentials@v2
-        with:
-          cluster_name: agconn-prod
-          location: us-west1-a
+            - id: gke
+              uses: google-github-actions/get-gke-credentials@v2
+              with:
+                  cluster_name: agconn-prod
+                  location: us-west1-a
 
-      - name: Install kustomize
-        uses: imranismail/setup-kustomize@v2
-        with:
-          kustomize-version: "5.4.3"
+            - name: Install kustomize
+              uses: imranismail/setup-kustomize@v2
+              with:
+                  kustomize-version: "5.4.3"
 
-      - name: Ensure namespace, ServiceAccount, and ConfigMap exist
-        run: |
-          kubectl apply -f deploy/k8s/base/namespace.yaml
-          kubectl apply -f deploy/k8s/base/service-account.yaml
-          kubectl apply -f deploy/k8s/base/configmap.yaml
+            - name: Ensure namespace, ServiceAccount, and ConfigMap exist
+              run: |
+                  kubectl apply -f deploy/k8s/base/namespace.yaml
+                  kubectl apply -f deploy/k8s/base/service-account.yaml
+                  kubectl apply -f deploy/k8s/base/configmap.yaml
 
-      - name: Apply runtime Secret (cropautonomy-env) from GHA secrets
-        env:
-          # API
-          SUPABASE_URL:                       ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY:          ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          RESEND_API_KEY:                     ${{ secrets.RESEND_API_KEY }}
-          LEADS_NOTIFY_TO:                    ${{ secrets.LEADS_NOTIFY_TO }}
-          CLERK_SECRET_KEY:                   ${{ secrets.CLERK_SECRET_KEY }}
-          CLERK_PUBLISHABLE_KEY:              ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
-          CLERK_WEBHOOK_SECRET:               ${{ secrets.CLERK_WEBHOOK_SECRET }}
-          # Portal server-side (Next reads from runtime env, not just build args)
-          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:  ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
-          NEXT_PUBLIC_SUPABASE_URL:           ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY:      ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-          NEXT_PUBLIC_MAPBOX_TOKEN:           ${{ secrets.NEXT_PUBLIC_MAPBOX_TOKEN }}
-          # Workers
-          DATABASE_URL:                       ${{ secrets.DATABASE_URL }}
-        run: |
-          set -euo pipefail
-          kubectl -n cropautonomy create secret generic cropautonomy-env \
-            --from-literal=SUPABASE_URL="$SUPABASE_URL" \
-            --from-literal=SUPABASE_SERVICE_ROLE_KEY="$SUPABASE_SERVICE_ROLE_KEY" \
-            --from-literal=RESEND_API_KEY="$RESEND_API_KEY" \
-            --from-literal=LEADS_NOTIFY_TO="$LEADS_NOTIFY_TO" \
-            --from-literal=CLERK_SECRET_KEY="$CLERK_SECRET_KEY" \
-            --from-literal=CLERK_PUBLISHABLE_KEY="$CLERK_PUBLISHABLE_KEY" \
-            --from-literal=CLERK_WEBHOOK_SECRET="$CLERK_WEBHOOK_SECRET" \
-            --from-literal=NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" \
-            --from-literal=NEXT_PUBLIC_SUPABASE_URL="$NEXT_PUBLIC_SUPABASE_URL" \
-            --from-literal=NEXT_PUBLIC_SUPABASE_ANON_KEY="$NEXT_PUBLIC_SUPABASE_ANON_KEY" \
-            --from-literal=NEXT_PUBLIC_MAPBOX_TOKEN="$NEXT_PUBLIC_MAPBOX_TOKEN" \
-            --from-literal=DATABASE_URL="$DATABASE_URL" \
-            --dry-run=client -o yaml | kubectl apply -f -
+            - name: Apply runtime Secret (cropautonomy-env) from GHA secrets
+              env:
+                  # API
+                  SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+                  SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+                  RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+                  LEADS_NOTIFY_TO: ${{ secrets.LEADS_NOTIFY_TO }}
+                  CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+                  CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+                  CLERK_WEBHOOK_SECRET: ${{ secrets.CLERK_WEBHOOK_SECRET }}
+                  # Portal server-side (Next reads from runtime env, not just build args)
+                  NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+                  NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+                  NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+                  NEXT_PUBLIC_MAPBOX_TOKEN: ${{ secrets.NEXT_PUBLIC_MAPBOX_TOKEN }}
+                  # Workers
+                  DATABASE_URL: ${{ secrets.DATABASE_URL }}
+              run: |
+                  set -euo pipefail
+                  kubectl -n cropautonomy create secret generic cropautonomy-env \
+                    --from-literal=SUPABASE_URL="$SUPABASE_URL" \
+                    --from-literal=SUPABASE_SERVICE_ROLE_KEY="$SUPABASE_SERVICE_ROLE_KEY" \
+                    --from-literal=RESEND_API_KEY="$RESEND_API_KEY" \
+                    --from-literal=LEADS_NOTIFY_TO="$LEADS_NOTIFY_TO" \
+                    --from-literal=CLERK_SECRET_KEY="$CLERK_SECRET_KEY" \
+                    --from-literal=CLERK_PUBLISHABLE_KEY="$CLERK_PUBLISHABLE_KEY" \
+                    --from-literal=CLERK_WEBHOOK_SECRET="$CLERK_WEBHOOK_SECRET" \
+                    --from-literal=NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" \
+                    --from-literal=NEXT_PUBLIC_SUPABASE_URL="$NEXT_PUBLIC_SUPABASE_URL" \
+                    --from-literal=NEXT_PUBLIC_SUPABASE_ANON_KEY="$NEXT_PUBLIC_SUPABASE_ANON_KEY" \
+                    --from-literal=NEXT_PUBLIC_MAPBOX_TOKEN="$NEXT_PUBLIC_MAPBOX_TOKEN" \
+                    --from-literal=DATABASE_URL="$DATABASE_URL" \
+                    --dry-run=client -o yaml | kubectl apply -f -
 
-      - name: Pin image tags via kustomize
-        working-directory: deploy/k8s/overlays/prod
-        run: |
-          set -euo pipefail
-          AR_BASE="${{ env.REGISTRY }}/${{ env.AR_PATH }}"
-          TAG=${{ env.TAG }}
-          for img in portal field services; do
-            kustomize edit set image ${AR_BASE}/${img}=${AR_BASE}/${img}:${TAG}
-          done
+            - name: Pin image tags via kustomize
+              working-directory: deploy/k8s/overlays/prod
+              run: |
+                  set -euo pipefail
+                  AR_BASE="${{ env.REGISTRY }}/${{ env.AR_PATH }}"
+                  TAG=${{ env.TAG }}
+                  for img in portal field services; do
+                    kustomize edit set image ${AR_BASE}/${img}=${AR_BASE}/${img}:${TAG}
+                  done
 
-      - name: Apply manifests
-        run: |
-          kubectl apply -k deploy/k8s/overlays/prod
-          kubectl -n cropautonomy rollout status deployment/portal --timeout=10m
-          kubectl -n cropautonomy rollout status deployment/field --timeout=10m
-          kubectl -n cropautonomy rollout status deployment/api --timeout=10m
-          kubectl -n cropautonomy rollout status deployment/workers --timeout=5m
+            - name: Apply manifests
+              run: |
+                  kubectl apply -k deploy/k8s/overlays/prod
+                  kubectl -n cropautonomy rollout status deployment/portal --timeout=10m
+                  kubectl -n cropautonomy rollout status deployment/field --timeout=10m
+                  kubectl -n cropautonomy rollout status deployment/api --timeout=10m
+                  kubectl -n cropautonomy rollout status deployment/workers --timeout=5m

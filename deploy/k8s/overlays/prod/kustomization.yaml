@@ -4,17 +4,20 @@ kind: Kustomization
 namespace: cropautonomy
 
 resources:
-  - ../../base
+    - ../../base
 
 # CI sets the deploy tag here via `kustomize edit set image`. Each entry
 # pins after the first push so repeated rollouts don't drift.
+# Tags are pinned to the deploying commit SHA by CI (`kustomize edit set image`).
+# Do not apply this overlay manually without first running:
+#   kustomize edit set image <image>=<image>:<sha>
 images:
-  - name: us-west1-docker.pkg.dev/agconn/cropautonomy/portal
-    newName: us-west1-docker.pkg.dev/agconn/cropautonomy/portal
-    newTag: latest
-  - name: us-west1-docker.pkg.dev/agconn/cropautonomy/field
-    newName: us-west1-docker.pkg.dev/agconn/cropautonomy/field
-    newTag: latest
-  - name: us-west1-docker.pkg.dev/agconn/cropautonomy/services
-    newName: us-west1-docker.pkg.dev/agconn/cropautonomy/services
-    newTag: latest
+    - name: us-west1-docker.pkg.dev/agconn/cropautonomy/portal
+      newName: us-west1-docker.pkg.dev/agconn/cropautonomy/portal
+      newTag: UNSET
+    - name: us-west1-docker.pkg.dev/agconn/cropautonomy/field
+      newName: us-west1-docker.pkg.dev/agconn/cropautonomy/field
+      newTag: UNSET
+    - name: us-west1-docker.pkg.dev/agconn/cropautonomy/services
+      newName: us-west1-docker.pkg.dev/agconn/cropautonomy/services
+      newTag: UNSET
