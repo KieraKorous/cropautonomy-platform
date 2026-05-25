@@ -11,6 +11,14 @@ export const metadata: Metadata = {
   description: "Operations dashboard for CropAutonomy customers."
 };
 
+// Force per-request rendering so the env check below reads from the running
+// container's process.env, not the build-time env. Without this the layout is
+// statically prerendered during `next build` inside the Docker image — where
+// CLERK_SECRET_KEY is intentionally not a build arg — and bakes the
+// MissingEnvScreen into the static HTML even when the running pod has the
+// secret set.
+export const dynamic = "force-dynamic";
+
 // Read on the server at request time. Setting these in apps/portal-web/.env.local
 // is enough; see CLERK_SETUP.md for what to put in them.
 function checkClerkEnv(): string[] {
