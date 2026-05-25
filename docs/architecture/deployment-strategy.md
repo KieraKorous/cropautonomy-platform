@@ -6,6 +6,18 @@ GKE hosts the authenticated stack — portal, field PWA, API, workers — from v
 
 The earlier plan was Vercel-for-v0 → GKE-when-services-come-online. That changed once the client → API → DB architecture landed: `services/api` and `services/workers` need to exist in v0, and `services/workers` needs a long-lived process for pg-boss `LISTEN/NOTIFY`. Standing up GKE for workers and Vercel for the API only to migrate the API to GKE in six months is more platforms and more migrations than just putting everything authenticated on GKE from day one.
 
+## Cluster: co-tenant in `agconn-prod` for v0
+
+The cropautonomy authenticated stack runs as a **co-tenant** in the existing `agconn-prod` GKE Standard zonal cluster (us-west1-a, GCP project `agconn`) — namespace `cropautonomy`, not a dedicated cluster. The cluster already has every controller cropautonomy needs (nginx-ingress, cert-manager, KEDA, metrics-server) and a battle-tested kustomize + GitHub Actions deploy pattern. At 1–2 users, the marginal cost of a second cluster (~$24–$74/mo control plane + node) buys nothing over a new namespace with existing-pool packing.
+
+What's separate per product: namespace, ServiceAccount, Artifact Registry repo (`us-west1-docker.pkg.dev/agconn/cropautonomy`), GitHub Actions deploy service account, runtime Secret, Cloudflare zone wiring, image tags.
+
+What's shared: cluster, node pools (`system`, `app`, `worker` spot), nginx-ingress controller + its static external IP, `ClusterIssuer/letsencrypt-prod`, KEDA install, the Cloudflare API token Secret in the `cert-manager` namespace (its zone permissions extended to cover cropautonomy.com).
+
+Migration trigger to a dedicated cluster: either product crosses real user traffic, or AgConnect load starts evicting cropautonomy workers from the spot pool. One-day Terraform + DNS swap.
+
+See [`deploy/README.md`](../../deploy/README.md) for the deploy walkthrough, [`deploy/terraform-additions.tf`](../../deploy/terraform-additions.tf) for the additions that go into the AgConnect Terraform, and the `G:/code/@wizeworks/AgConnect/deploy/` directory for the canonical reference patterns we adapted.
+
 ## Surfaces and Domains
 
 Production surfaces:
@@ -43,31 +55,37 @@ Approach:
 
 ## Portal (GKE)
 
-`apps/portal-web` at `app.cropautonomy.com` runs as a GKE Deployment from v0. Next.js standalone output (`output: 'standalone'`) keeps the image small. Portal is a UI runtime — it does not import `@gaia/db/server` or hold the Supabase service-role credential. All data access goes through `api.cropautonomy.com` (see [API Architecture](./api-architecture.md)).
+`apps/portal-web` at `app.cropautonomy.com` runs as a GKE Deployment in the shared cluster from v0. Next.js standalone output (`output: 'standalone'`, set in `apps/portal-web/next.config.mjs` with `outputFileTracingRoot` pointed at the workspace root) keeps the image small and includes the workspace packages it depends on. Portal is a UI runtime — it does not import `@gaia/db/server` or hold the Supabase service-role credential. All data access goes through `api.cropautonomy.com` (see [API Architecture](./api-architecture.md)).
 
-Sizing: `replicas: 1`, `requests: { cpu: 100m, memory: 256Mi }`, no HPA in v0.
+Sizing: `replicas: 1`, `requests: { cpu: 100m, memory: 384Mi }`, `limits: { cpu: 500m, memory: 768Mi }`, HPA `min=1 max=2` @ 70% CPU. Scheduled to the shared `pool=app` taint.
 
 ## Field Capture PWA (GKE)
 
-`apps/field-web` at `field.cropautonomy.com` is a Vite-built static bundle served from a tiny container (nginx or `serve`). After the initial bundle loads, the app runs offline against IndexedDB and uploads asynchronously to `api.cropautonomy.com` via signed Storage URLs.
+`apps/field-web` at `field.cropautonomy.com` is a Vite-built static bundle served from a tiny nginx-alpine container (~25MB image). After the initial bundle loads, the app runs offline against IndexedDB and uploads asynchronously to `api.cropautonomy.com` via signed Storage URLs.
 
 Hosting approach:
 
-- static asset hosting from a GKE Deployment with aggressive long-cache headers on hashed assets so reopen is instant
+- static asset hosting from a GKE Deployment with aggressive long-cache headers on hashed assets (`/assets/*` immutable, `sw.js` no-cache) — see [`apps/field-web/nginx.conf`](../../apps/field-web/nginx.conf)
 - service worker handles offline routing and asset cache
 - no server-side rendering, no edge functions — the app is a static bundle plus client-side fetches against `api.cropautonomy.com`
-- environment config (`VITE_*` vars) for Clerk publishable key, Mapbox token, API base URL
+- environment config (`VITE_*` vars) baked at build time via Dockerfile `ARG`s, sourced from GitHub Actions secrets in CI
+- nginx listens on `:8080` and runs as UID 101 to satisfy Pod Security Standards `restricted` on the shared cluster
 
-Independent deployment from the portal is important: pushing a portal dashboard tweak should never risk the field app, and shipping a capture flow change should not block on portal release coordination. Separate Deployments, separate CI pipelines, separate image tags.
+Sizing: `replicas: 1`, `requests: { cpu: 25m, memory: 64Mi }`, `limits: { cpu: 100m, memory: 128Mi }`, scheduled to the shared `pool=app` taint. Independent Deployment + Service + Ingress per app; no shared image with portal.
+
+Independent deployment from the portal is important: pushing a portal dashboard tweak should never risk the field app, and shipping a capture flow change should not block on portal release coordination. Separate Deployments, separate Dockerfiles, separate image tags. (Same GitHub Actions workflow today; splits per-app when build times start to matter.)
 
 ## API and Workers (GKE)
 
-`services/api` and `services/workers` run as two GKE Deployments built from the same source repository (single Dockerfile, two entrypoints in v0; splits when their dep graphs diverge). See [API Architecture](./api-architecture.md) for the runtime decision and the container strategy.
+`services/api` and `services/workers` run as two GKE Deployments built from the same source repository — a single multi-stage Dockerfile at [`services/Dockerfile`](../../services/Dockerfile) produces one image with two entrypoints. The API runs the default `CMD`; the workers Deployment overrides `command: ["/nodejs/bin/node", "/app/workers/dist/index.js"]`. Splits into two images when the dep graphs diverge enough that one image fanning out both is wasteful. See [API Architecture](./api-architecture.md) for the runtime decision and the container strategy.
 
-- `services/api` at `api.cropautonomy.com`: Fastify, holds the Supabase service-role credential, runs Clerk JWT validation, calls `@gaia/db/permissions` before mutations. Public ingress.
-- `services/workers`: pg-boss consumer for `analysis.run`, `email.send`, `user.sync`, `capture.finalize`, scheduled jobs. No public ingress. Long-lived process holding `LISTEN/NOTIFY` connection.
+- `services/api` at `api.cropautonomy.com`: Fastify, holds the Supabase service-role credential, runs Clerk JWT validation, calls `@gaia/db/permissions` before mutations. Public ingress. Scheduled to the shared `pool=app` taint.
+- `services/workers`: pg-boss consumer for `analysis.run`, `email.send`, `user.sync`, `capture.finalize`, scheduled jobs. No public ingress. Long-lived process holding `LISTEN/NOTIFY` connection. Scheduled to the shared **spot** `pool=worker` taint — pg-boss is restart-safe so spot preemption is acceptable (~70% node cost saving).
 
-Sizing for both in v0: `replicas: 1`, `requests: { cpu: 100m, memory: 128Mi }`, `limits: { cpu: 500m, memory: 512Mi }`. No HPA.
+Sizing in v0:
+
+- API: `replicas: 1`, `requests: { cpu: 50m, memory: 256Mi }`, `limits: { cpu: 500m, memory: 1Gi }`, HPA `min=1 max=2` @ 70% CPU
+- Workers: `replicas: 1`, `requests: { cpu: 25m, memory: 128Mi }`, `limits: { cpu: 200m, memory: 512Mi }`, no HPA (single pg-boss consumer is the v0 design)
 
 ## Vision and Telemetry (later)
 

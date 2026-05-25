@@ -1,0 +1,82 @@
+# Ingress for the cropautonomy namespace.
+#
+# Assumes nginx-ingress + cert-manager are already installed cluster-wide by
+# the agconn Terraform (infra/terraform/cluster-bootstrap.tf in the AgConnect
+# repo). We add our own `letsencrypt-cropautonomy` ClusterIssuer (see
+# cluster-issuer.yaml) because cropautonomy.com is in a different Cloudflare
+# account than agconn.com and needs its own API token Secret.
+#
+# Cloudflare proxies cropautonomy.com (orange-cloud) → origin is the same
+# nginx-ingress LB IP that fronts agconn.com. cert-manager uses DNS01 via
+# Cloudflare so it works through the proxy.
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: portal
+  namespace: cropautonomy
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-cropautonomy
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: ["app.cropautonomy.com"]
+      secretName: cropautonomy-portal-tls
+  rules:
+    - host: app.cropautonomy.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: portal, port: { number: 80 } }
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: field
+  namespace: cropautonomy
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-cropautonomy
+    # Captures are uploaded directly to Supabase Storage (signed URL), not
+    # through the field-web container, so the body-size limit can stay small.
+    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: ["field.cropautonomy.com"]
+      secretName: cropautonomy-field-tls
+  rules:
+    - host: field.cropautonomy.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: field, port: { number: 80 } }
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: api
+  namespace: cropautonomy
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-cropautonomy
+    nginx.ingress.kubernetes.io/proxy-body-size: "5m"
+    # The API needs to read browser CORS preflights — let nginx pass OPTIONS
+    # through to Fastify, which handles CORS via @fastify/cors.
+    nginx.ingress.kubernetes.io/cors-allow-credentials: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: ["api.cropautonomy.com"]
+      secretName: cropautonomy-api-tls
+  rules:
+    - host: api.cropautonomy.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: api, port: { number: 80 } }

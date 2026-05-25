@@ -1,0 +1,44 @@
+# Cropautonomy-specific cert-manager ClusterIssuer.
+#
+# Why a separate issuer (not reusing AgConnect's `letsencrypt-prod`):
+# cropautonomy.com lives in a different Cloudflare account than agconn.com,
+# so the existing `cloudflare-api-token` Secret in the cert-manager namespace
+# (scoped to the agconn CF account) can't issue DNS01 challenges for
+# cropautonomy.com no matter what permissions are added. We need a token from
+# the cropautonomy CF account in a separate Secret, referenced by this issuer.
+#
+# Manual one-time prereq before this manifest takes effect:
+#
+#   1. In the cropautonomy.com Cloudflare account → My Profile → API Tokens
+#      → Create Token. Permissions:
+#        - Zone — DNS — Edit
+#        - Zone — Zone — Read
+#      Zone Resources: Include — Specific zone — cropautonomy.com
+#   2. Create the Secret in the cert-manager namespace (NEVER commit this):
+#        kubectl -n cert-manager create secret generic \
+#          cropautonomy-cloudflare-api-token \
+#          --from-literal=api-token='<PASTE_TOKEN_HERE>'
+#   3. Apply this manifest — cert-manager picks it up automatically.
+#
+# ClusterIssuer is cluster-scoped so this lives alongside AgConnect's
+# `letsencrypt-prod` issuer without interfering. The two coexist; each
+# Ingress picks one via the `cert-manager.io/cluster-issuer` annotation.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-cropautonomy
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: ops@cropautonomy.com
+    privateKeySecretRef:
+      name: letsencrypt-cropautonomy-account-key
+    solvers:
+      - dns01:
+          cloudflare:
+            apiTokenSecretRef:
+              name: cropautonomy-cloudflare-api-token
+              key: api-token
+        selector:
+          dnsZones:
+            - cropautonomy.com

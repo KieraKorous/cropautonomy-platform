@@ -1,0 +1,25 @@
+# Non-sensitive runtime config. Sensitive values (API keys, DB URL, etc.)
+# live in the `cropautonomy-env` Secret that the deploy workflow rebuilds
+# from GitHub Actions secrets on every deploy.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cropautonomy-config
+  namespace: cropautonomy
+data:
+  NODE_ENV: production
+  APP_ENV: production
+  HOST: "0.0.0.0"
+
+  # API service
+  PORT: "8080"
+  CORS_ORIGINS: "https://app.cropautonomy.com,https://field.cropautonomy.com,https://cropautonomy.com,https://gaiabots.ai"
+  SUPABASE_LEADS_TABLE: "public_leads"
+  LEADS_NOTIFY_FROM: "CropAutonomy <hello@cropautonomy.com>"
+
+  # Portal (server-side env; NEXT_PUBLIC_* are inlined at build time and
+  # need not be repeated here).
+  NEXT_PUBLIC_API_BASE_URL: "https://api.cropautonomy.com"
+
+  # Realtime publish proxy target — see packages/realtime/src/client.
+  REALTIME_PUBLISH_URL: "https://app.cropautonomy.com/api/realtime/publish"

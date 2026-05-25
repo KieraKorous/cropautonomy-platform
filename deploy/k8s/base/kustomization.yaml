@@ -1,0 +1,31 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: cropautonomy
+
+resources:
+  - namespace.yaml
+  - service-account.yaml
+  - configmap.yaml
+  - cluster-issuer.yaml
+  - portal-deployment.yaml
+  - field-deployment.yaml
+  - api-deployment.yaml
+  - workers-deployment.yaml
+  - ingress.yaml
+
+# Container-level securityContext additions to satisfy Pod Security Standards
+# `restricted`. Pod-level runAsNonRoot + seccompProfile + non-zero runAsUser
+# are already set in each Deployment; the namespace enforces restricted (see
+# namespace.yaml). Every container in this base is at index 0 of its template,
+# so a JSON-patch at /containers/0/securityContext is unambiguous.
+patches:
+  - target:
+      kind: Deployment
+    patch: |
+      - op: add
+        path: /spec/template/spec/containers/0/securityContext
+        value:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]

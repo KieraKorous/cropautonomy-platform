@@ -1,54 +1,64 @@
 # syntax=docker/dockerfile:1.7
 #
 # Single image containing both services/api and services/workers built from the
-# workspace root. The Kubernetes Deployments differ only in `command` — see
-# docs/architecture/api-architecture.md § Container strategy.
+# workspace root. The two Kubernetes Deployments share this image and differ
+# only in `command`. See docs/architecture/api-architecture.md § Container strategy.
 #
 # Build context must be the repo root:
 #   docker build -f services/Dockerfile -t gaia-services:dev .
 
-# -----------------------------------------------------------------------------
-# Base — node 22 alpine with pnpm 10.12.1 pinned
-# -----------------------------------------------------------------------------
-FROM node:22-alpine AS base
-ENV PNPM_HOME=/pnpm \
-    PATH=/pnpm:$PATH \
-    npm_config_yes=true
-RUN corepack enable && corepack prepare pnpm@10.12.1 --activate
-WORKDIR /workspace
+ARG NODE_VERSION=22.12.0
+ARG PNPM_VERSION=10.12.1
 
-# -----------------------------------------------------------------------------
-# Deps — install only what services/api and services/workers need
-# -----------------------------------------------------------------------------
-FROM base AS deps
-COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.base.json ./
-COPY packages/ ./packages/
-COPY services/api/package.json ./services/api/
-COPY services/workers/package.json ./services/workers/
+# ─── deps ────────────────────────────────────────────────────────────────────
+# Copy only manifests + lockfile so this layer is cached unless deps change.
+# pnpm needs every workspace's package.json present even when filtering,
+# otherwise the per-package node_modules symlink layout breaks.
+FROM node:${NODE_VERSION}-bookworm-slim AS deps
+ARG PNPM_VERSION
+WORKDIR /repo
+
+RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
+
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json .npmrc tsconfig.base.json ./
+COPY patches/ ./patches/
+
+COPY apps/cropautonomy-web/package.json apps/cropautonomy-web/
+COPY apps/field-web/package.json apps/field-web/
+COPY apps/gaiabots-web/package.json apps/gaiabots-web/
+COPY apps/portal-web/package.json apps/portal-web/
+COPY packages/config/package.json packages/config/
+COPY packages/db/package.json packages/db/
+COPY packages/domain/package.json packages/domain/
+COPY packages/leads/package.json packages/leads/
+COPY packages/realtime/package.json packages/realtime/
+COPY packages/ui/package.json packages/ui/
+COPY services/api/package.json services/api/
+COPY services/workers/package.json services/workers/
+
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
-    pnpm install --frozen-lockfile \
+    pnpm config set store-dir /pnpm/store \
+ && pnpm install --frozen-lockfile \
       --filter @gaia/api... \
       --filter @gaia/workers...
 
-# -----------------------------------------------------------------------------
-# Build — compile TypeScript to dist/
-# -----------------------------------------------------------------------------
+# ─── build ───────────────────────────────────────────────────────────────────
 FROM deps AS build
+COPY packages/ ./packages/
 COPY services/api/ ./services/api/
 COPY services/workers/ ./services/workers/
+COPY tsconfig.base.json ./
+
 RUN pnpm --filter @gaia/api build \
  && pnpm --filter @gaia/workers build
 
-# -----------------------------------------------------------------------------
-# Deploy — pnpm produces a pruned, prod-only deployable subtree per service
-# -----------------------------------------------------------------------------
+# ─── deploy: pnpm produces a pruned, prod-only deployable subtree per service
+# ─────────────────────────────────────────────────────────────────────────────
 FROM build AS deploy
 RUN pnpm --filter @gaia/api --prod deploy /out/api \
  && pnpm --filter @gaia/workers --prod deploy /out/workers
 
-# -----------------------------------------------------------------------------
-# Runtime — distroless node 22; ~75MB base, image typically ~120MB
-# -----------------------------------------------------------------------------
+# ─── runtime: distroless node 22; ~75MB base, image typically ~120MB ─────────
 FROM gcr.io/distroless/nodejs22-debian12 AS runtime
 WORKDIR /app
 COPY --from=deploy /out/api /app/api
