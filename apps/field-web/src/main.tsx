@@ -47,8 +47,6 @@ if (env.missing.length > 0) {
     <StrictMode>
       <ClerkProvider
         publishableKey={env.clerk.publishableKey}
-        isSatellite
-        domain={env.clerk.satelliteDomain}
         signInUrl={env.clerk.signInUrl}
         signInFallbackRedirectUrl="/"
         afterSignOutUrl="/"

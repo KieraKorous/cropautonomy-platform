@@ -9,7 +9,6 @@
 
 const DEFAULTS = {
   VITE_API_BASE: "http://localhost:8080",
-  VITE_CLERK_SATELLITE_DOMAIN: "field.lvh.me:5173",
   VITE_CLERK_SIGN_IN_URL: "http://app.lvh.me:3002/sign-in",
   VITE_STUN_URLS: "stun:stun.l.google.com:19302"
 } as const;
@@ -39,10 +38,6 @@ export const env = {
   apiBase: read("VITE_API_BASE", DEFAULTS.VITE_API_BASE),
   clerk: {
     publishableKey: requireKey("VITE_CLERK_PUBLISHABLE_KEY"),
-    satelliteDomain: read(
-      "VITE_CLERK_SATELLITE_DOMAIN",
-      DEFAULTS.VITE_CLERK_SATELLITE_DOMAIN
-    ),
     signInUrl: read("VITE_CLERK_SIGN_IN_URL", DEFAULTS.VITE_CLERK_SIGN_IN_URL)
   },
   supabase: {
