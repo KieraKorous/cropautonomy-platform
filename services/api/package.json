@@ -17,9 +17,11 @@
         "@gaia/domain": "workspace:*",
         "@gaia/leads": "workspace:*",
         "@gaia/realtime": "workspace:*",
+        "@gaia/workers": "workspace:*",
         "@supabase/supabase-js": "2.87.0",
         "fastify": "5.1.0",
         "fastify-plugin": "5.0.1",
+        "pg-boss": "10.1.6",
         "uuidv7": "1.0.2",
         "zod": "3.23.8"
     },

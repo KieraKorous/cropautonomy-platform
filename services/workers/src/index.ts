@@ -1,5 +1,7 @@
 import PgBoss from "pg-boss";
 import { loadConfig } from "./config.js";
+import { makeAnalysisHandler } from "./handlers/analysis.js";
+import { QUEUE_NAMES } from "./queues.js";
 
 async function main() {
   const config = loadConfig();
@@ -14,14 +16,21 @@ async function main() {
   });
 
   await boss.start();
-  // eslint-disable-next-line no-console
-  console.log("pg-boss started; no handlers registered yet (v0 stub)");
 
-  // Handlers land here as the platform grows:
-  //   await boss.work("analysis.run", handleAnalysisRun);
-  //   await boss.work("email.send", handleEmailSend);
-  //   await boss.work("user.sync", handleUserSync);
-  //   await boss.work("capture.finalize", handleCaptureFinalize);
+  // Ensure queues exist before workers attach. pg-boss 10 requires explicit
+  // queue creation; createQueue is idempotent so this is safe at every boot.
+  await boss.createQueue(QUEUE_NAMES.scanAnalysisRequested);
+
+  await boss.work(
+    QUEUE_NAMES.scanAnalysisRequested,
+    { batchSize: 1, includeMetadata: false },
+    makeAnalysisHandler(config)
+  );
+
+  // eslint-disable-next-line no-console
+  console.log(
+    `pg-boss started; handlers registered: ${QUEUE_NAMES.scanAnalysisRequested}`
+  );
 
   const shutdown = async (signal: string) => {
     // eslint-disable-next-line no-console

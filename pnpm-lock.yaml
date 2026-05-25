@@ -351,6 +351,9 @@ importers:
       '@gaia/realtime':
         specifier: workspace:*
         version: link:../../packages/realtime
+      '@gaia/workers':
+        specifier: workspace:*
+        version: link:../workers
       '@supabase/supabase-js':
         specifier: 2.87.0
         version: 2.87.0
@@ -360,6 +363,9 @@ importers:
       fastify-plugin:
         specifier: 5.0.1
         version: 5.0.1
+      pg-boss:
+        specifier: 10.1.6
+        version: 10.1.6
       uuidv7:
         specifier: 1.0.2
         version: 1.0.2
@@ -385,9 +391,18 @@ importers:
 
   services/workers:
     dependencies:
+      '@gaia/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       '@gaia/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@gaia/realtime':
+        specifier: workspace:*
+        version: link:../../packages/realtime
+      '@supabase/supabase-js':
+        specifier: 2.87.0
+        version: 2.87.0
       pg-boss:
         specifier: 10.1.6
         version: 10.1.6

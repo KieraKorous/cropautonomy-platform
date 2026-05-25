@@ -3,6 +3,9 @@
     "version": "0.1.0",
     "private": true,
     "main": "dist/index.js",
+    "exports": {
+        "./queues": "./src/queues.ts"
+    },
     "scripts": {
         "dev": "tsx watch --env-file=.env src/index.ts",
         "build": "esbuild src/index.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/index.js",
@@ -11,7 +14,10 @@
         "typecheck": "tsc --noEmit"
     },
     "dependencies": {
+        "@gaia/db": "workspace:*",
         "@gaia/domain": "workspace:*",
+        "@gaia/realtime": "workspace:*",
+        "@supabase/supabase-js": "2.87.0",
         "pg-boss": "10.1.6",
         "zod": "3.23.8"
     },

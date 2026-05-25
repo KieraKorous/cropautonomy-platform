@@ -16,6 +16,11 @@ const schema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
   SUPABASE_LEADS_TABLE: z.string().default("public_leads"),
 
+  // Postgres connection string for pg-boss. Same DB as Supabase; pg-boss
+  // uses its own schema. See docs/architecture/queueing-email-analytics.md
+  // for the same-DB-as-Supabase rationale.
+  DATABASE_URL: z.string().min(1),
+
   RESEND_API_KEY: z.string().min(1),
   LEADS_NOTIFY_TO: z.string().email(),
   LEADS_NOTIFY_FROM: z.string().min(1),

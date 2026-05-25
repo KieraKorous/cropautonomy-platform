@@ -7,7 +7,10 @@ import {
   forbidden,
   notFound
 } from "../lib/errors.js";
+import { getBoss } from "../lib/queue.js";
+import { loadConfig } from "../config.js";
 import { CAPTURES_BUCKET, capturePath } from "../lib/storage.js";
+import { QUEUE_NAMES } from "@gaia/workers/queues";
 
 const reserveSchema = z.object({
   farmId: z.string().uuid().nullable().optional(),
@@ -262,6 +265,27 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
         })
         .eq("id", id);
       if (linkErr) throw linkErr;
+
+      // Enqueue the analysis job. The DB row is already 'queued'; this hands
+      // off to the worker, which transitions to 'running' when picked up.
+      // pg-boss send is idempotent on its own job id; the DB analysis_jobs row
+      // is the durable record. A send failure here means the worker won't run
+      // unless we re-queue; surface as 500 so the client retries finalize.
+      try {
+        const boss = await getBoss({ connectionString: loadConfig().DATABASE_URL });
+        await boss.send(QUEUE_NAMES.scanAnalysisRequested, {
+          captureId: id,
+          analysisJobId: jobId,
+          orgId: caller.orgId,
+          task: "plant_classification"
+        });
+      } catch (queueErr) {
+        request.log.error(
+          { err: queueErr, captureId: id, analysisJobId: jobId },
+          "failed to enqueue scan.analysis.requested"
+        );
+        throw queueErr;
+      }
 
       return {
         captureId: id,

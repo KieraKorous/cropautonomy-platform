@@ -1,6 +1,8 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import { uuidv7 } from "uuidv7";
 import type { Config } from "./config.js";
+import { getBoss, stopBoss } from "./lib/queue.js";
+import { QUEUE_NAMES } from "@gaia/workers/queues";
 import authPlugin from "./plugins/auth.js";
 import corsPlugin from "./plugins/cors.js";
 import errorHandlerPlugin from "./plugins/error-handler.js";
@@ -47,6 +49,16 @@ export async function buildServer(config: Config): Promise<FastifyInstance> {
   await app.register(capturesRoutes);
   await app.register(fieldsRoutes);
   await app.register(realtimeRoutes);
+
+  // pg-boss producer: start during boot so the first enqueue doesn't pay
+  // the schema-migration cost on the request hot path. createQueue is
+  // idempotent and safe to call on every boot.
+  const boss = await getBoss({ connectionString: config.DATABASE_URL });
+  await boss.createQueue(QUEUE_NAMES.scanAnalysisRequested);
+
+  app.addHook("onClose", async () => {
+    await stopBoss();
+  });
 
   return app;
 }
