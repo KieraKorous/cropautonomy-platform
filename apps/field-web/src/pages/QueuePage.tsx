@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { OverlayChrome } from "../components/OverlayChrome.js";
+import { ChromeLayout } from "../components/ChromeLayout.js";
 import {
   deleteCapture,
   listQueued,
@@ -9,7 +9,6 @@ import {
   type QueuedCaptureRecord
 } from "../lib/db.js";
 import { kickUploadWorker } from "../lib/upload.js";
-import { useActiveSession } from "../lib/session.js";
 
 // The queue page is what gives the offline mode credibility — the operator
 // can see exactly what hasn't shipped yet, retry, or drop something they
@@ -17,7 +16,6 @@ import { useActiveSession } from "../lib/session.js";
 
 export function QueuePage() {
   const navigate = useNavigate();
-  const { session } = useActiveSession();
   const [records, setRecords] = useState<QueuedCaptureRecord[]>([]);
 
   useEffect(() => {
@@ -36,6 +34,7 @@ export function QueuePage() {
 
   const pending = records.filter((r) => r.status !== "synced");
   const totalBytes = pending.reduce((acc, r) => acc + r.sizeBytes, 0);
+  const hasFailed = records.some((r) => r.status === "failed");
 
   async function retryFailed() {
     for (const record of records) {
@@ -47,53 +46,42 @@ export function QueuePage() {
   }
 
   return (
-    <div className="relative h-full bg-base-100">
-      <OverlayChrome
-        variant="light"
-        queueCount={pending.length}
-        sessionStatus={session?.status ?? "off"}
-      />
-      <main className="safe-top safe-bottom flex h-full flex-col gap-4 px-5 pb-6 pt-16">
-        <header className="flex items-end justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-wider text-base-content/55">
-              Upload queue
-            </p>
-            <h1 className="mt-1 text-xl font-semibold text-neutral">
-              {pending.length} pending · {formatBytes(totalBytes)}
-            </h1>
-          </div>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => kickUploadWorker()}
-              className="rounded-md border border-base-content/15 px-3 py-1.5 text-sm font-medium text-neutral hover:bg-base-content/[0.04]"
-            >
-              Retry
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate(-1)}
-              className="rounded-md bg-neutral px-3 py-1.5 text-sm font-semibold text-neutral-content"
-            >
-              Done
-            </button>
-          </div>
-        </header>
-
-        {records.some((r) => r.status === "failed") && (
+    <ChromeLayout
+      eyebrow="Upload queue"
+      title={`${pending.length} pending · ${formatBytes(totalBytes)}`}
+      headerAction={
+        <button
+          type="button"
+          onClick={() => navigate(-1)}
+          className="hidden h-11 items-center rounded-md bg-neutral px-4 text-sm font-semibold text-neutral-content sm:flex"
+        >
+          Done
+        </button>
+      }
+    >
+      <div className="flex h-full flex-col gap-4 px-5 pb-6 pt-5">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={retryFailed}
-            className="self-start rounded-md border border-warning/40 bg-warning/10 px-3 py-1.5 text-sm font-medium text-warning"
+            onClick={() => kickUploadWorker()}
+            className="flex h-12 items-center rounded-md border border-base-content/15 px-4 text-sm font-semibold text-neutral hover:bg-base-content/[0.04]"
           >
-            Retry all failed
+            Retry uploads
           </button>
-        )}
+          {hasFailed && (
+            <button
+              type="button"
+              onClick={retryFailed}
+              className="flex h-12 items-center rounded-md border border-warning/40 bg-warning/10 px-4 text-sm font-semibold text-warning"
+            >
+              Retry all failed
+            </button>
+          )}
+        </div>
 
         <ul className="flex flex-col gap-2 overflow-y-auto">
           {records.length === 0 && (
-            <li className="rounded-md border border-dashed border-base-content/15 px-4 py-8 text-center text-sm text-base-content/55">
+            <li className="rounded-md border border-dashed border-base-content/15 px-4 py-10 text-center text-sm text-base-content/55">
               No captures in the queue.
             </li>
           )}
@@ -106,10 +94,10 @@ export function QueuePage() {
                 <img
                   src={record.thumbnailDataUrl}
                   alt=""
-                  className="h-12 w-12 flex-shrink-0 rounded object-cover"
+                  className="h-14 w-14 flex-shrink-0 rounded object-cover"
                 />
               ) : (
-                <div className="grid h-12 w-12 flex-shrink-0 place-items-center rounded bg-base-content/[0.06] text-base-content/55">
+                <div className="grid h-14 w-14 flex-shrink-0 place-items-center rounded bg-base-content/[0.06] text-base-content/55">
                   <CameraIcon />
                 </div>
               )}
@@ -130,7 +118,7 @@ export function QueuePage() {
                 <button
                   type="button"
                   onClick={() => deleteCapture(record.id)}
-                  className="text-xs text-base-content/55 hover:text-error"
+                  className="flex h-11 items-center px-3 text-xs font-semibold text-base-content/55 hover:text-error"
                   aria-label="Discard capture"
                 >
                   Drop
@@ -139,8 +127,8 @@ export function QueuePage() {
             </li>
           ))}
         </ul>
-      </main>
-    </div>
+      </div>
+    </ChromeLayout>
   );
 }
 
@@ -168,7 +156,7 @@ function StatusBadge({ status }: { status: QueuedCaptureRecord["status"] }) {
   };
   const item = map[status];
   return (
-    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${item.tone}`}>
+    <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${item.tone}`}>
       {item.label}
     </span>
   );
@@ -176,7 +164,7 @@ function StatusBadge({ status }: { status: QueuedCaptureRecord["status"] }) {
 
 function CameraIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
       <circle cx="12" cy="13" r="4" />
     </svg>

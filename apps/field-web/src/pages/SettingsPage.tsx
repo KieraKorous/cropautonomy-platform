@@ -1,7 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { useClerk, useUser } from "@clerk/clerk-react";
 
-import { OverlayChrome } from "../components/OverlayChrome.js";
+import { ChromeLayout } from "../components/ChromeLayout.js";
 import { useActiveSession } from "../lib/session.js";
 import { env } from "../env.js";
 
@@ -12,34 +12,13 @@ export function SettingsPage() {
   const { session, end } = useActiveSession();
 
   return (
-    <div className="relative h-full bg-base-100">
-      <OverlayChrome
-        variant="light"
-        queueCount={0}
-        sessionStatus={session?.status ?? "off"}
-      />
-      <main className="safe-top safe-bottom flex h-full flex-col gap-6 overflow-y-auto px-5 pb-6 pt-16">
-        <header className="flex items-end justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-wider text-base-content/55">
-              Settings
-            </p>
-            <h1 className="mt-1 text-xl font-semibold text-neutral">Operator</h1>
-          </div>
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            className="rounded-md bg-neutral px-3 py-1.5 text-sm font-semibold text-neutral-content"
-          >
-            Done
-          </button>
-        </header>
-
+    <ChromeLayout eyebrow="Settings" title="Operator">
+      <div className="flex h-full flex-col gap-6 px-5 pb-8 pt-5">
         <section className="rounded-md border border-base-content/10 bg-base-100 p-4">
-          <p className="text-sm font-medium text-neutral">
+          <p className="text-base font-medium text-neutral">
             {user?.fullName ?? user?.primaryEmailAddress?.emailAddress ?? "Signed in"}
           </p>
-          <p className="mt-0.5 text-xs text-base-content/55">
+          <p className="mt-1 text-sm text-base-content/55">
             {user?.primaryEmailAddress?.emailAddress}
           </p>
         </section>
@@ -58,7 +37,7 @@ export function SettingsPage() {
                 await end();
                 navigate("/", { replace: true });
               }}
-              className="mt-3 rounded-md border border-error/40 bg-error/10 px-3 py-1.5 text-sm font-medium text-error"
+              className="mt-3 flex h-12 items-center rounded-md border border-error/40 bg-error/10 px-4 text-sm font-semibold text-error"
             >
               End session
             </button>
@@ -84,11 +63,11 @@ export function SettingsPage() {
         <button
           type="button"
           onClick={() => signOut({ redirectUrl: "/" })}
-          className="mt-auto rounded-md border border-base-content/15 px-3 py-2 text-sm font-medium text-neutral hover:bg-base-content/[0.04]"
+          className="mt-auto flex h-14 items-center justify-center rounded-md border border-base-content/15 text-base font-semibold text-neutral hover:bg-base-content/[0.04]"
         >
           Sign out
         </button>
-      </main>
-    </div>
+      </div>
+    </ChromeLayout>
   );
 }
