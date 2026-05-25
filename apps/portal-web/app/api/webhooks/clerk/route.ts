@@ -5,7 +5,7 @@
 // Clerk dashboard under Webhooks; sign it with CLERK_WEBHOOK_SECRET.
 
 import { Webhook } from "svix";
-import { getServiceSupabase } from "../../../../lib/supabase.js";
+import { getServiceSupabase } from "../../../../lib/supabase";
 
 export const runtime = "nodejs";
 

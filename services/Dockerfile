@@ -55,8 +55,11 @@ RUN pnpm --filter @gaia/api build \
 # ─── deploy: pnpm produces a pruned, prod-only deployable subtree per service
 # ─────────────────────────────────────────────────────────────────────────────
 FROM build AS deploy
-RUN pnpm --filter @gaia/api --prod deploy /out/api \
- && pnpm --filter @gaia/workers --prod deploy /out/workers
+# --legacy: pnpm 10 changed `deploy` to require `inject-workspace-packages=true`
+# by default, but that flag changes link behavior across the whole monorepo.
+# --legacy keeps the v9 deploy semantics scoped to this command.
+RUN pnpm --filter @gaia/api --prod --legacy deploy /out/api \
+ && pnpm --filter @gaia/workers --prod --legacy deploy /out/workers
 
 # ─── runtime: distroless node 22; ~75MB base, image typically ~120MB ─────────
 FROM gcr.io/distroless/nodejs22-debian12 AS runtime
