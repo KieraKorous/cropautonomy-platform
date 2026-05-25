@@ -1,8 +1,7 @@
-import { Navigate, useNavigate } from "react-router-dom";
+import { Navigate } from "react-router-dom";
 import { useState } from "react";
-import { Wordmark } from "@gaia/ui";
 
-import { OverlayChrome } from "../components/OverlayChrome.js";
+import { ChromeLayout } from "../components/ChromeLayout.js";
 import { useActiveSession } from "../lib/session.js";
 
 // Single-screen picker: confirm where the operator is, start the session,
@@ -11,19 +10,17 @@ import { useActiveSession } from "../lib/session.js";
 // "no field set" and the capture still tags via GPS.
 
 export function SessionPickerPage() {
-  const navigate = useNavigate();
   const { session, loading, start } = useActiveSession();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   if (loading) {
     return (
-      <div className="relative h-full bg-base-100">
-        <OverlayChrome variant="light" queueCount={0} sessionStatus="off" />
+      <ChromeLayout title="Field Capture" eyebrow="CropAutonomy">
         <div className="grid h-full place-items-center text-sm text-base-content/55">
           Loading…
         </div>
-      </div>
+      </ChromeLayout>
     );
   }
 
@@ -39,7 +36,7 @@ export function SessionPickerPage() {
     try {
       const initialLocation = await tryGetLocation();
       await start({ initialLocation });
-      navigate("/capture", { replace: true });
+      // No need to navigate — the next render returns <Navigate to="/capture" />.
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not start session.");
     } finally {
@@ -48,19 +45,13 @@ export function SessionPickerPage() {
   }
 
   return (
-    <div className="relative h-full bg-base-100">
-      <OverlayChrome variant="light" queueCount={0} sessionStatus="off" />
-
-      <main className="safe-top safe-bottom flex h-full flex-col gap-6 px-6 pb-6 pt-16">
-        <Wordmark brand="cropautonomy" />
+    <ChromeLayout title="Field Capture" eyebrow="CropAutonomy">
+      <div className="flex h-full flex-col gap-6 px-6 pb-8 pt-6">
         <div>
-          <p className="text-xs uppercase tracking-wider text-base-content/55">
-            Field Capture
-          </p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-neutral">
+          <h2 className="text-2xl font-semibold tracking-tight text-neutral">
             Ready to walk a field
-          </h1>
-          <p className="mt-2 text-sm text-base-content/65">
+          </h2>
+          <p className="mt-2 text-base text-base-content/65">
             Start a session and the portal will see your captures as they come in.
             Where you are is tagged from GPS automatically; you can set a specific
             field later.
@@ -68,7 +59,7 @@ export function SessionPickerPage() {
         </div>
 
         {error && (
-          <div className="rounded-md border border-error/30 bg-error/10 px-3.5 py-2.5 text-sm text-error">
+          <div className="rounded-md border border-error/30 bg-error/10 px-4 py-3 text-sm text-error">
             {error}
           </div>
         )}
@@ -77,12 +68,12 @@ export function SessionPickerPage() {
           type="button"
           onClick={handleStart}
           disabled={busy}
-          className="mt-auto flex h-14 items-center justify-center rounded-md bg-primary text-base font-semibold text-primary-content shadow-sm disabled:opacity-60"
+          className="mt-auto flex h-16 items-center justify-center rounded-md bg-primary text-base font-semibold text-primary-content shadow-sm disabled:opacity-60"
         >
           {busy ? "Starting…" : "Start session"}
         </button>
-      </main>
-    </div>
+      </div>
+    </ChromeLayout>
   );
 }
 

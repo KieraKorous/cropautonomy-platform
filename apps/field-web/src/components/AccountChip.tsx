@@ -6,8 +6,8 @@ import { Link, useNavigate } from "react-router-dom";
 // variants so the same component drops into both light surfaces (queue,
 // settings) and dark overlay surfaces (over camera / map).
 //
-// Tap target h-8 matches the rest of the overlay dots; expanded popover sized
-// for glove use (h-11 menu rows).
+// All top-chrome chips share the same h-11 (44px) tap target — glove-tolerant
+// without dominating the camera viewport.
 
 export type AccountChipVariant = "light" | "dark";
 
@@ -63,7 +63,7 @@ export function AccountChip({
   if (!isLoaded) {
     return (
       <span
-        className={`flex h-8 w-8 items-center justify-center rounded-full ${
+        className={`flex h-11 w-11 items-center justify-center rounded-full ${
           variant === "dark" ? "bg-black/40" : "bg-base-content/[0.06]"
         }`}
         aria-hidden
@@ -91,7 +91,7 @@ export function AccountChip({
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={`Account: ${displayName}`}
-        className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold ${
+        className={`flex h-11 w-11 items-center justify-center rounded-full text-sm font-semibold ${
           open ? buttonOpenSurface : buttonSurface
         }`}
       >
