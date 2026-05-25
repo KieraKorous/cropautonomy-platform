@@ -101,6 +101,7 @@ jobs:
                       VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL }}
                       VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY }}
                       VITE_API_BASE=https://api.cropautonomy.com
+                      VITE_MAPBOX_TOKEN=${{ secrets.VITE_MAPBOX_TOKEN }}
                       VITE_STUN_URLS=stun:stun.l.google.com:19302
 
     deploy:

@@ -50,6 +50,21 @@ export interface SessionStartResponse {
   startedAt: string;
 }
 
+export interface FieldRecord {
+  id: string;
+  farmId: string;
+  name: string;
+  areaAcres: number | null;
+  // GeoJSON Polygon { type: "Polygon", coordinates: [[[lng, lat], …]] }
+  boundary: { type: "Polygon"; coordinates: number[][][] } | null;
+  // GeoJSON Point { type: "Point", coordinates: [lng, lat] }
+  centroid: { type: "Point"; coordinates: [number, number] } | null;
+}
+
+export interface ListFieldsResponse {
+  fields: FieldRecord[];
+}
+
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   const url = `${env.apiBase}${path}`;
   const token = await getApiToken();
@@ -99,5 +114,6 @@ export const api = {
     call<{ sessionId: string; action: string }>(`/v1/capture-sessions/${id}`, {
       method: "PATCH",
       body: JSON.stringify(action)
-    })
+    }),
+  listFields: () => call<ListFieldsResponse>("/v1/fields", { method: "GET" })
 };

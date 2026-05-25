@@ -1,8 +1,9 @@
-import { useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { useUser } from "@clerk/clerk-react";
 import { useEffect, useRef, useState } from "react";
 
-import { Hud } from "../components/Hud.js";
+import { OverlayChrome } from "../components/OverlayChrome.js";
+import { SurfaceSwitcher } from "../components/SurfaceSwitcher.js";
 import {
   blobToThumbnailDataUrl,
   nowIso,
@@ -14,16 +15,18 @@ import { useActiveSession } from "../lib/session.js";
 import { kickUploadWorker } from "../lib/upload.js";
 import { useLivePublisher } from "../lib/webrtc.js";
 
-// Capture screen. Camera fills the middle; HUD across the top; mode + capture
-// button at the bottom. No nav. One screen does the job; queue + settings
-// reachable from the HUD or a long-press on the capture button.
+// Full-bleed camera + floating overlay controls. Same pattern as the native
+// camera app and Instagram/Snapchat — viewfinder fills the screen, all chrome
+// floats. Status (connectivity, GPS, battery) + account live in the top
+// OverlayChrome; mode + shutter + session controls + library float at the
+// bottom; the SurfaceSwitcher is the very-bottom-center toggle to /map.
 
 type Mode = "photo" | "burst" | "video";
 
 export function CapturePage() {
   const navigate = useNavigate();
   const { user } = useUser();
-  const { session, pause, resume, end } = useActiveSession();
+  const { session, loading: sessionLoading, pause, resume, end } = useActiveSession();
   const { stream, videoRef, captureFrame, error } = useCameraStream();
   const gps = useGps(true);
   const [mode, setMode] = useState<Mode>("photo");
@@ -33,8 +36,8 @@ export function CapturePage() {
   const recorderRef = useRef<MediaRecorder | null>(null);
   const videoChunksRef = useRef<Blob[]>([]);
   const burstAbortRef = useRef<{ aborted: boolean } | null>(null);
+  const libraryInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Refresh the queue count whenever this page is in focus.
   useEffect(() => {
     let alive = true;
     async function refresh() {
@@ -49,8 +52,6 @@ export function CapturePage() {
     };
   }, []);
 
-  // WebRTC mesh publisher for live preview. Operator's session id + clerk id
-  // are the addressable handles.
   useLivePublisher({
     orgId: session?.orgId ?? "",
     sessionId: session?.sessionId ?? "",
@@ -69,9 +70,17 @@ export function CapturePage() {
     }
   }, [stream, videoRef]);
 
+  if (sessionLoading) {
+    // Don't decide where to go until the IndexedDB session lookup resolves;
+    // a premature Navigate while loading caused a redirect loop with /.
+    return (
+      <div className="grid h-full place-items-center bg-black text-sm text-white/55">
+        Loading…
+      </div>
+    );
+  }
   if (!session) {
-    navigate("/", { replace: true });
-    return null;
+    return <Navigate to="/" replace />;
   }
 
   const location =
@@ -120,9 +129,10 @@ export function CapturePage() {
       let index = 0;
       while (!control.aborted && index < 12) {
         const blob = await captureFrame("image/jpeg", 0.85);
-        const thumb = index === 0
-          ? await blobToThumbnailDataUrl(blob).catch(() => undefined)
-          : undefined;
+        const thumb =
+          index === 0
+            ? await blobToThumbnailDataUrl(blob).catch(() => undefined)
+            : undefined;
         await enqueueCapture({
           id: crypto.randomUUID(),
           sessionId: session!.sessionId,
@@ -141,7 +151,6 @@ export function CapturePage() {
           blob
         });
         index += 1;
-        // ~3 frames / second cap
         await new Promise((r) => setTimeout(r, 333));
       }
       kickUploadWorker();
@@ -196,46 +205,89 @@ export function CapturePage() {
     setVideoRecording(true);
   }
 
+  async function handleLibraryFiles(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setBusy(true);
+    try {
+      for (const file of Array.from(files)) {
+        const isVideo = file.type.startsWith("video/");
+        const isImage = file.type.startsWith("image/");
+        if (!isVideo && !isImage) continue;
+        const thumb =
+          isImage && file.size < 20 * 1024 * 1024
+            ? await blobToThumbnailDataUrl(file).catch(() => undefined)
+            : undefined;
+        await enqueueCapture({
+          id: crypto.randomUUID(),
+          sessionId: session!.sessionId,
+          orgId: session!.orgId,
+          farmId: session!.farmId,
+          fieldId: session!.fieldId,
+          cropTypeId: session!.cropTypeId,
+          source: "field_capture_pwa",
+          mediaType: isVideo ? "video" : "photo",
+          mimeType: file.type || (isVideo ? "video/mp4" : "image/jpeg"),
+          sizeBytes: file.size,
+          capturedAt: new Date(file.lastModified || Date.now()).toISOString(),
+          location,
+          thumbnailDataUrl: thumb,
+          blob: file
+        });
+      }
+      kickUploadWorker();
+    } finally {
+      setBusy(false);
+      // Reset so picking the same file again still fires onChange.
+      if (libraryInputRef.current) libraryInputRef.current.value = "";
+    }
+  }
+
   return (
-    <div className="flex h-full flex-col bg-black">
-      <Hud queueCount={queueCount} sessionStatus={session.status} />
-
-      <main className="relative flex-1 overflow-hidden bg-black">
-        {error ? (
-          <div className="grid h-full place-items-center p-6 text-center text-sm text-base-content/70">
-            <div>
-              <p className="text-base font-semibold text-base-100">Camera unavailable</p>
-              <p className="mt-1 text-xs">{error}</p>
-            </div>
+    <div className="relative h-full bg-black">
+      {error ? (
+        <div className="absolute inset-0 grid place-items-center p-6 text-center text-sm text-white/70">
+          <div>
+            <p className="text-base font-semibold text-white">Camera unavailable</p>
+            <p className="mt-1 text-xs">{error}</p>
           </div>
-        ) : (
-          <video
-            ref={videoRef}
-            playsInline
-            muted
-            className="h-full w-full object-cover"
-          />
-        )}
+        </div>
+      ) : (
+        <video
+          ref={videoRef}
+          playsInline
+          muted
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+      )}
 
-        {videoRecording && (
-          <div className="absolute left-3 top-3 flex items-center gap-2 rounded-md bg-error/85 px-2.5 py-1 text-xs font-semibold text-error-content shadow">
+      {videoRecording && (
+        <div className="safe-top pointer-events-none fixed left-1/2 top-12 z-30 -translate-x-1/2 px-3">
+          <span className="pointer-events-auto flex items-center gap-2 rounded-full bg-error/85 px-3 py-1 text-xs font-semibold text-error-content shadow-lg">
             <span className="h-2 w-2 animate-pulse rounded-full bg-error-content" />
             Recording
-          </div>
-        )}
-      </main>
+          </span>
+        </div>
+      )}
 
-      <footer className="safe-bottom bg-base-100/95 px-4 pb-5 pt-4">
-        <ModeSwitcher mode={mode} onChange={setMode} disabled={busy || videoRecording} />
-        <div className="mt-4 flex items-center justify-between gap-4">
-          <SessionControls
-            status={session.status}
-            onPause={pause}
-            onResume={resume}
-            onEnd={async () => {
-              await end();
-              navigate("/", { replace: true });
-            }}
+      <OverlayChrome
+        variant="dark"
+        queueCount={queueCount}
+        sessionStatus={session.status}
+      />
+
+      {/* Bottom overlay: mode switcher + shutter row + surface switcher.
+          Three stacked rows, all floating, safe-area aware. */}
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 flex flex-col items-center gap-3 px-4 pb-3 safe-bottom">
+        <ModeSwitcher
+          mode={mode}
+          onChange={setMode}
+          disabled={busy || videoRecording}
+        />
+
+        <div className="pointer-events-auto flex w-full max-w-md items-center justify-between gap-6 px-2">
+          <LibraryButton
+            onClick={() => libraryInputRef.current?.click()}
+            disabled={busy || videoRecording}
           />
           <CaptureButton
             mode={mode}
@@ -246,18 +298,39 @@ export function CapturePage() {
             onBurstStop={stopBurst}
             onVideoToggle={toggleVideo}
           />
-          <button
-            type="button"
-            onClick={() => navigate("/settings")}
-            aria-label="Settings"
-            className="flex h-12 w-12 items-center justify-center rounded-md border border-base-content/15 bg-base-100 text-base-content/70"
-          >
-            <CogIcon />
-          </button>
+          <SessionControls
+            status={session.status}
+            onPause={pause}
+            onResume={resume}
+            onEnd={async () => {
+              await end();
+              navigate("/", { replace: true });
+            }}
+          />
         </div>
-      </footer>
+
+        <SurfaceSwitcherSpacer />
+      </div>
+
+      <SurfaceSwitcher variant="dark" />
+
+      <input
+        ref={libraryInputRef}
+        type="file"
+        accept="image/*,video/*"
+        multiple
+        className="hidden"
+        onChange={(e) => void handleLibraryFiles(e.currentTarget.files)}
+      />
     </div>
   );
+}
+
+// Reserves vertical room equal to the SurfaceSwitcher's height so the shutter
+// row doesn't overlap it. SurfaceSwitcher is its own fixed element rendered
+// outside this column, so we add a transparent placeholder here.
+function SurfaceSwitcherSpacer() {
+  return <div className="h-14" aria-hidden />;
 }
 
 function ModeSwitcher({
@@ -275,23 +348,43 @@ function ModeSwitcher({
     { id: "video", label: "Video" }
   ];
   return (
-    <div className="flex items-stretch overflow-hidden rounded-md border border-base-content/15 bg-base-100">
+    <div className="pointer-events-auto flex items-stretch overflow-hidden rounded-full bg-black/45 p-1 backdrop-blur-md">
       {modes.map((m) => (
         <button
           key={m.id}
           type="button"
           disabled={disabled}
           onClick={() => onChange(m.id)}
-          className={`flex-1 py-2 text-sm font-medium transition ${
+          className={`rounded-full px-4 py-1.5 text-xs font-semibold transition ${
             mode === m.id
-              ? "bg-neutral text-neutral-content"
-              : "text-base-content/70 hover:bg-base-content/[0.04]"
+              ? "bg-white text-neutral"
+              : "text-white/75 hover:text-white"
           }`}
         >
           {m.label}
         </button>
       ))}
     </div>
+  );
+}
+
+function LibraryButton({
+  onClick,
+  disabled
+}: {
+  onClick: () => void;
+  disabled: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label="Upload from library"
+      className="flex h-12 w-12 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-md disabled:opacity-50"
+    >
+      <LibraryIcon />
+    </button>
   );
 }
 
@@ -319,18 +412,19 @@ function CaptureButton({
         onClick={onVideoToggle}
         aria-label={videoRecording ? "Stop recording" : "Start recording"}
         className={`relative flex h-20 w-20 items-center justify-center rounded-full border-4 ${
-          videoRecording ? "border-error" : "border-base-content/30"
-        } bg-base-100`}
+          videoRecording ? "border-error" : "border-white"
+        }`}
       >
         <span
-          className={`block rounded-sm transition-all ${
-            videoRecording ? "h-7 w-7 bg-error" : "h-12 w-12 rounded-full bg-error/90"
+          className={`block transition-all ${
+            videoRecording
+              ? "h-7 w-7 rounded-sm bg-error"
+              : "h-14 w-14 rounded-full bg-error/90"
           }`}
         />
       </button>
     );
   }
-
   if (mode === "burst") {
     return (
       <button
@@ -339,22 +433,21 @@ function CaptureButton({
         onPointerUp={onBurstStop}
         onPointerLeave={onBurstStop}
         aria-label="Burst capture (hold)"
-        className="flex h-20 w-20 items-center justify-center rounded-full border-4 border-base-content/30 bg-base-100 active:scale-95"
+        className="flex h-20 w-20 items-center justify-center rounded-full border-4 border-white active:scale-95"
       >
-        <span className="h-12 w-12 rounded-full bg-neutral" />
+        <span className="h-14 w-14 rounded-full bg-white" />
       </button>
     );
   }
-
   return (
     <button
       type="button"
       onClick={onShoot}
       disabled={busy}
       aria-label="Take photo"
-      className="flex h-20 w-20 items-center justify-center rounded-full border-4 border-base-content/30 bg-base-100 active:scale-95 disabled:opacity-60"
+      className="flex h-20 w-20 items-center justify-center rounded-full border-4 border-white active:scale-95 disabled:opacity-60"
     >
-      <span className="h-14 w-14 rounded-full bg-neutral" />
+      <span className="h-16 w-16 rounded-full bg-white" />
     </button>
   );
 }
@@ -371,11 +464,11 @@ function SessionControls({
   onEnd: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col items-center gap-1.5">
       <button
         type="button"
         onClick={status === "live" ? onPause : onResume}
-        className="flex h-12 w-12 items-center justify-center rounded-md border border-base-content/15 bg-base-100 text-base-content/70"
+        className="flex h-12 w-12 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-md"
         aria-label={status === "live" ? "Pause session" : "Resume session"}
       >
         {status === "live" ? <PauseIcon /> : <PlayIcon />}
@@ -383,7 +476,7 @@ function SessionControls({
       <button
         type="button"
         onClick={onEnd}
-        className="text-[10px] font-semibold uppercase tracking-wider text-base-content/55"
+        className="text-[10px] font-semibold uppercase tracking-wider text-white/80 hover:text-white"
       >
         End
       </button>
@@ -409,11 +502,21 @@ function pickVideoMime(): string {
   return "video/webm";
 }
 
-function CogIcon() {
+function LibraryIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <circle cx="9" cy="9" r="1.5" fill="currentColor" stroke="none" />
+      <path d="m21 15-5-5L5 21" />
     </svg>
   );
 }

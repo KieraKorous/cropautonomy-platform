@@ -7,6 +7,7 @@ import errorHandlerPlugin from "./plugins/error-handler.js";
 import requestIdPlugin from "./plugins/request-id.js";
 import captureSessionsRoutes from "./routes/capture-sessions.js";
 import capturesRoutes from "./routes/captures.js";
+import fieldsRoutes from "./routes/fields.js";
 import healthRoutes from "./routes/health.js";
 import leadsRoutes from "./routes/leads.js";
 import metaRoutes from "./routes/meta.js";
@@ -44,6 +45,7 @@ export async function buildServer(config: Config): Promise<FastifyInstance> {
   await app.register(leadsRoutes);
   await app.register(captureSessionsRoutes);
   await app.register(capturesRoutes);
+  await app.register(fieldsRoutes);
   await app.register(realtimeRoutes);
 
   return app;

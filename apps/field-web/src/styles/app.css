@@ -1,4 +1,5 @@
 @import "@gaia/ui/theme.css";
+@import "mapbox-gl/dist/mapbox-gl.css";
 
 /* Field-specific layer: the palette and DaisyUI base come from @gaia/ui;
    the overrides below adapt the surface for one-handed outdoor use without

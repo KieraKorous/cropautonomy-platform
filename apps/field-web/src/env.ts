@@ -44,6 +44,10 @@ export const env = {
     url: requireKey("VITE_SUPABASE_URL"),
     anonKey: requireKey("VITE_SUPABASE_ANON_KEY")
   },
+  // Mapbox is intentionally soft-required: the /map view degrades to a
+  // "needs Mapbox token" panel if missing, but the rest of the PWA (capture,
+  // queue, settings) continues to work without it.
+  mapboxToken: read("VITE_MAPBOX_TOKEN") || undefined,
   ice: {
     stunUrls: read("VITE_STUN_URLS", DEFAULTS.VITE_STUN_URLS)
       .split(",")

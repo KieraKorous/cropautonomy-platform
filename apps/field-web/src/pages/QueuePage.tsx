@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { Hud } from "../components/Hud.js";
+import { OverlayChrome } from "../components/OverlayChrome.js";
 import {
   deleteCapture,
   listQueued,
@@ -47,9 +47,13 @@ export function QueuePage() {
   }
 
   return (
-    <div className="flex h-full flex-col">
-      <Hud queueCount={pending.length} sessionStatus={session?.status ?? "off"} />
-      <main className="safe-bottom flex flex-1 flex-col gap-4 px-5 py-6">
+    <div className="relative h-full bg-base-100">
+      <OverlayChrome
+        variant="light"
+        queueCount={pending.length}
+        sessionStatus={session?.status ?? "off"}
+      />
+      <main className="safe-top safe-bottom flex h-full flex-col gap-4 px-5 pb-6 pt-16">
         <header className="flex items-end justify-between">
           <div>
             <p className="text-xs uppercase tracking-wider text-base-content/55">

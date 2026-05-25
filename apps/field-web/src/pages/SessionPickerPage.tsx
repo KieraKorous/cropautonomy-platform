@@ -1,14 +1,14 @@
-import { useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { Wordmark } from "@gaia/ui";
 
-import { Hud } from "../components/Hud.js";
+import { OverlayChrome } from "../components/OverlayChrome.js";
 import { useActiveSession } from "../lib/session.js";
 
 // Single-screen picker: confirm where the operator is, start the session,
 // hand off to the capture view. Field/farm dropdowns are placeholders until
-// the portal exposes a /api/farms endpoint — for v0 the operator can pick
-// "no field set" and still capture.
+// services/api exposes farm/field endpoints — for v0 the operator can start
+// "no field set" and the capture still tags via GPS.
 
 export function SessionPickerPage() {
   const navigate = useNavigate();
@@ -18,9 +18,9 @@ export function SessionPickerPage() {
 
   if (loading) {
     return (
-      <div className="flex h-full flex-col">
-        <Hud queueCount={0} sessionStatus="off" />
-        <div className="grid flex-1 place-items-center text-sm text-base-content/55">
+      <div className="relative h-full bg-base-100">
+        <OverlayChrome variant="light" queueCount={0} sessionStatus="off" />
+        <div className="grid h-full place-items-center text-sm text-base-content/55">
           Loading…
         </div>
       </div>
@@ -28,8 +28,9 @@ export function SessionPickerPage() {
   }
 
   if (session) {
-    navigate("/capture", { replace: true });
-    return null;
+    // Declarative redirect — calling navigate() during render emits React
+    // warnings about updating BrowserRouter mid-render.
+    return <Navigate to="/capture" replace />;
   }
 
   async function handleStart() {
@@ -47,9 +48,10 @@ export function SessionPickerPage() {
   }
 
   return (
-    <div className="flex h-full flex-col">
-      <Hud queueCount={0} sessionStatus="off" />
-      <main className="safe-bottom flex flex-1 flex-col gap-6 px-6 py-8">
+    <div className="relative h-full bg-base-100">
+      <OverlayChrome variant="light" queueCount={0} sessionStatus="off" />
+
+      <main className="safe-top safe-bottom flex h-full flex-col gap-6 px-6 pb-6 pt-16">
         <Wordmark brand="cropautonomy" />
         <div>
           <p className="text-xs uppercase tracking-wider text-base-content/55">

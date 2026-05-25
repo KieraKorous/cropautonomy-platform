@@ -48,28 +48,54 @@ You will need:
 ## Routes
 
 - `/` — session picker (or auto-redirects to `/capture` if a session is live)
-- `/capture` — camera + capture controls + session pause/resume/end
+- `/capture` — full-bleed camera with overlay controls (mode, shutter, library, pause/end)
+- `/map` — full-bleed Mapbox view with field boundaries, GPS dot, capture pins
 - `/queue` — IndexedDB queue with retry/drop controls
 - `/settings` — operator + env summary + sign-out
+
+`/capture` and `/map` are the two primary surfaces — both use a floating
+`SurfaceSwitcher` (bottom-center segmented toggle) to flip between them.
+
+## UI posture
+
+Camera-app style. Every page is edge-to-edge content with floating overlay
+chrome — no solid header bars, no dock. `OverlayChrome` renders three pieces
+absolutely positioned over the page:
+
+- **Top-left**: status dots (connectivity, GPS, battery, queue depth).
+  Dot-only by default; expand to show details only when degraded. Battery
+  and queue indicators disappear entirely when healthy / empty.
+- **Top-center**: session pill (Live / Paused) — only visible during an
+  active session.
+- **Top-right**: `AccountChip` — initials button → popover with name, email,
+  Settings link, Sign out.
+
+Two visual variants: `dark` for floating over camera/map (translucent black +
+white text); `light` for sitting on the cream content surfaces (translucent
+white + neutral text).
 
 ## Source layout
 
 ```
 src/
-├── App.tsx                 — router; signed-out users get redirected to portal sign-in
-├── main.tsx                — bootstrap; configures @gaia/realtime + ClerkProvider (shared root-cookie session, not satellite)
-├── env.ts                  — env var access (all VITE_* prefixed)
-├── components/Hud.tsx      — HUD strip shared by every page
-├── pages/                  — SessionPicker, Capture, Queue, Settings
+├── App.tsx                       — router; signed-out users get redirected to portal sign-in
+├── main.tsx                      — bootstrap; configures @gaia/realtime + ClerkProvider
+├── env.ts                        — env var access (all VITE_* prefixed)
+├── components/
+│   ├── OverlayChrome.tsx         — floating top-left status dots + top-right AccountChip + session pill
+│   ├── SurfaceSwitcher.tsx       — bottom-center camera/map segmented toggle
+│   ├── AccountChip.tsx           — initials button + name/email/Settings/SignOut popover (light + dark variants)
+│   └── MissingEnvScreen.tsx      — diagnostic screen when required VITE_* env is unset
+├── pages/                        — SessionPicker, Capture, Map, Queue, Settings
 └── lib/
-    ├── db.ts               — IndexedDB queue (idb wrapper)
-    ├── api.ts              — typed calls into portal /api/captures + /api/capture-sessions
-    ├── upload.ts           — drain worker: reserve → PUT to Storage → finalize
-    ├── session.ts          — useActiveSession hook + start/pause/resume/end
-    ├── capture-camera.ts   — useCameraStream + captureFrame + thumbnail generation
-    ├── webrtc.ts           — useLivePublisher (mesh: one peer per portal viewer)
-    ├── ice.ts              — getIceServers() from env (STUN-only by default)
-    └── hud-signals.ts      — useConnectivity, useGps, useBattery
+    ├── db.ts                     — IndexedDB queue (idb wrapper)
+    ├── api.ts                    — typed calls into services/api /v1/captures, /v1/capture-sessions, /v1/fields, /v1/realtime/publish
+    ├── upload.ts                 — drain worker: reserve → PUT to Storage → finalize
+    ├── session.ts                — useActiveSession hook (module-level store, survives page changes)
+    ├── capture-camera.ts         — useCameraStream + captureFrame + thumbnail generation
+    ├── webrtc.ts                 — useLivePublisher (mesh: one peer per portal viewer)
+    ├── ice.ts                    — getIceServers() from env (STUN-only by default)
+    └── hud-signals.ts            — useConnectivity, useGps, useBattery
 ```
 
 ## Realtime contract
@@ -95,12 +121,17 @@ touching the call sites.
   Storage signed URL. The TUS implementation lives in
   `lib/upload.ts:uploadBinaryTus` and gets switched in once Storage policy
   + Clerk JWT bridge are in place.
-- **Farm / field picker.** Sessions start with GPS-only context until the
-  portal exposes `/api/farms` + `/api/fields`. Captures still attach via
-  GPS; the operator can re-attribute later in the portal.
+- **Farm picker on session start.** Sessions start with GPS-only context; the
+  /map view shows field boundaries fetched from `/v1/fields` for situational
+  awareness, but the session-picker UI doesn't yet let the operator pre-select
+  a specific field. Captures still attach via GPS; re-attribute later in the
+  portal.
 - **Push notifications.** Out of scope for v0 per the PRD.
 - **TURN.** STUN-only by default. WebRTC live preview will fail behind
   symmetric NAT until `VITE_TURN_URL` + credentials are set.
+- **Mapbox token soft-required.** If `VITE_MAPBOX_TOKEN` is unset, the /map
+  view shows a "needs Mapbox token" panel; the rest of the PWA (capture,
+  queue, settings) keeps working.
 
 ## Hosting
 

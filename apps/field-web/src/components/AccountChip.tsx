@@ -2,9 +2,14 @@ import { useClerk, useUser } from "@clerk/clerk-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
-// Right-end HUD chip: initials button + popover with identity + Settings + Sign out.
-// Lives in the HUD so sign-out is reachable from every page, not just /capture.
-// Tap target sized to match the rest of the HUD pills (h-9) for glove use.
+// Reachable from every page so sign-out doesn't need /capture. Two visual
+// variants so the same component drops into both light surfaces (queue,
+// settings) and dark overlay surfaces (over camera / map).
+//
+// Tap target h-8 matches the rest of the overlay dots; expanded popover sized
+// for glove use (h-11 menu rows).
+
+export type AccountChipVariant = "light" | "dark";
 
 function initialsOf(user: ReturnType<typeof useUser>["user"]): string {
   if (!user) return "·";
@@ -18,7 +23,9 @@ function initialsOf(user: ReturnType<typeof useUser>["user"]): string {
   return email.charAt(0).toUpperCase() || "·";
 }
 
-export function AccountChip() {
+export function AccountChip({
+  variant = "light"
+}: { variant?: AccountChipVariant } = {}) {
   const { user, isLoaded } = useUser();
   const { signOut } = useClerk();
   const navigate = useNavigate();
@@ -43,10 +50,22 @@ export function AccountChip() {
     };
   }, [open]);
 
+  const buttonSurface =
+    variant === "dark"
+      ? "bg-black/45 text-white backdrop-blur-md"
+      : "bg-base-100/85 text-neutral border border-base-content/15 backdrop-blur hover:bg-base-100/95";
+
+  const buttonOpenSurface =
+    variant === "dark"
+      ? "bg-white text-neutral"
+      : "bg-base-content/[0.08] text-neutral border border-base-content/30";
+
   if (!isLoaded) {
     return (
       <span
-        className="flex h-9 w-9 items-center justify-center rounded-md bg-base-content/[0.06]"
+        className={`flex h-8 w-8 items-center justify-center rounded-full ${
+          variant === "dark" ? "bg-black/40" : "bg-base-content/[0.06]"
+        }`}
         aria-hidden
       />
     );
@@ -72,10 +91,8 @@ export function AccountChip() {
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={`Account: ${displayName}`}
-        className={`flex h-9 w-9 items-center justify-center rounded-md border text-sm font-semibold text-neutral ${
-          open
-            ? "border-base-content/30 bg-base-content/[0.08]"
-            : "border-base-content/15 bg-base-100 hover:bg-base-content/[0.04]"
+        className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold ${
+          open ? buttonOpenSurface : buttonSurface
         }`}
       >
         {initials}
