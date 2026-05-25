@@ -23,13 +23,17 @@ export function useCameraStream(): UseCameraStreamResult {
         return;
       }
       try {
+        // Don't request audio here — mic permission is only needed for video
+        // recording. Asking up front means a user who denies mic loses the
+        // whole stream and can't take photos either. `toggleVideo` requests
+        // audio on demand when entering video mode.
         const mediaStream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: { ideal: "environment" },
             width: { ideal: 1920 },
             height: { ideal: 1080 }
           },
-          audio: true
+          audio: false
         });
         if (cancelled) {
           mediaStream.getTracks().forEach((t) => t.stop());

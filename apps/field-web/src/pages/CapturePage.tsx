@@ -170,6 +170,19 @@ export function CapturePage() {
       return;
     }
     if (!stream) return;
+    // Add an audio track on demand; mic isn't requested at camera init so
+    // photo-only users aren't gated on mic permission. If the user denies
+    // mic here we still record silent video rather than failing.
+    if (!stream.getAudioTracks().length) {
+      try {
+        const micStream = await navigator.mediaDevices.getUserMedia({
+          audio: true
+        });
+        micStream.getAudioTracks().forEach((track) => stream.addTrack(track));
+      } catch {
+        /* mic denied — record video silently */
+      }
+    }
     const recorder = new MediaRecorder(stream, { mimeType: pickVideoMime() });
     videoChunksRef.current = [];
     recorder.ondataavailable = (e) => {
@@ -291,7 +304,7 @@ export function CapturePage() {
           />
           <CaptureButton
             mode={mode}
-            busy={busy}
+            busy={busy || !stream}
             videoRecording={videoRecording}
             onShoot={shootPhoto}
             onBurstStart={runBurst}
