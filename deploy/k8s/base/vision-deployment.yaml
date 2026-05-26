@@ -41,7 +41,7 @@ spec:
         - name: vision
           image: us-west1-docker.pkg.dev/agconn/cropautonomy/vision:latest
           ports:
-            - containerPort: 8080
+            - containerPort: 8081
               name: http
           # Vision needs only its own envs (PlantNet creds, server tuning).
           # It deliberately does NOT mount the shared cropautonomy-env secret —
@@ -51,7 +51,7 @@ spec:
             - name: VISION_HOST
               value: "0.0.0.0"
             - name: VISION_PORT
-              value: "8080"
+              value: "8081"
             - name: VISION_LOG_LEVEL
               value: "info"
             - name: PLANTNET_API_KEY

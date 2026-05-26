@@ -62,7 +62,7 @@ copy .env.example .env
 # Use `python -m uvicorn` rather than bare `uvicorn` — works even when the
 # venv's Scripts directory isn't on PATH (common cause of "uvicorn: term not
 # recognized" errors).
-python -m uvicorn vision.main:app --reload --port 8080
+python -m uvicorn vision.main:app --reload --port 8081
 ```
 
 If `Activate.ps1` errors with execution-policy refusal, allow it for the current shell:
@@ -74,7 +74,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
 Health check:
 
 ```powershell
-curl http://localhost:8080/v1/health
+curl http://localhost:8081/v1/health
 ```
 
 Smoke test against the production pipeline (`default-plant@v1`, currently a single PlantNet stage). Replace `image.jpg`:
@@ -96,7 +96,7 @@ $req = '{
     }]
   }
 }'
-curl -X POST http://localhost:8080/v1/inference `
+curl -X POST http://localhost:8081/v1/inference `
   -F "request=$req;type=application/json" `
   -F 'image=@image.jpg'
 ```

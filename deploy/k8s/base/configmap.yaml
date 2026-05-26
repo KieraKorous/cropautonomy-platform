@@ -25,6 +25,6 @@ data:
   REALTIME_PUBLISH_URL: "https://app.cropautonomy.com/api/realtime/publish"
 
   # Workers → vision. Cluster-internal DNS; same namespace, Service name
-  # is `vision`, port 80 maps to the container's 8080.
+  # is `vision`, port 80 maps to the container's 8081.
   VISION_SERVICE_URL: "http://vision"
   VISION_REQUEST_TIMEOUT_MS: "60000"

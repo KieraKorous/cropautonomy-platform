@@ -32,6 +32,6 @@ RUN pip install --no-index --find-links=/wheels gaia-vision && rm -rf /wheels
 
 USER gaia
 
-EXPOSE 8080
+EXPOSE 8081
 
-CMD ["uvicorn", "vision.main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uvicorn", "vision.main:app", "--host", "0.0.0.0", "--port", "8081"]

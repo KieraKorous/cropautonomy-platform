@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     )
 
     vision_host: str = "0.0.0.0"
-    vision_port: int = 8080
+    vision_port: int = 8081
     vision_log_level: str = "info"
     vision_max_image_bytes: int = 20 * 1024 * 1024
     vision_provider_timeout_seconds: float = 30.0
