@@ -21,3 +21,6 @@ images:
     - name: us-west1-docker.pkg.dev/agconn/cropautonomy/services
       newName: us-west1-docker.pkg.dev/agconn/cropautonomy/services
       newTag: UNSET
+    - name: us-west1-docker.pkg.dev/agconn/cropautonomy/vision
+      newName: us-west1-docker.pkg.dev/agconn/cropautonomy/vision
+      newTag: UNSET

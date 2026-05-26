@@ -1,10 +1,10 @@
 # Deploy
 
 GKE + Artifact Registry + GitHub Actions, with Cloudflare DNS + nginx-ingress
-+ cert-manager. The pipeline builds 3 images (portal, field, services), pushes
-to `us-west1-docker.pkg.dev/agconn/cropautonomy/*`, then rolls out portal +
-field + api + workers in the `cropautonomy` namespace of the shared
-`agconn-prod` GKE cluster.
++ cert-manager. The pipeline builds 4 images (portal, field, services, vision),
+pushes to `us-west1-docker.pkg.dev/agconn/cropautonomy/*`, then rolls out
+portal + field + api + workers + vision in the `cropautonomy` namespace of the
+shared `agconn-prod` GKE cluster.
 
 This is **co-tenancy** with [AgConnect](../../../AgConnect): same cluster,
 same cluster-wide controllers (nginx-ingress, cert-manager, KEDA), separate
@@ -19,12 +19,14 @@ app.cropautonomy.com   →  Cloudflare  →  nginx-ingress  →  portal   (Next.
 field.cropautonomy.com →  Cloudflare  →  nginx-ingress  →  field    (nginx static, app pool)
 api.cropautonomy.com   →  Cloudflare  →  nginx-ingress  →  api      (Fastify, app pool)
                                                           workers   (pg-boss, spot pool)
+                                                          vision    (FastAPI, app pool — cluster-internal only)
 ```
 
-All four workloads run in namespace `cropautonomy` on the existing
-`agconn-prod` cluster (us-west1-a). `portal`, `field`, `api` schedule on the
-shared `pool=app` taint; `workers` schedules on the shared `pool=worker` spot
-taint.
+All five workloads run in namespace `cropautonomy` on the existing
+`agconn-prod` cluster (us-west1-a). `portal`, `field`, `api`, `vision`
+schedule on the shared `pool=app` taint; `workers` schedules on the shared
+`pool=worker` spot taint. `vision` has **no ingress** — it's reached only
+in-cluster by `workers` via `http://vision` (Service name DNS).
 
 Postgres + Storage + Realtime come from Supabase (managed). SQL migrations in
 [`packages/db/migrations/`](../packages/db/migrations/) are applied manually
@@ -99,6 +101,7 @@ Required for the deploy workflow:
 | **Resend (leads)** | `RESEND_API_KEY`, `LEADS_NOTIFY_TO` |
 | **Postgres (workers)** | `DATABASE_URL` (Supabase pooler connection string) |
 | **Mapbox (portal)** | `NEXT_PUBLIC_MAPBOX_TOKEN` |
+| **Vision (PlantNet)** | `PLANTNET_API_KEY` (optional at deploy time; vision pod returns 503 on `/v1/inference` until set, but the rest of the stack rolls out normally) |
 
 ### 5. Verify the ops email in the ClusterIssuer
 
@@ -113,18 +116,22 @@ Every push to `main` that touches a watched path triggers
 [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml):
 
 1. Authenticate to GCP via Workload Identity Federation.
-2. Build all 3 images in parallel, push to Artifact Registry with the commit
-   SHA + `latest`.
+2. Build all 4 images in parallel, push to Artifact Registry with the commit
+   SHA + `latest`. `vision` builds with `context: services/vision/`; the
+   others build from the repo root.
 3. Pull cluster credentials for `agconn-prod`.
 4. Apply namespace + ServiceAccount + ConfigMap.
 5. Rebuild the `cropautonomy-env` Secret from GH secrets (rotation = redeploy).
-6. Pin kustomize image tags to the commit SHA.
-7. `kubectl apply -k deploy/k8s/overlays/prod`.
-8. Wait on `portal`, `field`, `api`, `workers` rollouts to finish.
+6. Rebuild the `cropautonomy-vision-env` Secret (vision-only credentials —
+   currently just `PLANTNET_API_KEY`; kept separate so the vision pod doesn't
+   hold creds it has no reason to read).
+7. Pin kustomize image tags to the commit SHA.
+8. `kubectl apply -k deploy/k8s/overlays/prod`.
+9. Wait on `portal`, `field`, `api`, `workers`, `vision` rollouts to finish.
 
 Watched paths (the `paths:` filter on the workflow): `apps/portal-web/**`,
 `apps/field-web/**`, `services/api/**`, `services/workers/**`,
-`services/Dockerfile`, `packages/**`, `deploy/k8s/**`,
+`services/vision/**`, `services/Dockerfile`, `packages/**`, `deploy/k8s/**`,
 `.github/workflows/deploy.yml`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`.
 
 ## Local testing of the docker images
@@ -135,10 +142,14 @@ docker build -f apps/portal-web/Dockerfile -t cropautonomy-portal:dev .
 docker build -f apps/field-web/Dockerfile -t cropautonomy-field:dev .
 docker build -f services/Dockerfile         -t cropautonomy-services:dev .
 
+# Vision builds with services/vision/ as the context (not the repo root):
+docker build -t cropautonomy-vision:dev services/vision/
+
 # Run with envs from local .env:
 docker run --rm -p 3002:3002 --env-file apps/portal-web/.env cropautonomy-portal:dev
 docker run --rm -p 8080:8080 cropautonomy-field:dev
 docker run --rm -p 8080:8080 --env-file services/api/.env cropautonomy-services:dev
+docker run --rm -p 8080:8080 --env-file services/vision/.env cropautonomy-vision:dev
 # Workers:
 docker run --rm --env-file services/workers/.env \
   --entrypoint /nodejs/bin/node cropautonomy-services:dev /app/workers/dist/index.js
@@ -151,6 +162,7 @@ kubectl -n cropautonomy rollout undo deployment/portal
 kubectl -n cropautonomy rollout undo deployment/field
 kubectl -n cropautonomy rollout undo deployment/api
 kubectl -n cropautonomy rollout undo deployment/workers
+kubectl -n cropautonomy rollout undo deployment/vision
 ```
 
 Database rollback: Supabase provides automated backups. SQL migrations in

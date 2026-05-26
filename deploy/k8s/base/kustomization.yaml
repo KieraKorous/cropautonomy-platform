@@ -12,6 +12,7 @@ resources:
   - field-deployment.yaml
   - api-deployment.yaml
   - workers-deployment.yaml
+  - vision-deployment.yaml
   - ingress.yaml
 
 # Container-level securityContext additions to satisfy Pod Security Standards

@@ -1,0 +1,88 @@
+# services/vision — Python + FastAPI inference service.
+#
+# Cluster-internal only. Reached by the workers deployment at http://vision
+# (Service name resolves via cluster DNS). No ingress; do not expose externally.
+#
+# Resources sized for the v0 PlantNet-backed deployment: outbound HTTP to
+# PlantNet plus image decode in Python, no model in process. When we host our
+# own model in-process, bump resources and consider a GPU node pool by adding
+# nodeSelector: { pool: gpu } and the matching tolerations.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vision
+  namespace: cropautonomy
+  labels:
+    app.kubernetes.io/name: vision
+    app.kubernetes.io/part-of: cropautonomy
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: vision }
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vision
+    spec:
+      serviceAccountName: cropautonomy
+      nodeSelector: { pool: app }
+      tolerations:
+        - key: pool
+          value: app
+          effect: NoSchedule
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: vision
+          image: us-west1-docker.pkg.dev/agconn/cropautonomy/vision:latest
+          ports:
+            - containerPort: 8080
+              name: http
+          # Vision needs only its own envs (PlantNet creds, server tuning).
+          # It deliberately does NOT mount the shared cropautonomy-env secret —
+          # service should not see Supabase / Clerk / Resend keys it has no
+          # reason to hold.
+          env:
+            - name: VISION_HOST
+              value: "0.0.0.0"
+            - name: VISION_PORT
+              value: "8080"
+            - name: VISION_LOG_LEVEL
+              value: "info"
+            - name: PLANTNET_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: cropautonomy-vision-env
+                  key: PLANTNET_API_KEY
+                  optional: true
+          resources:
+            requests: { cpu: 50m, memory: 256Mi }
+            limits: { cpu: 500m, memory: 1Gi }
+          readinessProbe:
+            httpGet: { path: /v1/health, port: http }
+            initialDelaySeconds: 3
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet: { path: /v1/health, port: http }
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vision
+  namespace: cropautonomy
+spec:
+  selector: { app.kubernetes.io/name: vision }
+  ports:
+    - port: 80
+      targetPort: http
+      name: http
+  type: ClusterIP

@@ -8,6 +8,7 @@ on:
             - "apps/field-web/**"
             - "services/api/**"
             - "services/workers/**"
+            - "services/vision/**"
             - "services/Dockerfile"
             - "packages/**"
             - "deploy/k8s/**"
@@ -59,6 +60,12 @@ jobs:
                           dockerfile: services/Dockerfile,
                           image: services,
                       }
+                    - {
+                          name: vision,
+                          dockerfile: services/vision/Dockerfile,
+                          image: vision,
+                          context: services/vision,
+                      }
         steps:
             - uses: actions/checkout@v4
 
@@ -79,7 +86,10 @@ jobs:
 
             - uses: docker/build-push-action@v6
               with:
-                  context: .
+                  # Per-target context override (vision builds from services/vision/
+                  # because its Dockerfile uses repo-root-agnostic relative paths).
+                  # Falls back to repo root for everything else.
+                  context: ${{ matrix.target.context || '.' }}
                   file: ${{ matrix.target.dockerfile }}
                   push: true
                   tags: ${{ env.REGISTRY }}/${{ env.AR_PATH }}/${{ matrix.target.image }}:${{ env.TAG }}
@@ -173,13 +183,27 @@ jobs:
                     --from-literal=DATABASE_URL="$DATABASE_URL" \
                     --dry-run=client -o yaml | kubectl apply -f -
 
+            - name: Apply vision Secret (cropautonomy-vision-env)
+              # Separate Secret so the vision pod doesn't mount Supabase /
+              # Clerk / Resend / DB creds it has no reason to hold. Optional:
+              # if PLANTNET_API_KEY is unset at deploy time, the secret applies
+              # with an empty value and the vision pod returns 503 on
+              # /v1/inference until the secret is updated.
+              env:
+                  PLANTNET_API_KEY: ${{ secrets.PLANTNET_API_KEY }}
+              run: |
+                  set -euo pipefail
+                  kubectl -n cropautonomy create secret generic cropautonomy-vision-env \
+                    --from-literal=PLANTNET_API_KEY="${PLANTNET_API_KEY:-}" \
+                    --dry-run=client -o yaml | kubectl apply -f -
+
             - name: Pin image tags via kustomize
               working-directory: deploy/k8s/overlays/prod
               run: |
                   set -euo pipefail
                   AR_BASE="${{ env.REGISTRY }}/${{ env.AR_PATH }}"
                   TAG=${{ env.TAG }}
-                  for img in portal field services; do
+                  for img in portal field services vision; do
                     kustomize edit set image ${AR_BASE}/${img}=${AR_BASE}/${img}:${TAG}
                   done
 
@@ -190,3 +214,4 @@ jobs:
                   kubectl -n cropautonomy rollout status deployment/field --timeout=10m
                   kubectl -n cropautonomy rollout status deployment/api --timeout=10m
                   kubectl -n cropautonomy rollout status deployment/workers --timeout=5m
+                  kubectl -n cropautonomy rollout status deployment/vision --timeout=5m

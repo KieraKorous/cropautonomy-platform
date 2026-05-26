@@ -24,11 +24,13 @@ All internal packages are referenced as `@gaia/*` with `workspace:*`.
 
 ```powershell
 pnpm install                                  # bootstrap
-pnpm dev                                      # run cropautonomy + gaiabots + portal in parallel
+pnpm dev                                      # cropautonomy + gaiabots + portal + api in parallel
 pnpm dev:cropautonomy                         # cropautonomy-web only (localhost:3000)
 pnpm dev:gaiabots                             # gaiabots-web only     (localhost:3001)
 pnpm dev:portal                               # portal-web only       (app.lvh.me:3002)
-pnpm --filter @gaia/field-web dev             # field-web (field.lvh.me:5173) — not in `pnpm dev` because it needs different env + the portal running for SSO
+pnpm dev:field                                # field-web only        (field.lvh.me:5173) — not in `pnpm dev` because it needs different env + the portal running for SSO
+pnpm dev:api                                  # services/api          (localhost:8080)
+pnpm dev:workers                              # services/workers      (pg-boss consumer; needs DATABASE_URL + SUPABASE_*)
 pnpm build                                    # pnpm -r build
 pnpm typecheck                                # pnpm -r typecheck
 pnpm lint                                     # alias for typecheck — `lint` runs `tsc --noEmit` in each app

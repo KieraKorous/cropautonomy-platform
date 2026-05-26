@@ -23,17 +23,27 @@ No auth in v0 — the service is cluster-internal. Add a shared-secret header or
 
 ## Local development
 
-Requires Python 3.12+.
+Requires Python 3.12+. Verify with `python --version`; if it's older, use the `py` launcher: `py -3.12 -m venv .venv`.
 
 ```powershell
-cd services/vision
+cd services\vision
 python -m venv .venv
 .venv\Scripts\Activate.ps1
-pip install -e ".[dev]"
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev]"
 copy .env.example .env
 # fill in PLANTNET_API_KEY in .env
 
-uvicorn vision.main:app --reload --port 8080
+# Use `python -m uvicorn` rather than bare `uvicorn` — works even when the
+# venv's Scripts directory isn't on PATH (common cause of "uvicorn: term not
+# recognized" errors).
+python -m uvicorn vision.main:app --reload --port 8080
+```
+
+If `Activate.ps1` errors with execution-policy refusal, allow it for the current shell:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
 ```
 
 Health check:

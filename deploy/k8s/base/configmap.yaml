@@ -23,3 +23,8 @@ data:
 
   # Realtime publish proxy target — see packages/realtime/src/client.
   REALTIME_PUBLISH_URL: "https://app.cropautonomy.com/api/realtime/publish"
+
+  # Workers → vision. Cluster-internal DNS; same namespace, Service name
+  # is `vision`, port 80 maps to the container's 8080.
+  VISION_SERVICE_URL: "http://vision"
+  VISION_REQUEST_TIMEOUT_MS: "60000"
