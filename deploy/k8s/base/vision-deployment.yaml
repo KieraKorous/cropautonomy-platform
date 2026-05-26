@@ -3,10 +3,11 @@
 # Cluster-internal only. Reached by the workers deployment at http://vision
 # (Service name resolves via cluster DNS). No ingress; do not expose externally.
 #
-# Resources sized for the v0 PlantNet-backed deployment: outbound HTTP to
-# PlantNet plus image decode in Python, no model in process. When we host our
-# own model in-process, bump resources and consider a GPU node pool by adding
-# nodeSelector: { pool: gpu } and the matching tolerations.
+# Resources sized for the v1 default-plant@v2 pipeline: RT-DETR (r50vd via
+# transformers) in-process for detection + outbound HTTP to PlantNet for
+# classification. RT-DETR weights (~110MB) download on first request to the
+# HF_HOME volume; subsequent calls reuse the cached weights. Consider a GPU
+# node pool by adding nodeSelector: { pool: gpu } once we host larger models.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -54,15 +55,31 @@ spec:
               value: "8081"
             - name: VISION_LOG_LEVEL
               value: "info"
+            # HuggingFace cache. The container runs as UID 1001 with no home
+            # directory entry, so transformers' default ~/.cache/huggingface
+            # resolves to / and fails with PermissionError on first download.
+            # Point HF at the mounted emptyDir below — that's the only path
+            # the non-root user can write to.
+            - name: HF_HOME
+              value: "/cache/hf"
+            - name: TRANSFORMERS_CACHE
+              value: "/cache/hf"
             - name: PLANTNET_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: cropautonomy-vision-env
                   key: PLANTNET_API_KEY
                   optional: true
+          volumeMounts:
+            - name: hf-cache
+              mountPath: /cache/hf
+          # RT-DETR (~110MB weights) + torch + transformers needs more than
+          # the previous PlantNet-only sizing. Memory peaks during model load
+          # and image inference; 2.5Gi limit gives headroom without forcing
+          # a GPU node pool yet.
           resources:
-            requests: { cpu: 50m, memory: 256Mi }
-            limits: { cpu: 500m, memory: 1Gi }
+            requests: { cpu: 250m, memory: 1Gi }
+            limits: { cpu: 1500m, memory: 2500Mi }
           readinessProbe:
             httpGet: { path: /v1/health, port: http }
             initialDelaySeconds: 3
@@ -73,6 +90,13 @@ spec:
             initialDelaySeconds: 15
             periodSeconds: 30
             timeoutSeconds: 3
+      volumes:
+        # Per-pod scratch for HF weight downloads. Lost on pod restart; the
+        # ~110MB re-download on first request after a restart is acceptable
+        # in v0. Switch to a PVC if cold-start latency becomes a problem.
+        - name: hf-cache
+          emptyDir:
+            sizeLimit: 1Gi
 ---
 apiVersion: v1
 kind: Service

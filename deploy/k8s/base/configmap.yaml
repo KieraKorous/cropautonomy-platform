@@ -27,4 +27,7 @@ data:
   # Workers → vision. Cluster-internal DNS; same namespace, Service name
   # is `vision`, port 80 maps to the container's 8081.
   VISION_SERVICE_URL: "http://vision"
-  VISION_REQUEST_TIMEOUT_MS: "60000"
+  # 180s covers cold-start: the first inference after a vision pod restart
+  # downloads ~110MB of RT-DETR weights from HuggingFace and loads them into
+  # torch before running the request. Warm calls finish in <10s.
+  VISION_REQUEST_TIMEOUT_MS: "180000"
