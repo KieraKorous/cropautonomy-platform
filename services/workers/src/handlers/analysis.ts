@@ -1,20 +1,26 @@
 // scan.analysis.requested handler.
 //
-// Pipeline (matches docs/architecture/capture-pipeline.md § 4):
-//   1. Load capture + analysis_job + production model_version for the task.
-//   2. Transition job -> running, capture -> analysis_running; publish scan.started.
-//   3. Download the original from Supabase Storage.
-//   4. POST /v1/inference to services/vision.
-//   5. Write analysis_results rows (one per detection).
-//   6. Publish scan.detection events as results land; publish scan.completed at end.
-//   7. Update capture.inferred_species + inferred_crop_type_id from the top detection.
-//   8. Transition job -> succeeded, capture -> analyzed; stamp pipeline_version.
+// Pipeline (matches docs/architecture/capture-pipeline.md § 4 and the
+// pipeline architecture memory project-pipeline-architecture):
+//   1. Load capture + analysis_job.
+//   2. Resolve the production pipeline for the requested task, expand to
+//      a StageSpec list joined against model_versions.
+//   3. Transition job -> running with pipeline_id + pipeline_version stamped;
+//      capture -> analysis_running; publish scan.started.
+//   4. Download the original from Supabase Storage.
+//   5. POST /v1/inference to services/vision with the full pipeline spec.
+//   6. Write analysis_results rows (one per detection) including provenance.
+//   7. Publish scan.detection events as results land; publish scan.completed
+//      at end.
+//   8. Update capture.inferred_species from the top detection.
+//   9. Transition job -> succeeded with per-stage reports in metadata,
+//      capture -> analyzed.
 //
 // Failure semantics:
 //   - VisionNotConfiguredError or VisionUpstreamError -> mark job failed but
 //     retryable; pg-boss will retry per its retry policy.
-//   - VisionBadRequestError, schema errors, missing storage objects -> failed,
-//     not retryable (logic bug; needs human attention).
+//   - VisionBadRequestError, schema errors, missing storage objects,
+//     no-production-pipeline -> failed, not retryable.
 //   - Realtime publish failures are logged but do not fail the job — the
 //     durable record is the DB rows, the realtime events are live feedback.
 
@@ -31,15 +37,12 @@ import {
   VisionClient,
   VisionNotConfiguredError,
   VisionUpstreamError,
-  type VisionDetection
+  type StageRole,
+  type VisionDetection,
+  type VisionPipelineSpec,
+  type VisionStageReport,
+  type VisionStageSpec
 } from "../lib/vision-client.js";
-
-// The generated Database type narrows table writes to `never` until
-// `pnpm --filter @gaia/db types:generate` runs against a live stack.
-// Same workaround as services/api/src/lib/db.ts.
-function getDb(): SupabaseClient {
-  return getServerSupabase() as unknown as SupabaseClient;
-}
 
 interface CaptureRow {
   id: string;
@@ -57,12 +60,32 @@ interface AnalysisJobRow {
   status: string;
 }
 
-interface ModelVersionRow {
+interface PipelineRow {
   id: string;
   name: string;
   version: string;
   task: string;
   status: string;
+}
+
+interface PipelineStageRow {
+  id: string;
+  stage_order: number;
+  role: StageRole;
+  config: Record<string, unknown> | null;
+  enabled: boolean;
+  required: boolean;
+  model_version: {
+    name: string;
+    version: string;
+  };
+}
+
+// The generated Database type narrows table writes to `never` until
+// `pnpm --filter @gaia/db types:generate` runs against a live stack.
+// Same workaround as services/api/src/lib/db.ts.
+function getDb(): SupabaseClient {
+  return getServerSupabase() as unknown as SupabaseClient;
 }
 
 export function makeAnalysisHandler(config: WorkerConfig) {
@@ -74,19 +97,18 @@ export function makeAnalysisHandler(config: WorkerConfig) {
   return async function handleAnalysisJob(jobs: PgBoss.Job<ScanAnalysisRequested>[]) {
     for (const job of jobs) {
       const payload = scanAnalysisRequestedSchema.parse(job.data);
-      await runOne(payload, vision, config);
+      await runOne(payload, vision);
     }
   };
 }
 
 async function runOne(
   payload: ScanAnalysisRequested,
-  vision: VisionClient,
-  config: WorkerConfig
+  vision: VisionClient
 ): Promise<void> {
   const supabase = getDb();
 
-  // 1. Load capture, analysis_job, and chosen model_version.
+  // 1. Load capture + analysis_job.
   const { data: captureData, error: captureErr } = await supabase
     .from("captures")
     .select("id, org_id, storage_bucket, storage_path, mime_type, status")
@@ -106,8 +128,8 @@ async function runOne(
   const analysisJob = jobData as unknown as AnalysisJobRow;
 
   if (analysisJob.status !== "queued") {
-    // Idempotency: someone else already picked this up (or it already ran).
-    // Log + skip rather than double-process.
+    // Idempotency: someone else already picked this up. Skip rather than
+    // double-process.
     // eslint-disable-next-line no-console
     console.warn(
       `analysis_job ${analysisJob.id} status is '${analysisJob.status}', skipping`
@@ -115,28 +137,48 @@ async function runOne(
     return;
   }
 
-  const model = await resolveModel(payload, supabase);
-  if (!model) {
+  // 2. Resolve the production pipeline for this task.
+  const pipeline = await resolvePipeline(payload, supabase);
+  if (!pipeline) {
     await failJob(
+      supabase,
       analysisJob.id,
       capture.id,
-      `no production model_version for task '${payload.task}'`,
-      "no_model_available",
+      `no production pipeline for task '${payload.task}'`,
+      "no_pipeline_available",
+      false
+    );
+    return;
+  }
+  const stages = await loadStages(pipeline.row.id, supabase);
+  if (stages.length === 0) {
+    await failJob(
+      supabase,
+      analysisJob.id,
+      capture.id,
+      `pipeline ${pipeline.row.name}@${pipeline.row.version} has no stages`,
+      "pipeline_empty",
       false
     );
     return;
   }
 
-  const pipelineVersion = `${model.name}@${model.version}`;
+  const pipelineSpec: VisionPipelineSpec = {
+    name: pipeline.row.name,
+    version: pipeline.row.version,
+    stages: stages.map(toStageSpec)
+  };
+  const pipelineKey = `${pipeline.row.name}@${pipeline.row.version}`;
 
-  // 2. Mark running + publish scan.started.
+  // 3. Mark running + publish scan.started.
   const nowIso = new Date().toISOString();
   const { error: jobStartErr } = await supabase
     .from("analysis_jobs")
     .update({
       status: "running",
       started_at: nowIso,
-      pipeline_version: pipelineVersion
+      pipeline_id: pipeline.row.id,
+      pipeline_version: pipelineKey
     })
     .eq("id", analysisJob.id);
   if (jobStartErr) throw jobStartErr;
@@ -157,7 +199,7 @@ async function runOne(
     }
   });
 
-  // 3. Download the original from Storage.
+  // 4. Download the original from Storage.
   let imageBytes: Uint8Array;
   try {
     imageBytes = await downloadCaptureBinary(
@@ -168,6 +210,7 @@ async function runOne(
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     await failJob(
+      supabase,
       analysisJob.id,
       capture.id,
       `storage download failed: ${reason}`,
@@ -178,16 +221,14 @@ async function runOne(
     return;
   }
 
-  // 4. Call services/vision.
+  // 5. Call services/vision with the resolved pipeline.
   let inference;
   try {
     inference = await vision.infer(
       {
         captureId: capture.id,
-        modelName: model.name,
-        modelVersion: model.version,
         task: payload.task,
-        maxResults: 10
+        pipeline: pipelineSpec
       },
       { bytes: imageBytes, mimeType: capture.mime_type }
     );
@@ -203,41 +244,38 @@ async function runOne(
           : err instanceof VisionBadRequestError
             ? "vision_bad_request"
             : "vision_unknown_error";
-    await failJob(analysisJob.id, capture.id, reason, code, retryable);
+    await failJob(supabase, analysisJob.id, capture.id, reason, code, retryable);
     await safePublishFailure(capture.org_id, analysisJob.id, reason, retryable);
     if (retryable) throw err; // let pg-boss retry
     return;
   }
 
-  // 5. Write analysis_results rows.
+  // 6. Write analysis_results rows — one per detection, with provenance.
   const resultRows = inference.detections.map((d: VisionDetection) => ({
     org_id: capture.org_id,
     analysis_job_id: analysisJob.id,
     capture_id: capture.id,
-    category: d.category,
+    category: d.category ?? "unknown",
     subcategory: d.subcategory,
     confidence: d.confidence,
     bounding_box: d.bounding_box,
-    payload: d.payload
+    payload: d.payload,
+    provenance: d.provenance
   }));
 
-  let insertedResults: Array<{ id: string }> = [];
+  let insertedResults: Array<{ id: string; category: string; confidence: number }> = [];
   if (resultRows.length > 0) {
     const { data: inserted, error: resultsErr } = await supabase
       .from("analysis_results")
       .insert(resultRows)
-      .select("id, category, confidence, bounding_box");
+      .select("id, category, confidence");
     if (resultsErr) throw resultsErr;
-    insertedResults = (inserted ?? []) as Array<{ id: string }>;
+    insertedResults =
+      (inserted as Array<{ id: string; category: string; confidence: number }>) ?? [];
   }
 
-  // 6. Publish a scan.detection event per result (live feedback).
-  for (let i = 0; i < insertedResults.length; i++) {
-    const result = insertedResults[i] as {
-      id: string;
-      category: string;
-      confidence: number;
-    };
+  // 7. Publish a scan.detection event per result.
+  for (const result of insertedResults) {
     await safePublish(channels.scanDetection(capture.org_id, analysisJob.id), {
       type: "scan.detection",
       version: 1,
@@ -250,33 +288,34 @@ async function runOne(
     });
   }
 
-  // 7. Stamp capture-level inferred classification from the top detection.
+  // 8. Stamp capture-level inferred classification from the top detection.
   if (inference.detections.length > 0) {
     const top = inference.detections.reduce((best, current) =>
       current.confidence > best.confidence ? current : best
     );
-    await supabase
-      .from("captures")
-      .update({ inferred_species: top.category })
-      .eq("id", capture.id);
+    if (top.category) {
+      await supabase
+        .from("captures")
+        .update({ inferred_species: top.category })
+        .eq("id", capture.id);
+    }
   }
 
-  // 8. Mark complete and publish scan.completed.
+  // 9. Mark complete; record per-stage telemetry in analysis_jobs.metadata.
   const completedIso = new Date().toISOString();
   await supabase
     .from("analysis_jobs")
     .update({
       status: "succeeded",
       completed_at: completedIso,
-      pipeline_version: pipelineVersion,
-      metadata: { provider: inference.provider_metadata }
+      metadata: {
+        stage_reports: inference.stage_reports.map(toReportSummary),
+        total_duration_ms: inference.duration_ms
+      }
     })
     .eq("id", analysisJob.id);
 
-  await supabase
-    .from("captures")
-    .update({ status: "analyzed" })
-    .eq("id", capture.id);
+  await supabase.from("captures").update({ status: "analyzed" }).eq("id", capture.id);
 
   await safePublish(channels.scanProgress(capture.org_id, analysisJob.id), {
     type: "scan.completed",
@@ -290,35 +329,37 @@ async function runOne(
   });
 }
 
-async function resolveModel(
+async function resolvePipeline(
   payload: ScanAnalysisRequested,
   supabase: SupabaseClient
-): Promise<ModelVersionRow | null> {
-  if (payload.modelName && payload.modelVersion) {
+): Promise<{ row: PipelineRow } | null> {
+  // Explicit override: caller named a specific pipeline.
+  if (payload.pipelineName && payload.pipelineVersion) {
     const { data, error } = await supabase
-      .from("model_versions")
+      .from("pipelines")
       .select("id, name, version, task, status")
-      .eq("name", payload.modelName)
-      .eq("version", payload.modelVersion)
+      .eq("name", payload.pipelineName)
+      .eq("version", payload.pipelineVersion)
       .maybeSingle();
     if (error) throw error;
-    return (data as unknown as ModelVersionRow) ?? null;
+    if (!data) return null;
+    return { row: data as unknown as PipelineRow };
   }
 
-  // Pick the production model for the task. If there's no production yet
-  // (initial v0 state), fall back to the highest-status shadow model so the
-  // pipeline runs end-to-end before promotion happens.
+  // Default: production pipeline for this task.
   const { data: prod, error: prodErr } = await supabase
-    .from("model_versions")
+    .from("pipelines")
     .select("id, name, version, task, status")
     .eq("task", payload.task)
     .eq("status", "production")
     .maybeSingle();
   if (prodErr) throw prodErr;
-  if (prod) return prod as unknown as ModelVersionRow;
+  if (prod) return { row: prod as unknown as PipelineRow };
 
+  // Fallback: most recent shadow pipeline. Useful during early v0 before
+  // anything has been promoted.
   const { data: shadow, error: shadowErr } = await supabase
-    .from("model_versions")
+    .from("pipelines")
     .select("id, name, version, task, status")
     .eq("task", payload.task)
     .eq("status", "shadow")
@@ -326,7 +367,44 @@ async function resolveModel(
     .limit(1)
     .maybeSingle();
   if (shadowErr) throw shadowErr;
-  return (shadow as unknown as ModelVersionRow) ?? null;
+  return shadow ? { row: shadow as unknown as PipelineRow } : null;
+}
+
+async function loadStages(
+  pipelineId: string,
+  supabase: SupabaseClient
+): Promise<PipelineStageRow[]> {
+  const { data, error } = await supabase
+    .from("pipeline_stages")
+    .select(
+      "id, stage_order, role, config, enabled, required, model_version:model_versions ( name, version )"
+    )
+    .eq("pipeline_id", pipelineId)
+    .order("stage_order", { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as unknown as PipelineStageRow[];
+}
+
+function toStageSpec(row: PipelineStageRow): VisionStageSpec {
+  return {
+    role: row.role,
+    model_name: row.model_version.name,
+    model_version: row.model_version.version,
+    config: (row.config ?? {}) as Record<string, unknown>,
+    enabled: row.enabled,
+    required: row.required
+  };
+}
+
+function toReportSummary(report: VisionStageReport) {
+  return {
+    role: report.role,
+    model: `${report.model_name}@${report.model_version}`,
+    skipped: report.skipped,
+    skip_reason: report.skip_reason,
+    duration_ms: report.duration_ms,
+    output_metadata: report.output_metadata
+  };
 }
 
 async function downloadCaptureBinary(
@@ -342,16 +420,14 @@ async function downloadCaptureBinary(
 }
 
 async function failJob(
+  supabase: SupabaseClient,
   jobId: string,
   captureId: string,
   message: string,
   code: string,
   retryable: boolean
 ): Promise<void> {
-  const supabase = getDb();
   const now = new Date().toISOString();
-  // Retryable failures stay 'running' so pg-boss retries don't see a terminal
-  // state; non-retryable failures become 'failed' with the error stamped.
   if (retryable) {
     await supabase
       .from("analysis_jobs")

@@ -121,9 +121,9 @@ pnpm dev:api
 pnpm dev:field
 ```
 
-Capture → `POST /v1/captures` (reserve) → direct upload to Supabase Storage → `POST /v1/captures/{id}/finalize` (enqueues `scan.analysis.requested`) → worker pulls job → POSTs image to vision `/v1/inference` → writes `analysis_results` rows → publishes `scan.detection` / `scan.completed` events on `org.{orgId}.scan.{scanId}.progress`.
+Capture → `POST /v1/captures` (reserve) → direct upload to Supabase Storage → `POST /v1/captures/{id}/finalize` (enqueues `scan.analysis.requested`) → worker resolves the production pipeline from `public.pipelines` + `public.pipeline_stages`, downloads the image, POSTs `{pipeline_spec, image}` to vision `/v1/inference` → vision executes each stage in order (detection / classification / refinement / filter) and returns detections with per-stage provenance → worker writes `analysis_results` rows (each with `provenance` recording which stage produced bbox vs class label) → publishes `scan.detection` / `scan.completed` events on `org.{orgId}.scan.{scanId}.progress`.
 
-Spec: [`docs/architecture/capture-pipeline.md`](docs/architecture/capture-pipeline.md). ML strategy: [`docs/architecture/architecture-overview.md`](docs/architecture/architecture-overview.md).
+Inference is **stage-composed and DB-defined**. Vision is a stateless executor; pipelines (`default-plant@v1` at v0, single PlantNet classification stage) are rows in `pipelines` + `pipeline_stages`. Swapping PlantNet for our own model later is a row update, not a code change. See [`services/vision/README.md`](services/vision/README.md) for the architecture and [`docs/architecture/capture-pipeline.md`](docs/architecture/capture-pipeline.md) for the full capture → analysis spec.
 
 ## Deployment
 
@@ -143,3 +143,16 @@ Marketing apps (`cropautonomy.com`, `gaiabots.ai`) stay on Vercel and are not pa
 - **Field Capture PWA:** [`apps/field-web/README.md`](apps/field-web/README.md)
 
 When you make decisions that affect repo structure, env vars, API boundaries, schema, auth, deployment, design tokens, brand messaging, device taxonomy, or background jobs — update the corresponding doc under [`docs/`](docs/) (this is enforced by convention, see [`CLAUDE.md`](CLAUDE.md)).
+
+## License Scope
+
+| Artifact | License |
+|---|---|
+| **Source code** (this repository) | **Apache 2.0** — see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE) |
+| **Training data** (captures, annotations, derived training_corpus) | **Proprietary** — tenant-owned raw; platform-owned anonymized derivatives gated by `organizations.training_corpus_opt_in` |
+| **Trained model weights** produced by this platform | **Proprietary** |
+| **Third-party model weights** (PlantNet API, RT-DETR pretrained checkpoints, etc.) | Each per their own license — see [`NOTICE`](NOTICE) |
+| **Brand assets** (logos, wordmark, marketing copy, GAIA device names) | **All rights reserved** |
+| **Documentation** in [`docs/`](docs/) | All rights reserved (likely CC-BY-4.0 later) |
+
+**ML Dependency Policy.** Every model, framework, and pretrained checkpoint on the inference or training path must be **Apache 2.0 / MIT / BSD / HPND**, no exceptions. AGPL (Ultralytics YOLOv8/v11), GPL, source-available-but-restricted, and "research-only" licenses are **prohibited for core ML**. The full policy with rationale, allowlist, and prohibited list lives in [`docs/dependency-policy.md`](docs/dependency-policy.md) — read it before adding any new ML dep.

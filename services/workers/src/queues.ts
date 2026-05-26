@@ -16,10 +16,10 @@ export const scanAnalysisRequestedSchema = z.object({
   analysisJobId: z.string().uuid(),
   orgId: z.string().uuid(),
 
-  // Optional explicit model override. When omitted, the handler picks the
-  // production model for the task from model_versions.
-  modelName: z.string().optional(),
-  modelVersion: z.string().optional(),
+  // Optional explicit pipeline override. When omitted, the handler picks the
+  // current production pipeline for the task from public.pipelines.
+  pipelineName: z.string().optional(),
+  pipelineVersion: z.string().optional(),
   task: z
     .enum([
       "plant_classification",

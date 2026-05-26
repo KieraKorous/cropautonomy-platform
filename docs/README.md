@@ -45,6 +45,15 @@ Those landing pages are only the starting point. The documentation in this folde
 - [CropAutonomy Brand Brief](./brand/cropautonomy-brand-brief.md)
 - [GaiaBots Brand Brief](./brand/gaiabots-brand-brief.md)
 
+## Decision Records
+
+Point-in-time records of *why* we picked a non-obvious path. See [`decisions/`](./decisions/README.md) for the format and index.
+
+- [0001 — Build for the system, not the MVP](./decisions/0001-build-for-the-system.md)
+- [0002 — GKE co-tenancy in `agconn-prod` for v0](./decisions/0002-gke-cotenancy-v0.md)
+- [0003 — ML pipeline strategy for the August 2026 prototype](./decisions/0003-ml-phase2-strategy.md)
+- [0004 — Portal design extends the landing register](./decisions/0004-portal-design-register.md)
+
 ## Documentation Principles
 
 - Keep docs future-facing, not limited to the current landing pages.

@@ -1,38 +1,80 @@
-// HTTP client for services/vision. Multipart POST of (request JSON + image blob)
-// per the contract in services/vision/src/vision/main.py.
+// HTTP client for services/vision.
 //
-// Errors are typed so the analysis handler can decide retry vs fail:
-//   VisionNotConfiguredError — 503 from vision (e.g. PlantNet key missing).
+// Vision is a stateless pipeline executor: this client sends the resolved
+// pipeline spec (list of stages with their model + config) inline alongside
+// the image bytes. The worker is responsible for looking up the pipeline
+// from public.pipelines / pipeline_stages before calling this.
+//
+// Error taxonomy maps vision's HTTP status codes to typed JS errors so the
+// analysis handler can decide retry vs fail:
+//   VisionNotConfiguredError — 503 from vision (a required stage's creds missing).
 //     Retryable: yes, once config is fixed.
-//   VisionUpstreamError      — 502 from vision (provider failed).
-//     Retryable: yes, transient.
-//   VisionBadRequestError    — 4xx from vision other than 503.
-//     Retryable: no — the payload itself is wrong.
+//   VisionUpstreamError      — 502 from vision (a stage failed transiently).
+//     Retryable: yes.
+//   VisionBadRequestError    — 4xx other than 503 (bad payload, unknown stage).
+//     Retryable: no — needs human attention.
+
+export type StageRole =
+  | "detection"
+  | "classification"
+  | "refinement"
+  | "filter";
+
+export interface VisionStageSpec {
+  role: StageRole;
+  model_name: string;
+  model_version: string;
+  config: Record<string, unknown>;
+  enabled: boolean;
+  required: boolean;
+}
+
+export interface VisionPipelineSpec {
+  name: string;
+  version: string;
+  stages: VisionStageSpec[];
+}
 
 export interface VisionInferenceRequest {
   captureId: string;
-  modelName: string;
-  modelVersion: string;
   task: string;
-  maxResults?: number;
+  pipeline: VisionPipelineSpec;
+}
+
+export interface VisionBoundingBox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
 export interface VisionDetection {
-  category: string;
+  category: string | null;
   subcategory: string | null;
   confidence: number;
-  bounding_box: { x: number; y: number; w: number; h: number } | null;
+  bounding_box: VisionBoundingBox | null;
+  provenance: Record<string, string>;
   payload: Record<string, unknown>;
+}
+
+export interface VisionStageReport {
+  role: StageRole;
+  model_name: string;
+  model_version: string;
+  skipped: boolean;
+  skip_reason: string | null;
+  duration_ms: number;
+  output_metadata: Record<string, unknown>;
 }
 
 export interface VisionInferenceResponse {
   capture_id: string;
-  model_name: string;
-  model_version: string;
+  pipeline_name: string;
+  pipeline_version: string;
   task: string;
   detections: VisionDetection[];
   duration_ms: number;
-  provider_metadata: Record<string, unknown>;
+  stage_reports: VisionStageReport[];
 }
 
 export class VisionNotConfiguredError extends Error {}
@@ -56,10 +98,8 @@ export class VisionClient {
       "request",
       JSON.stringify({
         capture_id: request.captureId,
-        model_name: request.modelName,
-        model_version: request.modelVersion,
         task: request.task,
-        max_results: request.maxResults ?? 10
+        pipeline: request.pipeline
       })
     );
     body.append(

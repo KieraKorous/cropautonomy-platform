@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     plantnet_project: str = "all"
     plantnet_default_organs: str = "auto"
 
+    # RT-DETR detection stage.
+    rtdetr_model_id: str = "PekingU/rtdetr_r50vd_coco_o365"
+    rtdetr_device: str = "cpu"  # "cpu" | "cuda" (auto-falls-back to cpu if unavailable)
+
     @property
     def plantnet_configured(self) -> bool:
         return bool(self.plantnet_api_key)

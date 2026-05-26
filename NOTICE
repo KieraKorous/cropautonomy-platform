@@ -1,0 +1,53 @@
+CropAutonomy Platform
+Copyright 2026 Brandon Korous
+
+This product includes software developed by third parties listed below. Each
+component is used under its own license; this NOTICE file is informational
+attribution as required by Apache License 2.0 Section 4(d).
+
+Only components that are themselves part of the inference/training/data path
+are listed here. Standard npm / PyPI dependencies (TypeScript, Fastify,
+React, etc.) follow their own LICENSE files in node_modules / site-packages.
+
+------------------------------------------------------------------------
+ML / inference components
+------------------------------------------------------------------------
+
+RT-DETR (Real-Time DEtection TRansformer)
+  Repository: https://github.com/lyuwenyu/RT-DETR
+  Pretrained checkpoints used: PekingU/rtdetr_r50vd_coco_o365 (Hugging Face)
+  License: Apache 2.0
+  Role: detection stage in services/vision
+
+Hugging Face Transformers
+  Repository: https://github.com/huggingface/transformers
+  License: Apache 2.0
+  Role: model loading + image preprocessing for RT-DETR
+
+PyTorch
+  Repository: https://github.com/pytorch/pytorch
+  License: BSD-style
+  Role: ML inference runtime
+
+Pillow (PIL fork)
+  Repository: https://github.com/python-pillow/Pillow
+  License: HPND (permissive)
+  Role: image decoding in services/vision
+
+PlantNet API
+  Service: https://my.plantnet.org
+  Terms: PlantNet API Terms of Service (separate from Apache 2.0)
+  Role: classification stage in services/vision; v0 seed source for
+        species labels. Output is suggestion, not ground truth (humans
+        confirm/correct in the portal labeling UI).
+
+------------------------------------------------------------------------
+ML / inference components explicitly NOT used (license incompatibility)
+------------------------------------------------------------------------
+
+Ultralytics YOLOv8 / YOLO11
+  License: AGPL-3.0
+  Status: prohibited by docs/dependency-policy.md (incompatible with
+          Apache 2.0 release of this platform without paid commercial
+          license). Use RT-DETR (Apache 2.0) instead for detection
+          tasks. See docs/dependency-policy.md § ML Dependency Policy.

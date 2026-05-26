@@ -1,9 +1,15 @@
 """FastAPI app for services/vision.
 
-Contract:
-  GET  /v1/health       — liveness + which providers are configured
-  GET  /v1/models       — list registered providers (model_versions in registry)
-  POST /v1/inference    — multipart: 'request' (JSON InferenceRequest) + 'image' (binary)
+Pipeline-aware contract:
+  GET  /v1/health     — liveness + which stage implementations are configured
+  GET  /v1/stages     — list registered stage implementations (the things a
+                        pipeline_stages row can point at via model_name/version)
+  POST /v1/inference  — multipart: 'request' (JSON InferenceRequest carrying a
+                        full PipelineSpec) + 'image' (binary)
+
+Vision is a stateless executor. The worker resolves the production pipeline
+from the database and passes the full StageSpec list inline. Vision does NOT
+hold database credentials or cache pipeline definitions.
 
 The worker is the only intended caller. No auth in v0 (cluster-internal).
 Add a shared-secret header or mTLS before this is reachable outside the
@@ -14,7 +20,6 @@ from __future__ import annotations
 
 import json
 import logging
-import time
 from typing import Annotated
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -22,14 +27,14 @@ from pydantic import ValidationError
 
 from . import __version__
 from .config import get_settings
-from .providers import ProviderNotConfigured, get_registry
-from .providers.base import ProviderError
+from .pipeline import PipelineExecutor, StageNotRegisteredError
 from .schemas import (
     HealthResponse,
     InferenceRequest,
     InferenceResponse,
-    ModelDescriptor,
+    StageDescriptor,
 )
+from .stages import StageNotConfigured, StageError, get_registry
 
 logger = logging.getLogger(__name__)
 
@@ -44,29 +49,28 @@ app = FastAPI(
 @app.get("/v1/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
     registry = get_registry()
-    configured = [f"{p.name}@{p.version}" for p in registry.all() if p.configured]
-    return HealthResponse(status="ok", version=__version__, providers_configured=configured)
+    configured = [s.key for s in registry.all() if s.configured]
+    return HealthResponse(status="ok", version=__version__, stages_configured=configured)
 
 
-@app.get("/v1/models", response_model=list[ModelDescriptor])
-async def list_models() -> list[ModelDescriptor]:
+@app.get("/v1/stages", response_model=list[StageDescriptor])
+async def list_stages() -> list[StageDescriptor]:
     registry = get_registry()
     return [
-        ModelDescriptor(
-            name=p.name,
-            version=p.version,
-            task=p.task,
-            provider=type(p).__name__,
-            is_classification_only=p.is_classification_only,
-            configured=p.configured,
+        StageDescriptor(
+            name=s.name,
+            version=s.version,
+            role=s.role,
+            implementation=type(s).__name__,
+            configured=s.configured,
         )
-        for p in registry.all()
+        for s in registry.all()
     ]
 
 
 @app.post("/v1/inference", response_model=InferenceResponse)
 async def infer(
-    request: Annotated[str, Form(description="JSON-encoded InferenceRequest")],
+    request: Annotated[str, Form(description="JSON-encoded InferenceRequest with full PipelineSpec")],
     image: Annotated[UploadFile, File(description="The capture image to analyze")],
 ) -> InferenceResponse:
     settings = get_settings()
@@ -84,43 +88,27 @@ async def infer(
             status_code=413,
             detail=f"Image exceeds {settings.vision_max_image_bytes} bytes.",
         )
-
-    provider = get_registry().get(req.model_name, req.model_version)
-    if provider is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No provider registered for {req.model_name}@{req.model_version}.",
-        )
-    if provider.task != req.task:
+    if not req.pipeline.stages:
         raise HTTPException(
             status_code=400,
-            detail=(
-                f"Provider {req.model_name}@{req.model_version} serves task '{provider.task}', "
-                f"not '{req.task}'."
-            ),
+            detail="Pipeline must have at least one stage.",
         )
 
-    started = time.perf_counter()
+    executor = PipelineExecutor(get_registry())
     try:
-        detections, metadata = await provider.infer(
+        return await executor.execute(
+            capture_id=req.capture_id,
+            task=req.task,
             image_bytes=image_bytes,
             mime_type=image.content_type or "image/jpeg",
-            max_results=req.max_results,
+            pipeline=req.pipeline,
         )
-    except ProviderNotConfigured as exc:
+    except StageNotRegisteredError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except StageNotConfigured as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except ProviderError as exc:
-        logger.warning("provider error: %s", exc)
+    except StageError as exc:
+        logger.warning("stage error: %s", exc)
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-    duration_ms = int((time.perf_counter() - started) * 1000)
-
-    return InferenceResponse(
-        capture_id=req.capture_id,
-        model_name=provider.name,
-        model_version=provider.version,
-        task=provider.task,
-        detections=detections,
-        duration_ms=duration_ms,
-        provider_metadata=metadata,
-    )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
