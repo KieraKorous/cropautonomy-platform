@@ -15,12 +15,13 @@ dependencies = [
     # (~1.5GB total with CPU torch wheels) — first run downloads model weights
     # (~110MB) from Hugging Face Hub.
     #
-    # torch pinned to 2.11.x: 2.12.0 (released 2026-05-13) regressed
-    # torch._dynamo.package's CacheArtifactFactory.register — it asserts
-    # "Artifact of type=precompile already registered" at import time when
-    # transformers' flex_attention integration triggers `torch.compiler.disable`.
-    # No upstream issue filed yet; revisit after 2.12.x patches land.
-    "torch>=2.11,<2.12",
+    # torch pinned to 2.10.x: the CacheArtifactFactory precompile-registration
+    # assertion is present in BOTH torch 2.11.x and 2.12.0 (asserts at module
+    # import time, triggered by transformers' flex_attention integration
+    # calling `torch.compiler.disable`). 2.10.0 (released 2026-01-21) is the
+    # last known version before the precompile cache infrastructure regressed.
+    # No upstream issue filed yet; revisit when a patched 2.12.x or 2.13 ships.
+    "torch>=2.10,<2.11",
     "transformers>=4.46,<5.0",
     "pillow>=10.4,<12.0",
 ]
