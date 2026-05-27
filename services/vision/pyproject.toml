@@ -14,7 +14,13 @@ dependencies = [
     # see docs/dependency-policy.md before changing any of these. Heavy install
     # (~1.5GB total with CPU torch wheels) — first run downloads model weights
     # (~110MB) from Hugging Face Hub.
-    "torch>=2.4,<3.0",
+    #
+    # torch pinned to 2.11.x: 2.12.0 (released 2026-05-13) regressed
+    # torch._dynamo.package's CacheArtifactFactory.register — it asserts
+    # "Artifact of type=precompile already registered" at import time when
+    # transformers' flex_attention integration triggers `torch.compiler.disable`.
+    # No upstream issue filed yet; revisit after 2.12.x patches land.
+    "torch>=2.11,<2.12",
     "transformers>=4.46,<5.0",
     "pillow>=10.4,<12.0",
 ]
