@@ -14,7 +14,7 @@ dependencies = [
     # see docs/dependency-policy.md before changing any of these. Heavy install
     # (~1.5GB total with CPU torch wheels) — first run downloads model weights
     # (~110MB) from Hugging Face Hub.
-    #
+     #
     # torch pinned to 2.10.x: the CacheArtifactFactory precompile-registration
     # assertion is present in BOTH torch 2.11.x and 2.12.0 (asserts at module
     # import time, triggered by transformers' flex_attention integration
