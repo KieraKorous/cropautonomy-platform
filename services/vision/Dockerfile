@@ -30,12 +30,19 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1
 
-RUN groupadd --system gaia && useradd --system --gid gaia --home /app gaia
+# UID/GID must match the pod securityContext.runAsUser (1001). Without
+# an /etc/passwd entry for the runtime UID, huggingface_hub's
+# pwd.getpwuid(os.getuid()) call fails with "uid not found" at the
+# first transformers import that resolves cache directories.
+RUN groupadd --gid 1001 gaia && \
+    useradd --uid 1001 --gid gaia --home-dir /app --shell /usr/sbin/nologin gaia
 
 WORKDIR /app
 
 COPY --from=builder /wheels /wheels
-RUN pip install --no-index --find-links=/wheels gaia-vision && rm -rf /wheels
+RUN pip install --no-index --find-links=/wheels gaia-vision && \
+    rm -rf /wheels && \
+    chown -R gaia:gaia /app
 
 USER gaia
 
