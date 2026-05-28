@@ -40,6 +40,37 @@ from .base import Stage, StageError, StageNotConfigured, StageContext
 
 logger = logging.getLogger(__name__)
 
+_torch_cache_patched = False
+
+
+def _patch_torch_cache_registry() -> None:
+    """Make torch.compiler._cache.CacheArtifactFactory.register idempotent.
+
+    torch 2.10 has a duplicate internal registration of the "precompile"
+    artifact type. Unpatched, the assertion at register() fires at
+    transformers-import time: transformers/integrations/flex_attention.py
+    uses @torch.compiler.disable at class-definition time, which imports
+    torch._dynamo.package, which re-runs the @register decorator on a
+    type torch.compiler._cache already registered. Skipping the duplicate
+    matches torch's apparent intent.
+    """
+    global _torch_cache_patched
+    if _torch_cache_patched:
+        return
+    try:
+        from torch.compiler._cache import CacheArtifactFactory  # type: ignore[import-not-found]
+    except (ImportError, AttributeError):
+        return
+    orig = CacheArtifactFactory.register.__func__
+
+    def _idempotent(cls, artifact_cls):  # type: ignore[no-untyped-def]
+        if artifact_cls.type() in cls._artifact_types:
+            return artifact_cls
+        return orig(cls, artifact_cls)
+
+    CacheArtifactFactory.register = classmethod(_idempotent)
+    _torch_cache_patched = True
+
 DEFAULT_MODEL_ID = "PekingU/rtdetr_r50vd_coco_o365"
 DEFAULT_THRESHOLD = 0.3
 DEFAULT_MAX_DETECTIONS = 100
@@ -70,6 +101,7 @@ class RTDetrStage(Stage):
         """
         try:
             import torch  # type: ignore[import-not-found]
+            _patch_torch_cache_registry()
             from transformers import (  # type: ignore[import-not-found]
                 RTDetrForObjectDetection,
                 RTDetrImageProcessor,

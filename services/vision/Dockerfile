@@ -12,8 +12,15 @@ WORKDIR /build
 COPY pyproject.toml ./
 COPY src ./src
 
+# Pull torch from the PyTorch CPU wheel index (~200MB) instead of the
+# default PyPI wheel (~2.5GB cu128 CUDA build). Vision runs CPU-only;
+# device='cuda' would auto-fall-back anyway. Keep PyPI as the secondary
+# index so fastapi / transformers / pillow still resolve normally.
 RUN pip install --upgrade pip build && \
-    pip wheel --wheel-dir=/wheels .
+    pip wheel --wheel-dir=/wheels \
+        --index-url https://download.pytorch.org/whl/cpu \
+        --extra-index-url https://pypi.org/simple/ \
+        .
 
 
 FROM python:3.12-slim AS runtime
