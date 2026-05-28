@@ -429,13 +429,21 @@ async function failJob(
 ): Promise<void> {
   const now = new Date().toISOString();
   if (retryable) {
+    // Reset status back to 'queued' so the pg-boss retry actually runs.
+    // Without this reset, runOne()'s `status !== 'queued'` guard would
+    // skip every retry and the job wedges forever in 'running'.
     await supabase
       .from("analysis_jobs")
-      .update({ error: message, error_code: code })
+      .update({
+        status: "queued",
+        started_at: null,
+        error: message,
+        error_code: code
+      })
       .eq("id", jobId);
     await supabase
       .from("captures")
-      .update({ status_message: message })
+      .update({ status: "analysis_queued", status_message: message })
       .eq("id", captureId);
     return;
   }

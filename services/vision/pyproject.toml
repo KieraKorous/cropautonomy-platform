@@ -21,8 +21,15 @@ dependencies = [
     # calling `torch.compiler.disable`). 2.10.0 (released 2026-01-21) is the
     # last known version before the precompile cache infrastructure regressed.
     # No upstream issue filed yet; revisit when a patched 2.12.x or 2.13 ships.
+    #
+    # transformers pinned to <4.51: flex_attention.py was introduced in 4.51
+    # and uses @torch.compiler.disable(recursive=False) at class-definition
+    # time, triggering torch._dynamo initialization mid-import-chain. On
+    # torch 2.10.x this causes a double-registration assertion in
+    # torch/compiler/_cache.py ("Artifact of type=precompile already
+    # registered"). Revisit when the torch pin moves past 2.12.x.
     "torch>=2.10,<2.11",
-    "transformers>=4.46,<5.0",
+    "transformers>=4.46,<4.51",
     "pillow>=10.4,<12.0",
 ]
 
