@@ -5,12 +5,14 @@ import { auth } from "@clerk/nextjs/server";
 // the caller's Clerk session token. See apps/portal-web/.env.example § API base
 // and docs/architecture/api-architecture.md.
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
+// Trailing slash here would produce `//v1/...` and a route.not_found 404.
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080").replace(/\/+$/, "");
 
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
-    message: string
+    message: string,
+    public readonly code?: string
   ) {
     super(message);
     this.name = "ApiError";
@@ -32,14 +34,20 @@ async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   });
 
   if (!response.ok) {
+    // services/api wraps errors as { error: { code, message } }.
     let detail = response.statusText;
+    let code: string | undefined;
     try {
-      const body = (await response.json()) as { message?: string };
-      if (body?.message) detail = body.message;
+      const body = (await response.json()) as {
+        error?: { code?: string; message?: string };
+        message?: string;
+      };
+      detail = body?.error?.message ?? body?.message ?? detail;
+      code = body?.error?.code;
     } catch {
       // non-JSON error body — keep the status text
     }
-    throw new ApiError(response.status, detail);
+    throw new ApiError(response.status, detail, code);
   }
 
   return (await response.json()) as T;
