@@ -75,7 +75,7 @@ function ErrorState({ message }: { message: string }) {
       </span>
       <h2 className="text-base font-semibold text-neutral">{message}</h2>
       <p className="max-w-xl text-sm text-base-content/65">
-        Confirm <code className="rounded bg-base-content/[0.06] px-1.5 py-0.5 text-xs">NEXT_PUBLIC_API_URL</code>{" "}
+        Confirm <code className="rounded bg-base-content/[0.06] px-1.5 py-0.5 text-xs">NEXT_PUBLIC_API_BASE_URL</code>{" "}
         points at a running API and that you have an active organization.
       </p>
     </section>

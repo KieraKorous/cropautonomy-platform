@@ -5,8 +5,13 @@ import { auth } from "@clerk/nextjs/server";
 // the caller's Clerk session token. See apps/portal-web/.env.example § API base
 // and docs/architecture/api-architecture.md.
 
-// Trailing slash here would produce `//v1/...` and a route.not_found 404.
-const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080").replace(/\/+$/, "");
+// Name must match the build pipeline (deploy.yml + portal Dockerfile inline
+// NEXT_PUBLIC_API_BASE_URL at build time). Trailing slash would produce
+// `//v1/...` and a route.not_found 404, so strip it.
+const API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080").replace(
+  /\/+$/,
+  ""
+);
 
 export class ApiError extends Error {
   constructor(
