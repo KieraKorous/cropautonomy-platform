@@ -51,6 +51,34 @@ const finalizeSchema = z.object({
   thumbnailDataUrl: z.string().optional()
 });
 
+const listQuerySchema = z.object({
+  limit: z.coerce.number().int().positive().max(100).default(50),
+  offset: z.coerce.number().int().nonnegative().default(0)
+});
+
+// Statuses whose storage object exists and can be signed for viewing.
+const VIEWABLE_STATUSES = new Set([
+  "uploaded",
+  "analysis_queued",
+  "analysis_running",
+  "analyzed"
+]);
+
+interface CaptureListRow {
+  id: string;
+  status: string;
+  status_message: string | null;
+  media_type: string;
+  captured_at: string;
+  uploaded_at: string | null;
+  inferred_species: string | null;
+  thumbnail_path: string | null;
+  storage_path: string;
+  size_bytes: number | null;
+  field_id: string | null;
+  analysis_job_id: string | null;
+}
+
 const mimeToExt: Record<string, string> = {
   "image/jpeg": "jpg",
   "image/jpg": "jpg",
@@ -64,6 +92,80 @@ const mimeToExt: Record<string, string> = {
 const UUID_RE = /^[0-9a-f-]{36}$/i;
 
 const capturesRoutes: FastifyPluginAsync = async (app) => {
+  app.get(
+    "/v1/captures",
+    { preHandler: app.requireAuth("captures.read") },
+    async (request, _reply) => {
+      const caller = request.auth!;
+      const parsed = listQuerySchema.safeParse(request.query);
+      if (!parsed.success) {
+        throw badRequest("captures.invalid_query", "Invalid capture list query.", {
+          issues: parsed.error.issues
+        });
+      }
+      const { limit, offset } = parsed.data;
+      const supabase = getDb();
+
+      const { data, error } = await supabase
+        .from("captures")
+        .select(
+          "id, status, status_message, media_type, captured_at, uploaded_at, inferred_species, thumbnail_path, storage_path, size_bytes, field_id, analysis_job_id"
+        )
+        .eq("org_id", caller.orgId)
+        .order("captured_at", { ascending: false })
+        .range(offset, offset + limit - 1);
+      if (error) throw error;
+
+      const rows = (data ?? []) as CaptureListRow[];
+
+      // Batch-sign the viewable objects in one round-trip. Prefer the thumbnail
+      // when present; fall back to the original. Rows still pending upload have
+      // no real object yet and get a null imageUrl.
+      const pathByRow = new Map<string, string>();
+      for (const row of rows) {
+        if (!VIEWABLE_STATUSES.has(row.status)) continue;
+        const path = row.thumbnail_path ?? row.storage_path;
+        if (!path || path === "pending") continue;
+        pathByRow.set(row.id, path);
+      }
+
+      const signedByPath = new Map<string, string>();
+      const uniquePaths = [...new Set(pathByRow.values())];
+      if (uniquePaths.length > 0) {
+        const { data: signed, error: signErr } = await supabase.storage
+          .from(CAPTURES_BUCKET)
+          .createSignedUrls(uniquePaths, 60 * 60);
+        if (signErr) throw signErr;
+        for (const item of signed ?? []) {
+          if (item.signedUrl && !item.error && item.path) {
+            signedByPath.set(item.path, item.signedUrl);
+          }
+        }
+      }
+
+      return {
+        captures: rows.map((row) => {
+          const path = pathByRow.get(row.id);
+          return {
+            id: row.id,
+            status: row.status,
+            statusMessage: row.status_message,
+            mediaType: row.media_type,
+            capturedAt: row.captured_at,
+            uploadedAt: row.uploaded_at,
+            plantType: row.inferred_species,
+            imageUrl: path ? (signedByPath.get(path) ?? null) : null,
+            fieldId: row.field_id,
+            sizeBytes: row.size_bytes,
+            analysisJobId: row.analysis_job_id
+          };
+        }),
+        limit,
+        offset
+      };
+    }
+  );
+
   app.post(
     "/v1/captures",
     { preHandler: app.requireAuth("captures.create") },
