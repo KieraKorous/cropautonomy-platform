@@ -34,7 +34,57 @@ const patchSchema = z.discriminatedUnion("action", [
 
 const UUID_RE = /^[0-9a-f-]{36}$/i;
 
+// A session is "live" on the wall while it's starting, running, or paused —
+// anything but ended/error. The Live page seeds from this list, then keeps it
+// fresh via the org-wide active-sessions channel.
+const ACTIVE_STATUSES = ["starting", "live", "paused"] as const;
+
+interface LiveSessionRow {
+  id: string;
+  status: string;
+  started_at: string;
+  operator: { clerk_user_id: string; full_name: string | null; email: string } | null;
+  field: { name: string } | null;
+  farm: { name: string } | null;
+}
+
 const captureSessionsRoutes: FastifyPluginAsync = async (app) => {
+  // GET /v1/capture-sessions/live — org-scoped roster of in-flight sessions for
+  // the portal Live page. Each row is one camera (an operator's field session).
+  app.get(
+    "/v1/capture-sessions/live",
+    { preHandler: app.requireAuth("capture_sessions.read") },
+    async (request, _reply) => {
+      const caller = request.auth!;
+      const supabase = getDb();
+
+      const { data, error } = await supabase
+        .from("capture_sessions")
+        .select(
+          "id, status, started_at, operator:users(clerk_user_id, full_name, email), field:fields(name), farm:farms(name)"
+        )
+        .eq("org_id", caller.orgId)
+        .in("status", ACTIVE_STATUSES as unknown as string[])
+        .order("started_at", { ascending: false });
+      if (error) throw error;
+
+      const rows = (data ?? []) as unknown as LiveSessionRow[];
+
+      return {
+        orgId: caller.orgId,
+        sessions: rows.map((row) => ({
+          sessionId: row.id,
+          status: row.status,
+          operatorUserId: row.operator?.clerk_user_id ?? null,
+          operatorName: row.operator?.full_name ?? row.operator?.email ?? "Operator",
+          fieldName: row.field?.name ?? null,
+          farmName: row.farm?.name ?? null,
+          startedAt: row.started_at
+        }))
+      };
+    }
+  );
+
   app.post(
     "/v1/capture-sessions",
     { preHandler: app.requireAuth("capture_sessions.create") },
@@ -80,9 +130,9 @@ const captureSessionsRoutes: FastifyPluginAsync = async (app) => {
 
       const sessionId = (session as { id: string }).id;
 
-      await publish(channels.captureSessionState(caller.orgId, sessionId), {
-        type: "capture.session.started",
-        version: 1,
+      const startedEvent = {
+        type: "capture.session.started" as const,
+        version: 1 as const,
         emittedBy: caller.clerkUserId,
         payload: {
           sessionId,
@@ -95,7 +145,12 @@ const captureSessionsRoutes: FastifyPluginAsync = async (app) => {
           initialLocation: body.initialLocation ?? undefined,
           plannedDurationMinutes: body.plannedDurationMinutes
         }
-      });
+      };
+
+      // Per-session state channel (detail watchers) + org-wide active index
+      // (the Live page's camera roster sees the new session appear).
+      await publish(channels.captureSessionState(caller.orgId, sessionId), startedEvent);
+      await publish(channels.orgActiveSessions(caller.orgId), startedEvent);
 
       reply.status(201);
       return {
@@ -206,9 +261,9 @@ const captureSessionsRoutes: FastifyPluginAsync = async (app) => {
           .update({ status: "ended", ended_at: now })
           .eq("id", id);
         if (error) throw error;
-        await publish(channels.captureSessionState(caller.orgId, id), {
-          type: "capture.session.ended",
-          version: 1,
+        const endedEvent = {
+          type: "capture.session.ended" as const,
+          version: 1 as const,
           emittedBy: caller.clerkUserId,
           payload: {
             sessionId: id,
@@ -216,7 +271,10 @@ const captureSessionsRoutes: FastifyPluginAsync = async (app) => {
             totalCaptures: count ?? 0,
             reason: body.reason
           }
-        });
+        };
+        // State channel + org-wide active index (the Live page drops the tile).
+        await publish(channels.captureSessionState(caller.orgId, id), endedEvent);
+        await publish(channels.orgActiveSessions(caller.orgId), endedEvent);
       }
 
       return { sessionId: id, action: body.action };

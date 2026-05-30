@@ -98,3 +98,27 @@ export function listCaptures(
   const query = search.toString();
   return apiFetch<ListCapturesResponse>(`/v1/captures${query ? `?${query}` : ""}`);
 }
+
+// --- Live sessions --------------------------------------------------------
+
+export type LiveSessionStatus = "starting" | "live" | "paused";
+
+// One in-flight Field Capture session = one camera on the Live wall.
+export interface LiveSessionSummary {
+  sessionId: string;
+  status: LiveSessionStatus;
+  operatorUserId: string | null;
+  operatorName: string;
+  fieldName: string | null;
+  farmName: string | null;
+  startedAt: string;
+}
+
+export interface ListLiveSessionsResponse {
+  orgId: string;
+  sessions: LiveSessionSummary[];
+}
+
+export function listLiveSessions(): Promise<ListLiveSessionsResponse> {
+  return apiFetch<ListLiveSessionsResponse>("/v1/capture-sessions/live");
+}

@@ -15,6 +15,8 @@ import {
   type AppShellProps
 } from "@gaia/ui";
 
+import { RealtimeProvider } from "../realtime-provider";
+
 const navConfig: AppShellProps["navGroups"] = [
   {
     items: [
@@ -64,7 +66,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       }
       user={{ initials: "BK", name: "Brandon" }}
     >
-      {children}
+      <RealtimeProvider>{children}</RealtimeProvider>
     </AppShell>
   );
 }
