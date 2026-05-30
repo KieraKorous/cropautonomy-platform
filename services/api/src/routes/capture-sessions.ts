@@ -1,9 +1,27 @@
 import { getDb } from "../lib/db.js";
 import { channels } from "@gaia/realtime/channels";
 import { publish } from "@gaia/realtime/server";
-import type { FastifyPluginAsync } from "fastify";
+import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.js";
+
+// Realtime broadcasts are observational, not the source of truth — the DB row
+// is. A broker timeout/error must never fail a request whose write already
+// committed, so every publish from this route goes through here.
+async function publishBestEffort(
+  request: FastifyRequest,
+  channelName: string,
+  event: Parameters<typeof publish>[1]
+): Promise<void> {
+  try {
+    await publish(channelName, event);
+  } catch (err) {
+    request.log.warn(
+      { err, channel: channelName, type: event.type },
+      "realtime publish failed (non-fatal)"
+    );
+  }
+}
 
 const startSchema = z.object({
   farmId: z.string().uuid().nullable().optional(),
@@ -149,8 +167,19 @@ const captureSessionsRoutes: FastifyPluginAsync = async (app) => {
 
       // Per-session state channel (detail watchers) + org-wide active index
       // (the Live page's camera roster sees the new session appear).
-      await publish(channels.captureSessionState(caller.orgId, sessionId), startedEvent);
-      await publish(channels.orgActiveSessions(caller.orgId), startedEvent);
+      // Best-effort: the session row is already committed, so a realtime broker
+      // hiccup must not fail the request (the client would retry and create a
+      // duplicate session). Log and move on.
+      await publishBestEffort(
+        request,
+        channels.captureSessionState(caller.orgId, sessionId),
+        startedEvent
+      );
+      await publishBestEffort(
+        request,
+        channels.orgActiveSessions(caller.orgId),
+        startedEvent
+      );
 
       reply.status(201);
       return {
@@ -220,7 +249,7 @@ const captureSessionsRoutes: FastifyPluginAsync = async (app) => {
           .update({ status: "paused" })
           .eq("id", id);
         if (error) throw error;
-        await publish(channels.captureSessionState(caller.orgId, id), {
+        await publishBestEffort(request, channels.captureSessionState(caller.orgId, id), {
           type: "capture.session.paused",
           version: 1,
           emittedBy: caller.clerkUserId,
@@ -238,7 +267,7 @@ const captureSessionsRoutes: FastifyPluginAsync = async (app) => {
           .update({ status: "live" })
           .eq("id", id);
         if (error) throw error;
-        await publish(channels.captureSessionState(caller.orgId, id), {
+        await publishBestEffort(request, channels.captureSessionState(caller.orgId, id), {
           type: "capture.session.resumed",
           version: 1,
           emittedBy: caller.clerkUserId,
@@ -273,8 +302,8 @@ const captureSessionsRoutes: FastifyPluginAsync = async (app) => {
           }
         };
         // State channel + org-wide active index (the Live page drops the tile).
-        await publish(channels.captureSessionState(caller.orgId, id), endedEvent);
-        await publish(channels.orgActiveSessions(caller.orgId), endedEvent);
+        await publishBestEffort(request, channels.captureSessionState(caller.orgId, id), endedEvent);
+        await publishBestEffort(request, channels.orgActiveSessions(caller.orgId), endedEvent);
       }
 
       return { sessionId: id, action: body.action };
