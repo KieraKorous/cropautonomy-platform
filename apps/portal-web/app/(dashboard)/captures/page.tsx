@@ -1,8 +1,8 @@
 import { ApiError, listCaptures, type CaptureSummary } from "../../../lib/api";
-import { CaptureCard } from "./CaptureCard";
+import { CaptureRow } from "./CaptureRow";
 
-// Captures gallery — every observation the platform has ingested, newest first.
-// Analysis runs asynchronously, so cards reflect in-flight state until a plant
+// Captures table — every observation the platform has ingested, newest first.
+// Analysis runs asynchronously, so rows reflect in-flight state until a plant
 // type lands. See docs/architecture/capture-pipeline.md.
 export const dynamic = "force-dynamic";
 
@@ -42,10 +42,30 @@ export default async function CapturesPage() {
       ) : captures.length === 0 ? (
         <EmptyState />
       ) : (
-        <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {captures.map((capture) => (
-            <CaptureCard capture={capture} key={capture.id} />
-          ))}
+        <div className="overflow-x-auto rounded-xl border border-base-content/10 bg-base-100">
+          <table className="w-full min-w-[640px] text-left text-sm">
+            <thead className="bg-base-content/[0.03] text-xs uppercase tracking-wide text-base-content/55">
+              <tr>
+                <th scope="col" className="px-3 py-2.5 font-medium">
+                  <span className="sr-only">Preview</span>
+                </th>
+                <th scope="col" className="px-3 py-2.5 font-medium">
+                  Captured
+                </th>
+                <th scope="col" className="px-3 py-2.5 font-medium">
+                  Plant
+                </th>
+                <th scope="col" className="px-3 py-2.5 font-medium">
+                  Status
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {captures.map((capture) => (
+                <CaptureRow capture={capture} key={capture.id} />
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
