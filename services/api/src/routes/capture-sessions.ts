@@ -43,7 +43,7 @@ interface LiveSessionRow {
   id: string;
   status: string;
   started_at: string;
-  operator: { clerk_user_id: string; full_name: string | null; email: string } | null;
+  operator: { clerk_user_id: string; display_name: string | null; email: string } | null;
   field: { name: string } | null;
   farm: { name: string } | null;
 }
@@ -61,7 +61,7 @@ const captureSessionsRoutes: FastifyPluginAsync = async (app) => {
       const { data, error } = await supabase
         .from("capture_sessions")
         .select(
-          "id, status, started_at, operator:users(clerk_user_id, full_name, email), field:fields(name), farm:farms(name)"
+          "id, status, started_at, operator:users!started_by_user_id(clerk_user_id, display_name, email), field:fields(name), farm:farms(name)"
         )
         .eq("org_id", caller.orgId)
         .in("status", ACTIVE_STATUSES as unknown as string[])
@@ -76,7 +76,7 @@ const captureSessionsRoutes: FastifyPluginAsync = async (app) => {
           sessionId: row.id,
           status: row.status,
           operatorUserId: row.operator?.clerk_user_id ?? null,
-          operatorName: row.operator?.full_name ?? row.operator?.email ?? "Operator",
+          operatorName: row.operator?.display_name ?? row.operator?.email ?? "Operator",
           fieldName: row.field?.name ?? null,
           farmName: row.farm?.name ?? null,
           startedAt: row.started_at
