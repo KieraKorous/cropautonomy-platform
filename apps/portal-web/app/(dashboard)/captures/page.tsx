@@ -50,10 +50,10 @@ export default async function CapturesPage() {
                   <span className="sr-only">Preview</span>
                 </th>
                 <th scope="col" className="px-3 py-2.5 font-medium">
-                  Captured
+                  Date Captured
                 </th>
                 <th scope="col" className="px-3 py-2.5 font-medium">
-                  Plant
+                  Plant Type
                 </th>
                 <th scope="col" className="px-3 py-2.5 font-medium">
                   Status
