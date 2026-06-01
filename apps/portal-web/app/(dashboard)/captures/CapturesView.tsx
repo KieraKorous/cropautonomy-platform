@@ -27,33 +27,25 @@ export function CapturesView({ captures }: { captures: CaptureSummary[] }) {
     window.localStorage.setItem(STORAGE_KEY, next);
   };
 
+  const toggle = (
+    <div
+      className="inline-flex items-center gap-1 rounded-lg border border-base-content/10 bg-base-100 p-0.5"
+      role="group"
+      aria-label="Captures view"
+    >
+      <ToggleButton active={view === "table"} onClick={() => choose("table")} label="Table view">
+        <RowsIcon size={15} />
+        Table
+      </ToggleButton>
+      <ToggleButton active={view === "grid"} onClick={() => choose("grid")} label="Grid view">
+        <GridIcon size={15} />
+        Grid
+      </ToggleButton>
+    </div>
+  );
+
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex justify-end">
-        <div
-          className="inline-flex items-center gap-1 rounded-lg border border-base-content/10 bg-base-100 p-0.5"
-          role="group"
-          aria-label="Captures view"
-        >
-          <ToggleButton
-            active={view === "table"}
-            onClick={() => choose("table")}
-            label="Table view"
-          >
-            <RowsIcon size={15} />
-            Table
-          </ToggleButton>
-          <ToggleButton
-            active={view === "grid"}
-            onClick={() => choose("grid")}
-            label="Grid view"
-          >
-            <GridIcon size={15} />
-            Grid
-          </ToggleButton>
-        </div>
-      </div>
-
       {view === "table" ? (
         <div className="overflow-x-auto rounded-xl border border-base-content/10 bg-base-100">
           <table className="w-full min-w-[640px] text-left text-sm">
@@ -71,8 +63,8 @@ export function CapturesView({ captures }: { captures: CaptureSummary[] }) {
                 <th scope="col" className="px-3 py-2.5 font-medium">
                   Status
                 </th>
-                <th scope="col" className="px-3 py-2.5 font-medium">
-                  <span className="sr-only">Actions</span>
+                <th scope="col" className="px-3 py-1.5 font-medium">
+                  <div className="flex justify-end">{toggle}</div>
                 </th>
               </tr>
             </thead>
@@ -91,15 +83,22 @@ export function CapturesView({ captures }: { captures: CaptureSummary[] }) {
             </tbody>
           </table>
         </div>
-      ) : captures.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-base-content/20 bg-base-100 px-6 py-12">
-          <EmptyMessage />
-        </div>
       ) : (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-          {captures.map((capture) => (
-            <CaptureCard capture={capture} key={capture.id} />
-          ))}
+        <div className="rounded-xl border border-base-content/10 bg-base-100">
+          <div className="flex items-center justify-end bg-base-content/[0.03] px-3 py-1.5">
+            {toggle}
+          </div>
+          {captures.length === 0 ? (
+            <div className="px-6 py-12">
+              <EmptyMessage />
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-4 p-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+              {captures.map((capture) => (
+                <CaptureCard capture={capture} key={capture.id} />
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
