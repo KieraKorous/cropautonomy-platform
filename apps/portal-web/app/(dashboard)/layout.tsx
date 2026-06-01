@@ -20,7 +20,7 @@ import { RealtimeProvider } from "../realtime-provider";
 const navConfig: AppShellProps["navGroups"] = [
   {
     items: [
-      { label: "Overview", href: "/", icon: <HomeIcon />, active: true },
+      { label: "Overview", href: "/", icon: <HomeIcon /> },
       {
         label: "Live",
         href: "/live",

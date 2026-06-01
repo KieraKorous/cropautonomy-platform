@@ -14,6 +14,7 @@
     "@tailwindcss/postcss": "4.3.0",
     "daisyui": "5.5.20",
     "mapbox-gl": "3.16.0",
+    "next": "16.2.6",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-map-gl": "8.0.4",
@@ -25,6 +26,7 @@
     "@types/react": "19.2.7",
     "@types/react-dom": "19.2.3",
     "mapbox-gl": "3.16.0",
+    "next": "16.2.6",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-map-gl": "8.0.4"
