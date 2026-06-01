@@ -1,5 +1,5 @@
 import { ApiError, listCaptures, type CaptureSummary } from "../../../lib/api";
-import { CaptureRow } from "./CaptureRow";
+import { CapturesView } from "./CapturesView";
 
 // Captures table — every observation the platform has ingested, newest first.
 // Analysis runs asynchronously, so rows reflect in-flight state until a plant
@@ -39,54 +39,10 @@ export default async function CapturesPage() {
 
       {loadError ? (
         <ErrorState message={loadError} />
-      ) : captures.length === 0 ? (
-        <EmptyState />
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-base-content/10 bg-base-100">
-          <table className="w-full min-w-[640px] text-left text-sm">
-            <thead className="bg-base-content/[0.03] text-xs uppercase tracking-wide text-base-content/55">
-              <tr>
-                <th scope="col" className="px-3 py-2.5 font-medium">
-                  <span className="sr-only">Preview</span>
-                </th>
-                <th scope="col" className="px-3 py-2.5 font-medium">
-                  Date Captured
-                </th>
-                <th scope="col" className="px-3 py-2.5 font-medium">
-                  Plant Type
-                </th>
-                <th scope="col" className="px-3 py-2.5 font-medium">
-                  Status
-                </th>
-                <th scope="col" className="px-3 py-2.5 font-medium">
-                  <span className="sr-only">Actions</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {captures.map((capture) => (
-                <CaptureRow capture={capture} key={capture.id} />
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <CapturesView captures={captures} />
       )}
     </div>
-  );
-}
-
-function EmptyState() {
-  return (
-    <section className="flex flex-col items-start gap-3 rounded-xl border border-dashed border-base-content/20 bg-base-100 px-6 py-8">
-      <span className="rounded-full bg-accent/15 px-2.5 py-1 text-xs font-semibold text-accent">
-        Nothing captured yet
-      </span>
-      <h2 className="text-base font-semibold text-neutral">No captures to show.</h2>
-      <p className="max-w-xl text-sm text-base-content/65">
-        Start a capture session in the field app and photos will appear here as they upload and get
-        analyzed.
-      </p>
-    </section>
   );
 }
 
