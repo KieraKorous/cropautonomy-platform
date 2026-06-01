@@ -99,7 +99,7 @@ function EmptyState() {
       <span className="rounded-full bg-success/15 px-2.5 py-1 text-xs font-semibold text-success">
         Nothing live right now
       </span>
-      <h2 className="text-base font-semibold text-neutral">No cameras are live.</h2>
+      <h2 className="text-base font-semibold text-neutral">All quiet in the field.</h2>
       <p className="max-w-xl text-sm text-base-content/65">
         When an operator starts a capture session in the field app, their camera appears here in real
         time.
