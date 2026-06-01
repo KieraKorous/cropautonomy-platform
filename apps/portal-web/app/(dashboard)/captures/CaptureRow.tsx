@@ -1,5 +1,6 @@
 import { CameraIcon, StatusPill, type Tone } from "@gaia/ui";
 import type { CaptureStatus, CaptureSummary } from "../../../lib/api";
+import { DiscardButton } from "./DiscardButton";
 
 // One row in the captures table. Plant column only carries a real species name
 // once analysis has succeeded; everything else surfaces the in-flight state.
@@ -92,6 +93,9 @@ export function CaptureRow({ capture }: { capture: CaptureSummary }) {
             Failed
           </span>
         ) : null}
+      </td>
+      <td className="px-3 py-2.5 text-right">
+        <DiscardButton captureId={capture.id} />
       </td>
     </tr>
   );

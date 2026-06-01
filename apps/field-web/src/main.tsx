@@ -9,7 +9,6 @@ import {
 
 import { App } from "./App.js";
 import { env } from "./env.js";
-import { getApiToken } from "./lib/auth.js";
 import { MissingEnvScreen } from "./components/MissingEnvScreen.js";
 import "./styles/app.css";
 
@@ -25,22 +24,18 @@ if (env.missing.length > 0) {
     </StrictMode>
   );
 } else {
-  // Realtime configuration. Publishes proxy through portal until the
-  // Clerk -> Supabase JWT bridge lands; subscribes use the anon Supabase client
-  // (channel-name structure provides tenant scoping at the broker for v0).
+  // Realtime configuration. Both subscribes and publishes go direct to Supabase
+  // Realtime with the anon client (channel-name structure provides tenant
+  // scoping at the broker for v0). Broadcast needs no Supabase JWT, so the old
+  // server proxy (which opened a per-call WebSocket and 500s in the deployed
+  // API runtime) is gone.
   configureRealtimeClient({
     url: env.supabase.url,
     anonKey: env.supabase.anonKey
   });
   configurePublishFromClient({
-    kind: "proxy",
-    config: {
-      endpoint: `${env.apiBase}/v1/realtime/publish`,
-      getAuthHeader: async () => {
-        const token = await getApiToken();
-        return token ? `Bearer ${token}` : undefined;
-      }
-    }
+    kind: "supabase",
+    config: { url: env.supabase.url, anonKey: env.supabase.anonKey }
   });
 
   root.render(

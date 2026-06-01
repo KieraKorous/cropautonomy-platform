@@ -81,6 +81,7 @@ export interface CaptureSummary {
   fieldId: string | null;
   sizeBytes: number | null;
   analysisJobId: string | null;
+  discardedAt: string | null;
 }
 
 interface ListCapturesResponse {
@@ -90,13 +91,33 @@ interface ListCapturesResponse {
 }
 
 export function listCaptures(
-  params: { limit?: number; offset?: number } = {}
+  params: { limit?: number; offset?: number; discarded?: boolean } = {}
 ): Promise<ListCapturesResponse> {
   const search = new URLSearchParams();
   if (params.limit != null) search.set("limit", String(params.limit));
   if (params.offset != null) search.set("offset", String(params.offset));
+  if (params.discarded != null) search.set("discarded", String(params.discarded));
   const query = search.toString();
   return apiFetch<ListCapturesResponse>(`/v1/captures${query ? `?${query}` : ""}`);
+}
+
+// Soft-discard: hides the capture from the default list. Reversible server-side.
+export function discardCapture(
+  id: string
+): Promise<{ captureId: string; discardedAt: string }> {
+  return apiFetch(`/v1/captures/${id}/discard`, { method: "POST" });
+}
+
+// Only discarded captures appear here — drives the settings cleanup view.
+export function listDiscardedCaptures(): Promise<ListCapturesResponse> {
+  return apiFetch<ListCapturesResponse>("/v1/captures?discarded=true");
+}
+
+// Permanent delete (row + Storage object). Requires captures.delete (manager+).
+export function deleteCapture(
+  id: string
+): Promise<{ captureId: string; deleted: boolean }> {
+  return apiFetch(`/v1/captures/${id}`, { method: "DELETE" });
 }
 
 // --- Live sessions --------------------------------------------------------

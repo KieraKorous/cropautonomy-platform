@@ -58,6 +58,9 @@ export default async function CapturesPage() {
                 <th scope="col" className="px-3 py-2.5 font-medium">
                   Status
                 </th>
+                <th scope="col" className="px-3 py-2.5 font-medium">
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
             </thead>
             <tbody>

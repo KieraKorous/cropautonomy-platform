@@ -53,7 +53,9 @@ const finalizeSchema = z.object({
 
 const listQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(100).default(50),
-  offset: z.coerce.number().int().nonnegative().default(0)
+  offset: z.coerce.number().int().nonnegative().default(0),
+  // false (default) → only live captures; true → only discarded (settings view).
+  discarded: z.coerce.boolean().default(false)
 });
 
 // Statuses whose storage object exists and can be signed for viewing.
@@ -77,6 +79,7 @@ interface CaptureListRow {
   size_bytes: number | null;
   field_id: string | null;
   analysis_job_id: string | null;
+  discarded_at: string | null;
 }
 
 const mimeToExt: Record<string, string> = {
@@ -103,15 +106,20 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
           issues: parsed.error.issues
         });
       }
-      const { limit, offset } = parsed.data;
+      const { limit, offset, discarded } = parsed.data;
       const supabase = getDb();
 
-      const { data, error } = await supabase
+      let query = supabase
         .from("captures")
         .select(
-          "id, status, status_message, media_type, captured_at, uploaded_at, inferred_species, thumbnail_path, storage_path, size_bytes, field_id, analysis_job_id"
+          "id, status, status_message, media_type, captured_at, uploaded_at, inferred_species, thumbnail_path, storage_path, size_bytes, field_id, analysis_job_id, discarded_at"
         )
-        .eq("org_id", caller.orgId)
+        .eq("org_id", caller.orgId);
+      query = discarded
+        ? query.not("discarded_at", "is", null)
+        : query.is("discarded_at", null);
+
+      const { data, error } = await query
         .order("captured_at", { ascending: false })
         .range(offset, offset + limit - 1);
       if (error) throw error;
@@ -157,7 +165,8 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
             imageUrl: path ? (signedByPath.get(path) ?? null) : null,
             fieldId: row.field_id,
             sizeBytes: row.size_bytes,
-            analysisJobId: row.analysis_job_id
+            analysisJobId: row.analysis_job_id,
+            discardedAt: row.discarded_at
           };
         }),
         limit,
@@ -395,6 +404,100 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
         status: "analysis_queued",
         thumbnailPath
       };
+    }
+  );
+
+  // Soft discard — hides the capture from the default list without deleting the
+  // row or its Storage object. Reversible (clear discarded_at). Idempotent.
+  app.post<{ Params: { id: string } }>(
+    "/v1/captures/:id/discard",
+    { preHandler: app.requireAuth("captures.update") },
+    async (request, _reply) => {
+      const { id } = request.params;
+      if (!UUID_RE.test(id)) {
+        throw badRequest("captures.invalid_id", "Invalid capture id.");
+      }
+      const caller = request.auth!;
+      const supabase = getDb();
+
+      const { data: row, error: loadErr } = await supabase
+        .from("captures")
+        .select("id, org_id")
+        .eq("id", id)
+        .maybeSingle();
+      if (loadErr) throw loadErr;
+      if (!row || (row as { org_id: string }).org_id !== caller.orgId) {
+        throw notFound("captures.not_found", "Capture not found.");
+      }
+
+      const discardedAt = new Date().toISOString();
+      const { error: updateErr } = await supabase
+        .from("captures")
+        .update({ discarded_at: discardedAt })
+        .eq("id", id);
+      if (updateErr) throw updateErr;
+
+      return { captureId: id, discardedAt };
+    }
+  );
+
+  // Permanent delete — removes the Storage object(s) and the capture row. Only
+  // discarded captures are purgeable. analysis_jobs / analysis_results cascade
+  // on the captures FK (0004). Requires captures.delete (manager and up).
+  app.delete<{ Params: { id: string } }>(
+    "/v1/captures/:id",
+    { preHandler: app.requireAuth("captures.delete") },
+    async (request, _reply) => {
+      const { id } = request.params;
+      if (!UUID_RE.test(id)) {
+        throw badRequest("captures.invalid_id", "Invalid capture id.");
+      }
+      const caller = request.auth!;
+      const supabase = getDb();
+
+      const { data: row, error: loadErr } = await supabase
+        .from("captures")
+        .select("id, org_id, storage_bucket, storage_path, thumbnail_path, discarded_at")
+        .eq("id", id)
+        .maybeSingle();
+      if (loadErr) throw loadErr;
+      if (!row || (row as { org_id: string }).org_id !== caller.orgId) {
+        throw notFound("captures.not_found", "Capture not found.");
+      }
+      const capture = row as {
+        storage_bucket: string;
+        storage_path: string;
+        thumbnail_path: string | null;
+        discarded_at: string | null;
+      };
+      if (!capture.discarded_at) {
+        throw conflict(
+          "captures.not_discarded",
+          "Only discarded captures can be permanently deleted."
+        );
+      }
+
+      // Remove Storage objects first. Skip the "pending" placeholder path of
+      // captures that never finished uploading.
+      const paths: string[] = [];
+      if (capture.storage_path && capture.storage_path !== "pending") {
+        paths.push(capture.storage_path);
+      }
+      if (capture.thumbnail_path) paths.push(capture.thumbnail_path);
+      if (paths.length > 0) {
+        const { error: removeErr } = await supabase.storage
+          .from(capture.storage_bucket)
+          .remove(paths);
+        if (removeErr) throw removeErr;
+      }
+
+      const { error: deleteErr } = await supabase
+        .from("captures")
+        .delete()
+        .eq("id", id);
+      if (deleteErr) throw deleteErr;
+
+      return { captureId: id, deleted: true };
     }
   );
 };

@@ -33,35 +33,66 @@ function makeClient(config: SupabaseTransportConfig): SupabaseClient {
   });
 }
 
-export function broadcastFromClient(
-  config: SupabaseTransportConfig,
-  channelName: string,
-  input: RealtimeEventInput
-): Promise<void> {
-  // Direct client publish path. v0 deployments may proxy publishes through
-  // a portal API instead; that path lives in transports/proxy.ts.
-  const event = validateForPublish(input);
-  const client = makeClient(config);
+// One client + one persistent send-channel per channel name, reused across
+// publishes. Signaling fires a burst of messages (offer, answer, many trickle
+// ICE candidates); the previous "create channel, subscribe, send, tear down"
+// per call opened a fresh WebSocket join every time — slow (~1s+ each) and the
+// churn could exhaust connections. With a cached client all channels multiplex
+// over a single socket, so only the first publish on a channel pays setup cost.
+const clientCache = new Map<string, SupabaseClient>();
+const sendChannels = new Map<string, { channel: RealtimeChannel; ready: Promise<void> }>();
+
+function sharedClient(config: SupabaseTransportConfig): SupabaseClient {
+  if (config.client) return config.client;
+  const cached = clientCache.get(config.url);
+  if (cached) return cached;
+  const created = makeClient(config);
+  clientCache.set(config.url, created);
+  return created;
+}
+
+function getSendChannel(client: SupabaseClient, channelName: string) {
+  const existing = sendChannels.get(channelName);
+  if (existing) return existing;
   const channel = client.channel(channelName, {
     config: { broadcast: { ack: false, self: false } }
   });
-  return new Promise((resolve, reject) => {
-    channel.subscribe(async (status) => {
-      if (status === "SUBSCRIBED") {
-        const result = await channel.send({
-          type: "broadcast",
-          event: BROADCAST_EVENT,
-          payload: event
-        });
-        await client.removeChannel(channel);
-        if (result === "ok") resolve();
-        else reject(new Error(`Supabase broadcast failed: ${result}`));
-      } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-        await client.removeChannel(channel);
+  const ready = new Promise<void>((resolve, reject) => {
+    channel.subscribe((status) => {
+      if (status === "SUBSCRIBED") resolve();
+      else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+        // Drop the cached entry so the next publish retries a fresh subscribe
+        // instead of awaiting a permanently-rejected promise.
+        sendChannels.delete(channelName);
         reject(new Error(`Supabase channel subscribe failed: ${status}`));
       }
     });
   });
+  const entry = { channel, ready };
+  sendChannels.set(channelName, entry);
+  return entry;
+}
+
+export async function broadcastFromClient(
+  config: SupabaseTransportConfig,
+  channelName: string,
+  input: RealtimeEventInput
+): Promise<void> {
+  // Direct client publish path. v0 used a server proxy (transports/proxy.ts)
+  // because the browser had no Supabase JWT; for broadcast the anon client is
+  // sufficient (channel-name tenancy), so we publish straight to the broker.
+  const event = validateForPublish(input);
+  const client = sharedClient(config);
+  const { channel, ready } = getSendChannel(client, channelName);
+  await ready;
+  const result = await channel.send({
+    type: "broadcast",
+    event: BROADCAST_EVENT,
+    payload: event
+  });
+  if (result !== "ok") {
+    throw new Error(`Supabase broadcast failed: ${result}`);
+  }
 }
 
 export type ConnectionStatus =
