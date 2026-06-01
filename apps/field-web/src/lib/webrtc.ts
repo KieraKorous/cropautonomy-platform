@@ -34,8 +34,26 @@ export function useLivePublisher(
   const [viewers, setViewers] = useState<string[]>([]);
   const channelName = channels.captureSessionSignal(orgId, sessionId);
 
-  // Subscribe to signaling events.
-  const { latest } = useRealtimeChannel(channelName, { enabled, historyLimit: 1 });
+  // Ctx the signal handler reads, kept current without re-subscribing so the
+  // onEvent callback stays a stable closure over the latest stream/peers.
+  const ctxRef = useRef<SignalContext | null>(null);
+  ctxRef.current = stream
+    ? { orgId, sessionId, operatorId, stream, peersRef, setViewers, channelName }
+    : null;
+
+  // Subscribe to signaling events. We drive the handshake off every event
+  // (onEvent), not the coalesced `latest`: trickle-ICE candidates arrive in
+  // bursts and `latest` would drop all but the last, stalling the connection.
+  useRealtimeChannel(channelName, {
+    enabled,
+    historyLimit: 1,
+    onEvent: (event) => {
+      if (!enabled) return;
+      const ctx = ctxRef.current;
+      if (!ctx) return;
+      void handleSignal(event, ctx);
+    }
+  });
 
   useEffect(() => {
     if (!enabled || !stream) return;
@@ -52,20 +70,6 @@ export function useLivePublisher(
       }).catch(() => {});
     };
   }, [enabled, stream, channelName]);
-
-  useEffect(() => {
-    if (!enabled || !stream || !latest) return;
-
-    void handleSignal(latest, {
-      orgId,
-      sessionId,
-      operatorId,
-      stream,
-      peersRef,
-      setViewers,
-      channelName
-    });
-  }, [latest, enabled, stream, orgId, sessionId, operatorId, channelName]);
 
   return {
     viewerCount: viewers.length,

@@ -45,9 +45,34 @@ export function useLiveViewer(options: UseLiveViewerOptions): LiveViewerState {
   const publisherIdRef = useRef<string | null>(null);
   const joinedRef = useRef(false);
 
-  const { latest, status: channelStatus } = useRealtimeChannel(channelName, {
+  // Refs the signal handler reads; kept current without re-subscribing so the
+  // onEvent callback can stay a stable closure over them.
+  const handlerCtxRef = useRef<ViewerContext>({
+    viewerId,
+    channelName,
+    peerRef,
+    publisherIdRef,
+    setStream,
+    setConnectionState
+  });
+  handlerCtxRef.current = {
+    viewerId,
+    channelName,
+    peerRef,
+    publisherIdRef,
+    setStream,
+    setConnectionState
+  };
+
+  const { status: channelStatus } = useRealtimeChannel(channelName, {
     enabled,
-    historyLimit: 1
+    historyLimit: 1,
+    // Drive the handshake off every event. Trickle-ICE candidates arrive in
+    // bursts; reacting to the coalesced `latest` would drop all but the last
+    // and the connection would never reach `connected`.
+    onEvent: (event) => {
+      void handleSignal(event, handlerCtxRef.current);
+    }
   });
 
   // Announce ourselves only once the channel is actually connected, so we don't
@@ -89,19 +114,6 @@ export function useLiveViewer(options: UseLiveViewerOptions): LiveViewerState {
       setConnectionState("idle");
     };
   }, [enabled, channelName, viewerId]);
-
-  // Drive the handshake off incoming signaling events.
-  useEffect(() => {
-    if (!enabled || !latest) return;
-    void handleSignal(latest, {
-      viewerId,
-      channelName,
-      peerRef,
-      publisherIdRef,
-      setStream,
-      setConnectionState
-    });
-  }, [latest, enabled, viewerId, channelName]);
 
   return { stream, connectionState };
 }
