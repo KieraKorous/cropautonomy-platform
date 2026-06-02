@@ -35,14 +35,19 @@ const createRequestSchema = z.object({
   cropTypeId: z.string().uuid().nullable().optional()
 });
 
-// Device edits from the portal: rename (display_name + metadata.nickname) and
-// status changes (retire / reactivate). 'unregistered' is intentionally not a
-// settable status — it's only the pre-claim initial state.
+// Device edits from the portal: rename (display_name + metadata.nickname),
+// status changes (retire / reactivate), and the auto-live switch. 'unregistered'
+// is intentionally not a settable status — it's only the pre-claim initial state.
 const updateDeviceSchema = z.object({
   displayName: z.string().min(1).max(80).optional(),
   nickname: z.string().max(80).nullable().optional(),
-  status: z.enum(["active", "inactive", "maintenance", "retired"]).optional()
+  status: z.enum(["active", "inactive", "maintenance", "retired"]).optional(),
+  autoLiveEnabled: z.boolean().optional()
 });
+
+// Columns selected by the list/patch device queries.
+const DEVICE_SELECT =
+  "id, device_family, serial_number, display_name, firmware_version, status, auto_live_enabled, registered_at, last_seen_at, metadata, registered_by:users!registered_by_user_id(display_name, email)";
 
 // Shape selected by the list/patch device queries (registered_by is the joined
 // user row, or null if the registrant was removed).
@@ -53,6 +58,7 @@ interface DeviceRow {
   display_name: string | null;
   firmware_version: string | null;
   status: string;
+  auto_live_enabled: boolean;
   registered_at: string | null;
   last_seen_at: string | null;
   metadata: Record<string, unknown> | null;
@@ -71,6 +77,7 @@ function toDeviceSummary(row: DeviceRow) {
     nickname,
     firmwareVersion: row.firmware_version,
     status: row.status,
+    autoLiveEnabled: row.auto_live_enabled,
     registeredByName: row.registered_by?.display_name ?? row.registered_by?.email ?? null,
     registeredAt: row.registered_at,
     lastSeenAt: row.last_seen_at
@@ -274,9 +281,7 @@ const devicesRoutes: FastifyPluginAsync = async (app) => {
 
       let query = supabase
         .from("devices")
-        .select(
-          "id, device_family, serial_number, display_name, firmware_version, status, registered_at, last_seen_at, metadata, registered_by:users!registered_by_user_id(display_name, email)"
-        )
+        .select(DEVICE_SELECT)
         .eq("org_id", caller.orgId)
         .order("created_at", { ascending: false });
       if (!includeRetired) query = query.neq("status", "retired");
@@ -284,8 +289,16 @@ const devicesRoutes: FastifyPluginAsync = async (app) => {
       const { data, error } = await query;
       if (error) throw error;
 
+      // Whether this caller may edit/retire/delete devices and flip the auto-live
+      // switch — lets the portal render management controls (the cached permission
+      // set was already loaded for the devices.read check above).
+      const canManage = await request.permissions!.hasPermission(
+        { userId: caller.userId, orgId: caller.orgId },
+        "devices.update"
+      );
+
       const rows = (data ?? []) as unknown as DeviceRow[];
-      return { orgId: caller.orgId, devices: rows.map(toDeviceSummary) };
+      return { orgId: caller.orgId, canManage, devices: rows.map(toDeviceSummary) };
     }
   );
 
@@ -307,7 +320,8 @@ const devicesRoutes: FastifyPluginAsync = async (app) => {
       if (
         body.displayName === undefined &&
         body.nickname === undefined &&
-        body.status === undefined
+        body.status === undefined &&
+        body.autoLiveEnabled === undefined
       ) {
         throw badRequest("devices.empty_update", "No fields to update.");
       }
@@ -328,6 +342,7 @@ const devicesRoutes: FastifyPluginAsync = async (app) => {
       const patch: Record<string, unknown> = {};
       if (body.displayName !== undefined) patch.display_name = body.displayName;
       if (body.status !== undefined) patch.status = body.status;
+      if (body.autoLiveEnabled !== undefined) patch.auto_live_enabled = body.autoLiveEnabled;
       if (body.nickname !== undefined) {
         const current = ((existing as { metadata: Record<string, unknown> | null }).metadata) ?? {};
         // null clears the nickname; a string sets it. Other metadata is preserved.
@@ -339,9 +354,7 @@ const devicesRoutes: FastifyPluginAsync = async (app) => {
         .update(patch)
         .eq("id", id)
         .eq("org_id", caller.orgId)
-        .select(
-          "id, device_family, serial_number, display_name, firmware_version, status, registered_at, last_seen_at, metadata, registered_by:users!registered_by_user_id(display_name, email)"
-        )
+        .select(DEVICE_SELECT)
         .single();
       if (updErr) throw updErr;
 
@@ -532,10 +545,68 @@ const devicesRoutes: FastifyPluginAsync = async (app) => {
 
       const { data: deviceRow } = await supabase
         .from("devices")
-        .select("display_name")
+        .select("display_name, auto_live_enabled")
         .eq("id", body.deviceId)
         .maybeSingle();
-      const deviceName = (deviceRow as { display_name: string | null } | null)?.display_name ?? "Phone camera";
+      const device = deviceRow as { display_name: string | null; auto_live_enabled: boolean } | null;
+      const deviceName = device?.display_name ?? "Phone camera";
+
+      // Auto-live: the device is trusted to stream without watcher approval.
+      // Grant immediately — spawn the session and tell the phone to publish,
+      // mirroring the accept route. The phone's poll/grant-watcher adopts it.
+      if (device?.auto_live_enabled) {
+        const { sessionId } = await createLiveSession(request.log, {
+          orgId: caller.orgId,
+          operatorUserId: caller.userId,
+          operatorClerkUserId: caller.clerkUserId,
+          startedByDeviceId: body.deviceId,
+          farmId: body.farmId ?? null,
+          fieldId: body.fieldId ?? null,
+          cropTypeId: body.cropTypeId ?? null
+        });
+
+        const decidedAt = new Date().toISOString();
+        const { error: grantErr } = await supabase
+          .from("live_requests")
+          .update({ status: "accepted", session_id: sessionId, decided_at: decidedAt })
+          .eq("id", requestId)
+          .eq("status", "pending");
+        if (grantErr) throw grantErr;
+
+        // Clear it from any watcher panel…
+        await publishBestEffort(request.log, channels.liveRequests(caller.orgId), {
+          type: "live.request.accepted",
+          version: 1,
+          emittedBy: caller.clerkUserId,
+          payload: {
+            requestId,
+            deviceId: body.deviceId,
+            sessionId,
+            decidedByUserId: caller.clerkUserId,
+            decidedAt
+          }
+        });
+        // …and tell the phone it may start publishing on this session.
+        await publishBestEffort(
+          request.log,
+          channels.deviceCommands(caller.orgId, body.deviceId),
+          {
+            type: "device.command.live_granted",
+            version: 1,
+            emittedBy: caller.clerkUserId,
+            payload: {
+              requestId,
+              deviceId: body.deviceId,
+              orgId: caller.orgId,
+              sessionId,
+              grantedAt: decidedAt
+            }
+          }
+        );
+
+        reply.status(201);
+        return { requestId, sessionId, expiresAt, status: "accepted", orgId: caller.orgId };
+      }
 
       await publishBestEffort(request.log, channels.liveRequests(caller.orgId), {
         type: "live.request.created",

@@ -12,7 +12,13 @@ import { deviceFamilyMeta, deviceName, deviceStatusDisplay } from "./deviceDispl
 // Clicking a card opens the detail modal (rename / retire / delete); the add
 // tile opens the pairing dialog. Devices are fetched on the server and passed
 // in, so opening a modal never re-hits the API.
-export function DevicesGrid({ devices }: { devices: Device[] }) {
+export function DevicesGrid({
+  devices,
+  canManage
+}: {
+  devices: Device[];
+  canManage: boolean;
+}) {
   const router = useRouter();
   const [addOpen, setAddOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -48,7 +54,11 @@ export function DevicesGrid({ devices }: { devices: Device[] }) {
         onPaired={() => router.refresh()}
       />
 
-      <DeviceDetailModal device={selected} onClose={() => setSelectedId(null)} />
+      <DeviceDetailModal
+        device={selected}
+        canManage={canManage}
+        onClose={() => setSelectedId(null)}
+      />
     </>
   );
 }

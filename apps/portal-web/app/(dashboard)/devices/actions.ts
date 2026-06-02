@@ -29,7 +29,12 @@ export async function getDevicePairingAction(
 // the grid so the card reflects the new name/nickname/status.
 export async function updateDeviceAction(
   id: string,
-  fields: { displayName?: string; nickname?: string | null; status?: DeviceStatus }
+  fields: {
+    displayName?: string;
+    nickname?: string | null;
+    status?: DeviceStatus;
+    autoLiveEnabled?: boolean;
+  }
 ): Promise<Device> {
   const device = await updateDevice(id, fields);
   revalidatePath("/devices");

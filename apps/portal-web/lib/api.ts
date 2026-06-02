@@ -227,6 +227,8 @@ export interface Device {
   nickname: string | null;
   firmwareVersion: string | null;
   status: DeviceStatus;
+  // When true, the device streams live without watcher approval.
+  autoLiveEnabled: boolean;
   registeredByName: string | null;
   registeredAt: string | null;
   lastSeenAt: string | null;
@@ -234,6 +236,8 @@ export interface Device {
 
 interface ListDevicesResponse {
   orgId: string;
+  // Whether the current user may edit/retire/delete devices and toggle auto-live.
+  canManage: boolean;
   devices: Device[];
 }
 
@@ -250,7 +254,12 @@ export function listDevices(
 // reactivate → 'active'). Returns the updated device. Requires devices.update.
 export function updateDevice(
   id: string,
-  body: { displayName?: string; nickname?: string | null; status?: DeviceStatus }
+  body: {
+    displayName?: string;
+    nickname?: string | null;
+    status?: DeviceStatus;
+    autoLiveEnabled?: boolean;
+  }
 ): Promise<Device> {
   return apiFetch<Device>(`/v1/devices/${id}`, {
     method: "PATCH",

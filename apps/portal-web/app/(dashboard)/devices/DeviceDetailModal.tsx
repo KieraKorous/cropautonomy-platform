@@ -22,9 +22,12 @@ function formatDate(value: string | null): string {
 // so the grid (and this modal's `device` prop) reflect changes without a fetch.
 export function DeviceDetailModal({
   device,
+  canManage,
   onClose
 }: {
   device: Device | null;
+  // Whether the current user may rename / retire / delete and toggle auto-live.
+  canManage: boolean;
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -34,6 +37,7 @@ export function DeviceDetailModal({
   const [nickname, setNickname] = useState("");
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [statusBusy, setStatusBusy] = useState(false);
+  const [autoLiveBusy, setAutoLiveBusy] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -97,6 +101,19 @@ export function DeviceDetailModal({
     }
   }
 
+  async function onToggleAutoLive() {
+    if (!device) return;
+    setAutoLiveBusy(true);
+    setError(null);
+    try {
+      await updateDeviceAction(device.id, { autoLiveEnabled: !device.autoLiveEnabled });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't change the auto go-live setting.");
+    } finally {
+      setAutoLiveBusy(false);
+    }
+  }
+
   async function onDelete() {
     if (!device) return;
     setDeleting(true);
@@ -151,13 +168,34 @@ export function DeviceDetailModal({
         {/* Metadata */}
         <dl className="flex flex-col gap-3 rounded-lg border border-base-content/10 bg-base-content/[0.02] p-4 text-sm">
           <DetailRow label="Kind" value={familyLabel} />
-          <DetailRow label="Serial" value={device.serialNumber} />
           <DetailRow label="Firmware" value={device.firmwareVersion ?? "—"} />
           <DetailRow label="Registered by" value={device.registeredByName ?? "—"} />
           <DetailRow label="Registered" value={formatDate(device.registeredAt)} />
           <DetailRow label="Last seen" value={formatDate(device.lastSeenAt)} />
         </dl>
 
+        {/* Auto go-live switch. On = streams live without watcher approval; off =
+            a watcher must accept each request. Only managers+ can flip it. */}
+        <div className="flex items-start justify-between gap-4 rounded-lg border border-base-content/10 bg-base-content/[0.02] p-4">
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <span className="text-sm font-semibold text-neutral">Auto go-live</span>
+            <span className="text-xs leading-relaxed text-base-content/55">
+              {device.autoLiveEnabled
+                ? "Streams live immediately — no approval needed."
+                : "A watcher must approve each go-live request."}
+              {!canManage ? " Only admins and managers can change this." : null}
+            </span>
+          </div>
+          <Switch
+            checked={device.autoLiveEnabled}
+            disabled={!canManage || autoLiveBusy}
+            onChange={onToggleAutoLive}
+            label="Auto go-live"
+          />
+        </div>
+
+        {canManage ? (
+        <>
         {/* Edit form */}
         <div className="flex flex-col gap-3">
           <Field label="Device name">
@@ -200,8 +238,6 @@ export function DeviceDetailModal({
             ) : null}
           </div>
         </div>
-
-        {error ? <p className="text-sm text-error">{error}</p> : null}
 
         {/* Danger zone — retire (reversible) + permanent delete. */}
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-base-content/10 pt-4">
@@ -248,8 +284,46 @@ export function DeviceDetailModal({
             </button>
           )}
         </div>
+        </>
+        ) : null}
+
+        {error ? <p className="text-sm text-error">{error}</p> : null}
       </div>
     </dialog>
+  );
+}
+
+// Accessible on/off switch. Slides a knob across a track; the track turns
+// primary when checked. Disabled (non-managers / in-flight) dims it.
+function Switch({
+  checked,
+  disabled,
+  onChange,
+  label
+}: {
+  checked: boolean;
+  disabled?: boolean;
+  onChange: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      onClick={onChange}
+      className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${
+        checked ? "bg-primary" : "bg-base-content/20"
+      }`}
+    >
+      <span
+        className={`inline-block h-4 w-4 transform rounded-full bg-base-100 shadow transition-transform ${
+          checked ? "translate-x-6" : "translate-x-1"
+        }`}
+      />
+    </button>
   );
 }
 

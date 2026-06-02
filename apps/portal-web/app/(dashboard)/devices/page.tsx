@@ -8,11 +8,13 @@ export const dynamic = "force-dynamic";
 
 export default async function DevicesPage() {
   let devices: Device[] = [];
+  let canManage = false;
   let loadError: string | null = null;
 
   try {
     const result = await listDevices();
     devices = result.devices;
+    canManage = result.canManage;
   } catch (err) {
     loadError =
       err instanceof ApiError ? err.message : "Could not reach the devices service.";
@@ -35,7 +37,11 @@ export default async function DevicesPage() {
         ) : null}
       </header>
 
-      {loadError ? <ErrorState message={loadError} /> : <DevicesGrid devices={devices} />}
+      {loadError ? (
+        <ErrorState message={loadError} />
+      ) : (
+        <DevicesGrid devices={devices} canManage={canManage} />
+      )}
     </div>
   );
 }
