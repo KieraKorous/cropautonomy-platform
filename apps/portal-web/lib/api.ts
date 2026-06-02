@@ -142,6 +142,9 @@ export interface LiveSessionSummary {
   fieldName: string | null;
   farmName: string | null;
   startedAt: string;
+  // Non-null while a watcher has authoritatively disconnected this camera. The
+  // session stays on the wall (still "active"); the tile shows a Reconnect CTA.
+  disconnectedAt: string | null;
 }
 
 export interface ListLiveSessionsResponse {
@@ -151,4 +154,83 @@ export interface ListLiveSessionsResponse {
 
 export function listLiveSessions(): Promise<ListLiveSessionsResponse> {
   return apiFetch<ListLiveSessionsResponse>("/v1/capture-sessions/live");
+}
+
+// Authoritative disconnect/reconnect — signals the publishing phone to stop or
+// resume sending media. Persisted on the session, so it survives reload for
+// every watcher. Any watcher may run it (not just the operator).
+export function setSessionConnection(
+  sessionId: string,
+  connected: boolean
+): Promise<{ sessionId: string; action: string }> {
+  return apiFetch(`/v1/capture-sessions/${sessionId}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ action: connected ? "reconnect" : "disconnect" })
+  });
+}
+
+// --- Device pairing -------------------------------------------------------
+
+export interface CreateDevicePairingResponse {
+  pairingId: string;
+  code: string;
+  expiresAt: string;
+  orgId: string;
+}
+
+// Portal "Connect phone camera": mints a short code the operator's phone claims
+// from the Field PWA. The QR encodes field.cropautonomy.com/pair?code=<code>.
+export function createDevicePairing(): Promise<CreateDevicePairingResponse> {
+  return apiFetch<CreateDevicePairingResponse>("/v1/device-pairings", { method: "POST" });
+}
+
+export interface DevicePairingStatus {
+  pairingId: string;
+  status: "pending" | "claimed" | "expired" | "cancelled";
+  deviceId: string | null;
+  expiresAt: string;
+}
+
+// Poll fallback while the dialog waits for the phone to claim the code (the
+// realtime devicePairing channel is the primary signal).
+export function getDevicePairing(pairingId: string): Promise<DevicePairingStatus> {
+  return apiFetch<DevicePairingStatus>(`/v1/device-pairings/${pairingId}`);
+}
+
+// --- Live requests --------------------------------------------------------
+
+export interface LiveRequestSummary {
+  requestId: string;
+  status: "pending" | "accepted" | "rejected" | "cancelled" | "expired";
+  deviceId: string;
+  deviceName: string;
+  requestedByName: string;
+  requestedAt: string;
+  expiresAt: string;
+}
+
+export interface ListLiveRequestsResponse {
+  orgId: string;
+  requests: LiveRequestSummary[];
+}
+
+// Pending go-live requests for the Live screen's request panel.
+export function listLiveRequests(
+  status: LiveRequestSummary["status"] = "pending"
+): Promise<ListLiveRequestsResponse> {
+  return apiFetch<ListLiveRequestsResponse>(`/v1/live-requests?status=${status}`);
+}
+
+// Accept → spawns a live capture_session and tells the phone to start publishing.
+export function acceptLiveRequest(
+  requestId: string
+): Promise<{ requestId: string; sessionId: string }> {
+  return apiFetch(`/v1/live-requests/${requestId}/accept`, { method: "POST" });
+}
+
+export function rejectLiveRequest(
+  requestId: string
+): Promise<{ requestId: string; status: string }> {
+  return apiFetch(`/v1/live-requests/${requestId}/reject`, { method: "POST" });
 }

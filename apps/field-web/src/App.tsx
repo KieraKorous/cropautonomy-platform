@@ -3,6 +3,7 @@ import { SignedIn, SignedOut, RedirectToSignIn } from "@clerk/clerk-react";
 
 import { CapturePage } from "./pages/CapturePage.js";
 import { MapPage } from "./pages/MapPage.js";
+import { PairPage } from "./pages/PairPage.js";
 import { QueuePage } from "./pages/QueuePage.js";
 import { SettingsPage } from "./pages/SettingsPage.js";
 import { SessionPickerPage } from "./pages/SessionPickerPage.js";
@@ -16,6 +17,7 @@ export function App() {
       <SignedIn>
         <Routes>
           <Route path="/" element={<SessionPickerPage />} />
+          <Route path="/pair" element={<PairPage />} />
           <Route path="/capture" element={<CapturePage />} />
           <Route path="/map" element={<MapPage />} />
           <Route path="/queue" element={<QueuePage />} />

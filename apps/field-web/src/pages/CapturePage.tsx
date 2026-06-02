@@ -1,6 +1,8 @@
 import { Navigate, useNavigate } from "react-router-dom";
 import { useUser } from "@clerk/clerk-react";
 import { useEffect, useRef, useState } from "react";
+import { channels } from "@gaia/realtime/channels";
+import { useRealtimeChannel } from "@gaia/realtime/client";
 
 import { OverlayChrome } from "../components/OverlayChrome.js";
 import { SurfaceSwitcher } from "../components/SurfaceSwitcher.js";
@@ -9,7 +11,14 @@ import {
     nowIso,
     useCameraStream
 } from "../lib/capture-camera.js";
-import { enqueueCapture, listPendingForUpload } from "../lib/db.js";
+import {
+    enqueueCapture,
+    getPairedDevice,
+    getSessionState,
+    listPendingForUpload,
+    setSessionState,
+    type PairedDevice
+} from "../lib/db.js";
 import { useGps } from "../lib/hud-signals.js";
 import { useActiveSession } from "../lib/session.js";
 import { kickUploadWorker } from "../lib/upload.js";
@@ -37,6 +46,21 @@ export function CapturePage() {
     const videoChunksRef = useRef<Blob[]>([]);
     const burstAbortRef = useRef<{ aborted: boolean } | null>(null);
     const libraryInputRef = useRef<HTMLInputElement | null>(null);
+    const [device, setDevice] = useState<PairedDevice | null>(null);
+    // Authoritative disconnect from a portal watcher: stop publishing until they
+    // reconnect. Persisted per-session so a reload mid-disconnect doesn't resume
+    // streaming on its own. Capturing/queueing keep working while paused.
+    const [livePaused, setLivePaused] = useState(false);
+
+    useEffect(() => {
+        void getPairedDevice().then(setDevice);
+    }, []);
+
+    const livePausedKey = session ? `live_paused:${session.sessionId}` : null;
+    useEffect(() => {
+        if (!livePausedKey) return;
+        void getSessionState<boolean>(livePausedKey).then((v) => setLivePaused(Boolean(v)));
+    }, [livePausedKey]);
 
     useEffect(() => {
         let alive = true;
@@ -52,12 +76,33 @@ export function CapturePage() {
         };
     }, []);
 
+    // Listen for the portal's disconnect/reconnect commands directed at this
+    // device. Only relevant once paired and in a live session.
+    useRealtimeChannel(
+        session && device
+            ? channels.deviceCommands(session.orgId, device.deviceId)
+            : "org.none.device.none.commands",
+        {
+            enabled: Boolean(session && device),
+            historyLimit: 1,
+            onEvent: (event) => {
+                if (event.type === "device.command.disconnect") {
+                    setLivePaused(true);
+                    if (livePausedKey) void setSessionState(livePausedKey, true);
+                } else if (event.type === "device.command.reconnect") {
+                    setLivePaused(false);
+                    if (livePausedKey) void setSessionState(livePausedKey, false);
+                }
+            }
+        }
+    );
+
     useLivePublisher({
         orgId: session?.orgId ?? "",
         sessionId: session?.sessionId ?? "",
         operatorId: user?.id ?? "",
         stream,
-        enabled: Boolean(session && stream && user)
+        enabled: Boolean(session && stream && user) && !livePaused
     });
 
     useEffect(() => {
@@ -278,6 +323,14 @@ export function CapturePage() {
                     <span className="pointer-events-auto flex items-center gap-2 rounded-full bg-error/85 px-3 py-1 text-xs font-semibold text-error-content shadow-lg">
                         <span className="h-2 w-2 animate-pulse rounded-full bg-error-content" />
                         Recording
+                    </span>
+                </div>
+            )}
+
+            {livePaused && (
+                <div className="safe-top pointer-events-none fixed left-1/2 top-24 z-30 -translate-x-1/2 px-3">
+                    <span className="pointer-events-auto rounded-full bg-warning/90 px-3 py-1 text-xs font-semibold text-warning-content shadow-lg">
+                        Live paused by supervisor
                     </span>
                 </div>
             )}

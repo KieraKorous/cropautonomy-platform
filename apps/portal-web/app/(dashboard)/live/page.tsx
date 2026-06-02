@@ -1,7 +1,14 @@
 import { auth } from "@clerk/nextjs/server";
 
-import { ApiError, listLiveSessions, type LiveSessionSummary } from "../../../lib/api";
+import {
+  ApiError,
+  listLiveRequests,
+  listLiveSessions,
+  type LiveRequestSummary,
+  type LiveSessionSummary
+} from "../../../lib/api";
 import { LiveWall } from "./LiveWall";
+import { PendingRequests } from "./PendingRequests";
 
 // Live — a wall of in-flight Field Capture sessions, one camera per session.
 // Seeds from the API, then stays fresh over the org-wide active-sessions
@@ -10,13 +17,18 @@ export const dynamic = "force-dynamic";
 
 export default async function LivePage() {
   let sessions: LiveSessionSummary[] = [];
+  let pendingRequests: LiveRequestSummary[] = [];
   let orgId = "";
   let loadError: string | null = null;
 
   try {
-    const result = await listLiveSessions();
-    sessions = result.sessions;
-    orgId = result.orgId;
+    const [sessionsResult, requestsResult] = await Promise.all([
+      listLiveSessions(),
+      listLiveRequests("pending").catch(() => null)
+    ]);
+    sessions = sessionsResult.sessions;
+    orgId = sessionsResult.orgId;
+    if (requestsResult) pendingRequests = requestsResult.requests;
   } catch (err) {
     loadError =
       err instanceof ApiError
@@ -43,7 +55,10 @@ export default async function LivePage() {
       ) : !orgId || !userId ? (
         <ErrorState message="No active organization for this session." />
       ) : (
-        <LiveWall orgId={orgId} viewerUserId={userId} initialSessions={sessions} />
+        <>
+          <PendingRequests orgId={orgId} initialRequests={pendingRequests} />
+          <LiveWall orgId={orgId} viewerUserId={userId} initialSessions={sessions} />
+        </>
       )}
     </div>
   );

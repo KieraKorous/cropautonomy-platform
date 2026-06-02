@@ -50,6 +50,33 @@ export interface SessionStartResponse {
   startedAt: string;
 }
 
+export interface ClaimPairingRequest {
+  code: string;
+  deviceName: string;
+  serial: string;
+}
+
+export interface ClaimPairingResponse {
+  pairingId: string;
+  deviceId: string;
+  deviceName: string;
+  orgId: string;
+}
+
+export interface CreateLiveRequestBody {
+  deviceId: string;
+  farmId?: string | null;
+  fieldId?: string | null;
+  cropTypeId?: string | null;
+}
+
+export interface CreateLiveRequestResponse {
+  requestId: string;
+  expiresAt: string;
+  status: string;
+  orgId: string;
+}
+
 export interface FieldRecord {
   id: string;
   farmId: string;
@@ -115,5 +142,23 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(action)
     }),
-  listFields: () => call<ListFieldsResponse>("/v1/fields", { method: "GET" })
+  listFields: () => call<ListFieldsResponse>("/v1/fields", { method: "GET" }),
+  // Claim a pairing code minted by the portal — enrols this phone as a `phone`
+  // device. Idempotent on (org, serial), so re-pairing the same phone is safe.
+  claimPairing: (body: ClaimPairingRequest) =>
+    call<ClaimPairingResponse>("/v1/device-pairings/claim", {
+      method: "POST",
+      body: JSON.stringify(body)
+    }),
+  // Ask to go live. A watcher accepts on the portal Live screen, which grants the
+  // session over the device-commands channel.
+  createLiveRequest: (body: CreateLiveRequestBody) =>
+    call<CreateLiveRequestResponse>("/v1/live-requests", {
+      method: "POST",
+      body: JSON.stringify(body)
+    }),
+  cancelLiveRequest: (id: string) =>
+    call<{ requestId: string; status: string }>(`/v1/live-requests/${id}/cancel`, {
+      method: "POST"
+    })
 };

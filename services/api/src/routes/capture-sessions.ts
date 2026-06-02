@@ -1,27 +1,9 @@
 import { getDb } from "../lib/db.js";
 import { channels } from "@gaia/realtime/channels";
-import { publish } from "@gaia/realtime/server";
-import type { FastifyPluginAsync, FastifyRequest } from "fastify";
+import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.js";
-
-// Realtime broadcasts are observational, not the source of truth — the DB row
-// is. A broker timeout/error must never fail a request whose write already
-// committed, so every publish from this route goes through here.
-async function publishBestEffort(
-  request: FastifyRequest,
-  channelName: string,
-  event: Parameters<typeof publish>[1]
-): Promise<void> {
-  try {
-    await publish(channelName, event);
-  } catch (err) {
-    request.log.warn(
-      { err, channel: channelName, type: event.type },
-      "realtime publish failed (non-fatal)"
-    );
-  }
-}
+import { createLiveSession, ensureOrgScoped, publishBestEffort } from "../lib/live.js";
 
 const startSchema = z.object({
   farmId: z.string().uuid().nullable().optional(),
@@ -47,8 +29,16 @@ const patchSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("end"),
     reason: z.enum(["operator", "battery_critical", "error"]).default("operator")
-  })
+  }),
+  // Authoritative disconnect/reconnect: any watcher (not just the operator) can
+  // pull a live camera off-air and put it back. Signals the publishing device.
+  z.object({ action: z.literal("disconnect") }),
+  z.object({ action: z.literal("reconnect") })
 ]);
+
+// Actions any technician+/manager watcher may run on someone else's session.
+// The lifecycle actions (pause/resume/end) stay operator-only.
+const WATCHER_ACTIONS = new Set(["disconnect", "reconnect"]);
 
 const UUID_RE = /^[0-9a-f-]{36}$/i;
 
@@ -61,6 +51,7 @@ interface LiveSessionRow {
   id: string;
   status: string;
   started_at: string;
+  live_disconnected_at: string | null;
   operator: { clerk_user_id: string; display_name: string | null; email: string } | null;
   field: { name: string } | null;
   farm: { name: string } | null;
@@ -79,7 +70,7 @@ const captureSessionsRoutes: FastifyPluginAsync = async (app) => {
       const { data, error } = await supabase
         .from("capture_sessions")
         .select(
-          "id, status, started_at, operator:users!started_by_user_id(clerk_user_id, display_name, email), field:fields(name), farm:farms(name)"
+          "id, status, started_at, live_disconnected_at, operator:users!started_by_user_id(clerk_user_id, display_name, email), field:fields(name), farm:farms(name)"
         )
         .eq("org_id", caller.orgId)
         .in("status", ACTIVE_STATUSES as unknown as string[])
@@ -97,7 +88,8 @@ const captureSessionsRoutes: FastifyPluginAsync = async (app) => {
           operatorName: row.operator?.display_name ?? row.operator?.email ?? "Operator",
           fieldName: row.field?.name ?? null,
           farmName: row.farm?.name ?? null,
-          startedAt: row.started_at
+          startedAt: row.started_at,
+          disconnectedAt: row.live_disconnected_at ?? null
         }))
       };
     }
@@ -115,71 +107,22 @@ const captureSessionsRoutes: FastifyPluginAsync = async (app) => {
         });
       }
       const body = parsed.data;
-      const supabase = getDb();
 
       if (body.farmId) await ensureOrgScoped("farms", body.farmId, caller.orgId);
       if (body.fieldId) await ensureOrgScoped("fields", body.fieldId, caller.orgId);
       if (body.cropTypeId)
         await ensureOrgScoped("crop_types", body.cropTypeId, caller.orgId);
 
-      const startedAt = new Date().toISOString();
-
-      const { data: session, error } = await supabase
-        .from("capture_sessions")
-        .insert({
-          org_id: caller.orgId,
-          started_by_user_id: caller.userId,
-          farm_id: body.farmId ?? null,
-          field_id: body.fieldId ?? null,
-          crop_type_id: body.cropTypeId ?? null,
-          status: "live",
-          started_at: startedAt,
-          last_known_location: body.initialLocation
-            ? `SRID=4326;POINT(${body.initialLocation.lng} ${body.initialLocation.lat})`
-            : null,
-          last_heartbeat_at: startedAt,
-          metadata: body.plannedDurationMinutes
-            ? { plannedDurationMinutes: body.plannedDurationMinutes }
-            : {}
-        })
-        .select("id")
-        .single();
-      if (error) throw error;
-
-      const sessionId = (session as { id: string }).id;
-
-      const startedEvent = {
-        type: "capture.session.started" as const,
-        version: 1 as const,
-        emittedBy: caller.clerkUserId,
-        payload: {
-          sessionId,
-          orgId: caller.orgId,
-          operatorUserId: caller.clerkUserId,
-          farmId: body.farmId ?? undefined,
-          fieldId: body.fieldId ?? undefined,
-          cropTypeId: body.cropTypeId ?? undefined,
-          startedAt,
-          initialLocation: body.initialLocation ?? undefined,
-          plannedDurationMinutes: body.plannedDurationMinutes
-        }
-      };
-
-      // Per-session state channel (detail watchers) + org-wide active index
-      // (the Live page's camera roster sees the new session appear).
-      // Best-effort: the session row is already committed, so a realtime broker
-      // hiccup must not fail the request (the client would retry and create a
-      // duplicate session). Log and move on.
-      await publishBestEffort(
-        request,
-        channels.captureSessionState(caller.orgId, sessionId),
-        startedEvent
-      );
-      await publishBestEffort(
-        request,
-        channels.orgActiveSessions(caller.orgId),
-        startedEvent
-      );
+      const { sessionId, startedAt } = await createLiveSession(request.log, {
+        orgId: caller.orgId,
+        operatorUserId: caller.userId,
+        operatorClerkUserId: caller.clerkUserId,
+        farmId: body.farmId,
+        fieldId: body.fieldId,
+        cropTypeId: body.cropTypeId,
+        initialLocation: body.initialLocation,
+        plannedDurationMinutes: body.plannedDurationMinutes
+      });
 
       reply.status(201);
       return {
@@ -212,7 +155,7 @@ const captureSessionsRoutes: FastifyPluginAsync = async (app) => {
 
       const { data: session, error: loadErr } = await supabase
         .from("capture_sessions")
-        .select("id, org_id, status, started_by_user_id")
+        .select("id, org_id, status, started_by_user_id, started_by_device_id, live_disconnected_at")
         .eq("id", id)
         .maybeSingle();
       if (loadErr) throw loadErr;
@@ -223,12 +166,16 @@ const captureSessionsRoutes: FastifyPluginAsync = async (app) => {
         org_id: string;
         status: string;
         started_by_user_id: string;
+        started_by_device_id: string | null;
+        live_disconnected_at: string | null;
       };
 
       if (row.org_id !== caller.orgId) {
         throw notFound("capture_sessions.not_found", "Session not found.");
       }
-      if (row.started_by_user_id !== caller.userId) {
+      // Lifecycle actions (pause/resume/end) are operator-only; disconnect/
+      // reconnect are watcher actions any authorized viewer may run.
+      if (!WATCHER_ACTIONS.has(body.action) && row.started_by_user_id !== caller.userId) {
         throw forbidden(
           "capture_sessions.not_operator",
           "Session belongs to another operator."
@@ -237,7 +184,63 @@ const captureSessionsRoutes: FastifyPluginAsync = async (app) => {
 
       const now = new Date().toISOString();
 
-      if (body.action === "pause") {
+      if (body.action === "disconnect") {
+        if (!ACTIVE_STATUSES.includes(row.status as (typeof ACTIVE_STATUSES)[number])) {
+          throw conflict(
+            "capture_sessions.invalid_transition",
+            `Cannot disconnect a session in status '${row.status}'.`
+          );
+        }
+        const { error } = await supabase
+          .from("capture_sessions")
+          .update({ live_disconnected_at: now })
+          .eq("id", id);
+        if (error) throw error;
+        // Tell every watcher's tile to show the disconnected state…
+        await publishBestEffort(request.log, channels.captureSessionState(caller.orgId, id), {
+          type: "capture.session.disconnected",
+          version: 1,
+          emittedBy: caller.clerkUserId,
+          payload: { sessionId: id, disconnectedAt: now }
+        });
+        // …and direct the publishing phone to stop sending media.
+        if (row.started_by_device_id) {
+          await publishBestEffort(
+            request.log,
+            channels.deviceCommands(caller.orgId, row.started_by_device_id),
+            {
+              type: "device.command.disconnect",
+              version: 1,
+              emittedBy: caller.clerkUserId,
+              payload: { deviceId: row.started_by_device_id, sessionId: id, disconnectedAt: now }
+            }
+          );
+        }
+      } else if (body.action === "reconnect") {
+        const { error } = await supabase
+          .from("capture_sessions")
+          .update({ live_disconnected_at: null })
+          .eq("id", id);
+        if (error) throw error;
+        await publishBestEffort(request.log, channels.captureSessionState(caller.orgId, id), {
+          type: "capture.session.reconnected",
+          version: 1,
+          emittedBy: caller.clerkUserId,
+          payload: { sessionId: id, reconnectedAt: now }
+        });
+        if (row.started_by_device_id) {
+          await publishBestEffort(
+            request.log,
+            channels.deviceCommands(caller.orgId, row.started_by_device_id),
+            {
+              type: "device.command.reconnect",
+              version: 1,
+              emittedBy: caller.clerkUserId,
+              payload: { deviceId: row.started_by_device_id, sessionId: id, reconnectedAt: now }
+            }
+          );
+        }
+      } else if (body.action === "pause") {
         if (row.status !== "live") {
           throw conflict(
             "capture_sessions.invalid_transition",
@@ -249,7 +252,7 @@ const captureSessionsRoutes: FastifyPluginAsync = async (app) => {
           .update({ status: "paused" })
           .eq("id", id);
         if (error) throw error;
-        await publishBestEffort(request, channels.captureSessionState(caller.orgId, id), {
+        await publishBestEffort(request.log, channels.captureSessionState(caller.orgId, id), {
           type: "capture.session.paused",
           version: 1,
           emittedBy: caller.clerkUserId,
@@ -267,13 +270,13 @@ const captureSessionsRoutes: FastifyPluginAsync = async (app) => {
           .update({ status: "live" })
           .eq("id", id);
         if (error) throw error;
-        await publishBestEffort(request, channels.captureSessionState(caller.orgId, id), {
+        await publishBestEffort(request.log, channels.captureSessionState(caller.orgId, id), {
           type: "capture.session.resumed",
           version: 1,
           emittedBy: caller.clerkUserId,
           payload: { sessionId: id, resumedAt: now }
         });
-      } else {
+      } else if (body.action === "end") {
         if (row.status === "ended") {
           throw conflict(
             "capture_sessions.already_ended",
@@ -302,27 +305,13 @@ const captureSessionsRoutes: FastifyPluginAsync = async (app) => {
           }
         };
         // State channel + org-wide active index (the Live page drops the tile).
-        await publishBestEffort(request, channels.captureSessionState(caller.orgId, id), endedEvent);
-        await publishBestEffort(request, channels.orgActiveSessions(caller.orgId), endedEvent);
+        await publishBestEffort(request.log, channels.captureSessionState(caller.orgId, id), endedEvent);
+        await publishBestEffort(request.log, channels.orgActiveSessions(caller.orgId), endedEvent);
       }
 
       return { sessionId: id, action: body.action };
     }
   );
 };
-
-async function ensureOrgScoped(table: string, id: string, orgId: string) {
-  const supabase = getDb();
-  const { data, error } = await supabase
-    .from(table)
-    .select("id")
-    .eq("id", id)
-    .eq("org_id", orgId)
-    .maybeSingle();
-  if (error) throw error;
-  if (!data) {
-    throw notFound("references.not_found", `Referenced ${table} not found in org.`);
-  }
-}
 
 export default captureSessionsRoutes;

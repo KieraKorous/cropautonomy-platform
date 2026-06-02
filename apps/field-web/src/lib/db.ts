@@ -182,3 +182,33 @@ export async function getSessionState<T>(key: string): Promise<T | null> {
   const row = await db.get("sessionState", key);
   return (row?.value as T | undefined) ?? null;
 }
+
+// ── Phone-as-camera pairing ────────────────────────────────────────────────
+// Stored in the existing sessionState store (no schema bump). The serial is a
+// stable client-generated UUID (browsers can't read hardware ids), so the
+// devices unique index treats a re-pair of the same phone as idempotent.
+
+export interface PairedDevice {
+  deviceId: string;
+  orgId: string;
+  deviceName: string;
+}
+
+const PAIRED_DEVICE_KEY = "paired_device";
+const PHONE_SERIAL_KEY = "phone_serial";
+
+export async function getPairedDevice(): Promise<PairedDevice | null> {
+  return getSessionState<PairedDevice>(PAIRED_DEVICE_KEY);
+}
+
+export async function setPairedDevice(device: PairedDevice | null): Promise<void> {
+  await setSessionState(PAIRED_DEVICE_KEY, device);
+}
+
+export async function getOrCreatePhoneSerial(): Promise<string> {
+  const existing = await getSessionState<string>(PHONE_SERIAL_KEY);
+  if (existing) return existing;
+  const serial = crypto.randomUUID();
+  await setSessionState(PHONE_SERIAL_KEY, serial);
+  return serial;
+}

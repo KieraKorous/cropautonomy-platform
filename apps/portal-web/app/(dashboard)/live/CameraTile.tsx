@@ -1,9 +1,12 @@
 "use client";
 
+import { channels } from "@gaia/realtime/channels";
+import { useRealtimeChannel } from "@gaia/realtime/client";
 import { StatusPill, type Tone } from "@gaia/ui";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 
 import type { LiveSessionSummary } from "../../../lib/api";
+import { setSessionConnectionAction } from "./actions";
 import { useLiveViewer } from "../../../lib/useLiveViewer";
 
 export interface CameraTileProps {
@@ -19,10 +22,12 @@ export interface CameraTileProps {
 // Tiles stay mounted across focus changes (LiveWall only restyles them), so the
 // stream survives when you widen or shrink a camera.
 //
-// A watcher can disconnect a single camera: `connected` drives the viewer hook's
-// `enabled` flag, which tears down this tile's peer (and tells the publisher to
-// drop us) without touching the operator's session or any other tile. Flipping
-// it back re-announces our join and the publisher offers a fresh peer.
+// Disconnect is authoritative: it calls the API, which signals the publishing
+// phone to stop sending media and persists `live_disconnected_at` on the session.
+// `connected` drives the viewer hook's `enabled` flag (tearing down this tile's
+// peer) AND mirrors the persisted server state, so every watcher's tile flips
+// together over the capture.session.disconnected/reconnected events and the
+// state survives reload. Reconnect clears it and the phone resumes publishing.
 export function CameraTile({
   session,
   orgId,
@@ -31,7 +36,8 @@ export function CameraTile({
   compact,
   onToggleFocus
 }: CameraTileProps) {
-  const [connected, setConnected] = useState(true);
+  const [connected, setConnected] = useState(session.disconnectedAt == null);
+  const [pending, startTransition] = useTransition();
 
   const { stream, connectionState } = useLiveViewer({
     orgId,
@@ -39,6 +45,26 @@ export function CameraTile({
     viewerUserId,
     enabled: connected
   });
+
+  // Flip with every watcher when anyone disconnects/reconnects this camera.
+  useRealtimeChannel(channels.captureSessionState(orgId, session.sessionId), {
+    historyLimit: 1,
+    onEvent: (event) => {
+      if (event.type === "capture.session.disconnected") setConnected(false);
+      else if (event.type === "capture.session.reconnected") setConnected(true);
+    }
+  });
+
+  const setConnection = (next: boolean) => {
+    setConnected(next); // optimistic; the realtime event confirms for all watchers
+    startTransition(async () => {
+      try {
+        await setSessionConnectionAction(session.sessionId, next);
+      } catch {
+        setConnected(!next); // revert on failure
+      }
+    });
+  };
 
   const videoRef = useRef<HTMLVideoElement>(null);
   useEffect(() => {
@@ -88,10 +114,11 @@ export function CameraTile({
         {connected ? (
           <button
             type="button"
-            onClick={() => setConnected(false)}
+            onClick={() => setConnection(false)}
+            disabled={pending}
             aria-label="Disconnect camera"
             title="Disconnect camera"
-            className="absolute left-2 top-2 z-20 inline-flex items-center justify-center rounded-md bg-neutral/45 p-1.5 text-base-100/80 backdrop-blur-sm transition-colors hover:bg-error/80 hover:text-error-content"
+            className="absolute left-2 top-2 z-20 inline-flex items-center justify-center rounded-md bg-neutral/45 p-1.5 text-base-100/80 backdrop-blur-sm transition-colors hover:bg-error/80 hover:text-error-content disabled:opacity-50"
           >
             <PowerIcon />
           </button>
@@ -103,8 +130,9 @@ export function CameraTile({
             <p className="text-xs font-medium text-base-100/70">Camera disconnected</p>
             <button
               type="button"
-              onClick={() => setConnected(true)}
-              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-content transition-colors hover:bg-primary/90"
+              onClick={() => setConnection(true)}
+              disabled={pending}
+              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-content transition-colors hover:bg-primary/90 disabled:opacity-50"
             >
               <PlayIcon />
               Reconnect

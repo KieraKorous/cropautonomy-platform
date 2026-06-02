@@ -45,7 +45,8 @@ export function LiveWall({ orgId, viewerUserId, initialSessions }: LiveWallProps
                 operatorName: "Operator",
                 fieldName: null,
                 farmName: null,
-                startedAt: p.startedAt
+                startedAt: p.startedAt,
+                disconnectedAt: null
               },
               ...prev
             ]

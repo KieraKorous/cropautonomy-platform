@@ -168,6 +168,143 @@ export const signalPublisherTerminateV1 = envelopeBaseSchema.extend({
 });
 
 // =============================================================================
+// Capture session connection (channel: captureSessionState)
+// Authoritative disconnect/reconnect, so every watcher's tile flips together.
+// =============================================================================
+
+export const captureSessionDisconnectedV1 = envelopeBaseSchema.extend({
+  type: z.literal("capture.session.disconnected"),
+  version: z.literal(1),
+  payload: z.object({
+    sessionId: z.string().uuid(),
+    disconnectedAt: z.string().datetime({ offset: true })
+  })
+});
+
+export const captureSessionReconnectedV1 = envelopeBaseSchema.extend({
+  type: z.literal("capture.session.reconnected"),
+  version: z.literal(1),
+  payload: z.object({
+    sessionId: z.string().uuid(),
+    reconnectedAt: z.string().datetime({ offset: true })
+  })
+});
+
+// =============================================================================
+// Device pairing (channel: devicePairing)
+// =============================================================================
+
+export const devicePairingClaimedV1 = envelopeBaseSchema.extend({
+  type: z.literal("device.pairing.claimed"),
+  version: z.literal(1),
+  payload: z.object({
+    pairingId: z.string().uuid(),
+    deviceId: z.string().uuid(),
+    deviceName: z.string(),
+    claimedAt: z.string().datetime({ offset: true })
+  })
+});
+
+// =============================================================================
+// Live requests (channel: liveRequests) — the Live screen's pending panel.
+// =============================================================================
+
+export const liveRequestCreatedV1 = envelopeBaseSchema.extend({
+  type: z.literal("live.request.created"),
+  version: z.literal(1),
+  payload: z.object({
+    requestId: z.string().uuid(),
+    orgId: z.string().uuid(),
+    deviceId: z.string().uuid(),
+    deviceName: z.string(),
+    requestedByUserId: z.string(),
+    farmId: z.string().uuid().optional(),
+    fieldId: z.string().uuid().optional(),
+    cropTypeId: z.string().uuid().optional(),
+    requestedAt: z.string().datetime({ offset: true })
+  })
+});
+
+export const liveRequestAcceptedV1 = envelopeBaseSchema.extend({
+  type: z.literal("live.request.accepted"),
+  version: z.literal(1),
+  payload: z.object({
+    requestId: z.string().uuid(),
+    deviceId: z.string().uuid(),
+    sessionId: z.string().uuid(),
+    decidedByUserId: z.string(),
+    decidedAt: z.string().datetime({ offset: true })
+  })
+});
+
+export const liveRequestRejectedV1 = envelopeBaseSchema.extend({
+  type: z.literal("live.request.rejected"),
+  version: z.literal(1),
+  payload: z.object({
+    requestId: z.string().uuid(),
+    deviceId: z.string().uuid(),
+    decidedByUserId: z.string(),
+    decidedAt: z.string().datetime({ offset: true })
+  })
+});
+
+export const liveRequestCancelledV1 = envelopeBaseSchema.extend({
+  type: z.literal("live.request.cancelled"),
+  version: z.literal(1),
+  payload: z.object({
+    requestId: z.string().uuid(),
+    deviceId: z.string().uuid(),
+    cancelledAt: z.string().datetime({ offset: true })
+  })
+});
+
+// =============================================================================
+// Device commands (channel: deviceCommands) — directed at one phone.
+// =============================================================================
+
+export const deviceCommandLiveGrantedV1 = envelopeBaseSchema.extend({
+  type: z.literal("device.command.live_granted"),
+  version: z.literal(1),
+  payload: z.object({
+    requestId: z.string().uuid(),
+    deviceId: z.string().uuid(),
+    orgId: z.string().uuid(),
+    sessionId: z.string().uuid(),
+    grantedAt: z.string().datetime({ offset: true })
+  })
+});
+
+export const deviceCommandLiveRejectedV1 = envelopeBaseSchema.extend({
+  type: z.literal("device.command.live_rejected"),
+  version: z.literal(1),
+  payload: z.object({
+    requestId: z.string().uuid(),
+    deviceId: z.string().uuid(),
+    rejectedAt: z.string().datetime({ offset: true })
+  })
+});
+
+export const deviceCommandDisconnectV1 = envelopeBaseSchema.extend({
+  type: z.literal("device.command.disconnect"),
+  version: z.literal(1),
+  payload: z.object({
+    deviceId: z.string().uuid(),
+    sessionId: z.string().uuid(),
+    disconnectedAt: z.string().datetime({ offset: true })
+  })
+});
+
+export const deviceCommandReconnectV1 = envelopeBaseSchema.extend({
+  type: z.literal("device.command.reconnect"),
+  version: z.literal(1),
+  payload: z.object({
+    deviceId: z.string().uuid(),
+    sessionId: z.string().uuid(),
+    reconnectedAt: z.string().datetime({ offset: true })
+  })
+});
+
+// =============================================================================
 // Scan analysis (channel: scanProgress / scanDetection)
 // =============================================================================
 
@@ -250,6 +387,17 @@ const allSchemas = [
   signalAnswerV1,
   signalIceCandidateV1,
   signalPublisherTerminateV1,
+  captureSessionDisconnectedV1,
+  captureSessionReconnectedV1,
+  devicePairingClaimedV1,
+  liveRequestCreatedV1,
+  liveRequestAcceptedV1,
+  liveRequestRejectedV1,
+  liveRequestCancelledV1,
+  deviceCommandLiveGrantedV1,
+  deviceCommandLiveRejectedV1,
+  deviceCommandDisconnectV1,
+  deviceCommandReconnectV1,
   scanStartedV1,
   scanProgressV1,
   scanDetectionV1,
@@ -288,6 +436,17 @@ export type RealtimeEventInput =
   | Omit<z.infer<typeof signalAnswerV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string }
   | Omit<z.infer<typeof signalIceCandidateV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string }
   | Omit<z.infer<typeof signalPublisherTerminateV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string }
+  | Omit<z.infer<typeof captureSessionDisconnectedV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string }
+  | Omit<z.infer<typeof captureSessionReconnectedV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string }
+  | Omit<z.infer<typeof devicePairingClaimedV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string }
+  | Omit<z.infer<typeof liveRequestCreatedV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string }
+  | Omit<z.infer<typeof liveRequestAcceptedV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string }
+  | Omit<z.infer<typeof liveRequestRejectedV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string }
+  | Omit<z.infer<typeof liveRequestCancelledV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string }
+  | Omit<z.infer<typeof deviceCommandLiveGrantedV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string }
+  | Omit<z.infer<typeof deviceCommandLiveRejectedV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string }
+  | Omit<z.infer<typeof deviceCommandDisconnectV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string }
+  | Omit<z.infer<typeof deviceCommandReconnectV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string }
   | Omit<z.infer<typeof scanStartedV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string }
   | Omit<z.infer<typeof scanProgressV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string }
   | Omit<z.infer<typeof scanDetectionV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string }

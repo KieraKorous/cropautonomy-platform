@@ -1,7 +1,9 @@
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useClerk, useUser } from "@clerk/clerk-react";
+import { useEffect, useState } from "react";
 
 import { ChromeLayout } from "../components/ChromeLayout.js";
+import { getPairedDevice, setPairedDevice, type PairedDevice } from "../lib/db.js";
 import { useActiveSession } from "../lib/session.js";
 import { env } from "../env.js";
 
@@ -10,6 +12,16 @@ export function SettingsPage() {
   const { user } = useUser();
   const { signOut } = useClerk();
   const { session, end } = useActiveSession();
+  const [device, setDevice] = useState<PairedDevice | null>(null);
+
+  useEffect(() => {
+    void getPairedDevice().then(setDevice);
+  }, []);
+
+  async function unpair() {
+    await setPairedDevice(null);
+    setDevice(null);
+  }
 
   return (
     <ChromeLayout eyebrow="Settings" title="Operator">
@@ -43,6 +55,38 @@ export function SettingsPage() {
             </button>
           </section>
         )}
+
+        <section className="rounded-md border border-base-content/10 bg-base-100 p-4">
+          <p className="text-xs uppercase tracking-wider text-base-content/55">
+            Camera pairing
+          </p>
+          {device ? (
+            <>
+              <p className="mt-1 text-sm text-neutral">
+                Paired as “{device.deviceName}”. This phone can request to go live.
+              </p>
+              <button
+                type="button"
+                onClick={() => void unpair()}
+                className="mt-3 flex h-12 items-center rounded-md border border-base-content/15 px-4 text-sm font-semibold text-neutral hover:bg-base-content/[0.04]"
+              >
+                Unpair this phone
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="mt-1 text-sm text-base-content/65">
+                Pair this phone as a live camera from the portal’s Devices tab.
+              </p>
+              <Link
+                to="/pair"
+                className="mt-3 flex h-12 w-fit items-center rounded-md border border-primary/40 bg-primary/10 px-4 text-sm font-semibold text-primary"
+              >
+                Pair this phone
+              </Link>
+            </>
+          )}
+        </section>
 
         <section className="rounded-md border border-base-content/10 bg-base-100 p-4">
           <p className="text-xs uppercase tracking-wider text-base-content/55">

@@ -1,9 +1,10 @@
-import { Navigate } from "react-router-dom";
-import { useRef, useState } from "react";
+import { Link, Navigate } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
 
 import { ChromeLayout } from "../components/ChromeLayout.js";
 import { blobToThumbnailDataUrl, nowIso } from "../lib/capture-camera.js";
-import { enqueueCapture } from "../lib/db.js";
+import { enqueueCapture, getPairedDevice, type PairedDevice } from "../lib/db.js";
+import { useLiveRequest } from "../lib/liveRequest.js";
 import { useActiveSession } from "../lib/session.js";
 import { kickUploadWorker } from "../lib/upload.js";
 
@@ -18,7 +19,16 @@ export function SessionPickerPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadCount, setUploadCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [device, setDevice] = useState<PairedDevice | null>(null);
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
+
+  // A paired phone goes live through the request/accept gate; an unpaired phone
+  // can still start a capture-only session directly.
+  const live = useLiveRequest(device);
+
+  useEffect(() => {
+    void getPairedDevice().then(setDevice);
+  }, []);
 
   if (loading) {
     return (
@@ -48,6 +58,14 @@ export function SessionPickerPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  // Paired phones go live through the gate: fire the request, then wait for a
+  // watcher's grant. On grant the hook adopts the session and this page redirects
+  // to /capture (the `if (session)` branch below).
+  async function handleRequestGoLive() {
+    setError(null);
+    await live.request();
   }
 
   async function handleUpload(files: FileList | null) {
@@ -115,23 +133,71 @@ export function SessionPickerPage() {
           </div>
         )}
 
-        <div className="mt-auto flex gap-3">
-          <button
-            type="button"
-            onClick={handleStart}
-            disabled={busy || uploading}
-            className="flex h-16 flex-1 items-center justify-center rounded-md bg-primary text-base font-semibold text-primary-content shadow-sm disabled:opacity-60"
-          >
-            {busy ? "Starting…" : "Start session"}
-          </button>
-          <button
-            type="button"
-            onClick={() => uploadInputRef.current?.click()}
-            disabled={busy || uploading}
-            className="flex h-16 flex-1 items-center justify-center rounded-md border border-base-content/15 bg-base-100 text-base font-semibold text-neutral shadow-sm disabled:opacity-60"
-          >
-            {uploading ? "Queuing…" : "Upload"}
-          </button>
+        {device && (live.status === "pending" || live.status === "requesting") && (
+          <div className="flex items-center justify-between gap-3 rounded-md border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-base-content/80">
+            <span>Waiting for a supervisor to accept “{device.deviceName}”…</span>
+            <button
+              type="button"
+              onClick={() => void live.cancel()}
+              className="font-semibold text-base-content/60 hover:text-error"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+        {device && live.status === "rejected" && (
+          <div className="rounded-md border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-base-content/80">
+            Your request to go live was declined. You can request again.
+          </div>
+        )}
+        {device && live.status === "error" && live.error && (
+          <div className="rounded-md border border-error/30 bg-error/10 px-4 py-3 text-sm text-error">
+            {live.error}
+          </div>
+        )}
+
+        <div className="mt-auto flex flex-col gap-3">
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={device ? handleRequestGoLive : handleStart}
+              disabled={busy || uploading || live.status === "requesting" || live.status === "pending"}
+              className="flex h-16 flex-1 items-center justify-center rounded-md bg-primary text-base font-semibold text-primary-content shadow-sm disabled:opacity-60"
+            >
+              {device
+                ? live.status === "pending" || live.status === "requesting"
+                  ? "Requested…"
+                  : "Request to go live"
+                : busy
+                  ? "Starting…"
+                  : "Start session"}
+            </button>
+            <button
+              type="button"
+              onClick={() => uploadInputRef.current?.click()}
+              disabled={busy || uploading}
+              className="flex h-16 flex-1 items-center justify-center rounded-md border border-base-content/15 bg-base-100 text-base font-semibold text-neutral shadow-sm disabled:opacity-60"
+            >
+              {uploading ? "Queuing…" : "Upload"}
+            </button>
+          </div>
+          {device ? (
+            <button
+              type="button"
+              onClick={handleStart}
+              disabled={busy || uploading}
+              className="text-sm font-medium text-base-content/55 underline-offset-2 hover:text-neutral hover:underline disabled:opacity-60"
+            >
+              {busy ? "Starting…" : "Start a capture-only session instead"}
+            </button>
+          ) : (
+            <Link
+              to="/pair"
+              className="text-sm font-medium text-base-content/55 underline-offset-2 hover:text-neutral hover:underline"
+            >
+              Pair this phone as a camera
+            </Link>
+          )}
         </div>
 
         <input

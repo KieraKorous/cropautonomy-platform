@@ -22,9 +22,20 @@ export const channels = {
   captureSessionSignal: (orgId: string, sessionId: string) =>
     `org.${orgId}.capture.${sessionId}.signal`,
 
+  // Device commands — directed back-channel to a single phone (live granted /
+  // rejected, disconnect, reconnect). The phone subscribes; the portal/API
+  // publishes.
+  deviceCommands: (orgId: string, deviceId: string) =>
+    `org.${orgId}.device.${deviceId}.commands`,
+  // Pairing handshake — the portal watches this until the phone claims the code.
+  devicePairing: (orgId: string, pairingId: string) =>
+    `org.${orgId}.pairing.${pairingId}`,
+
   // Org-wide fanout channels
   orgNotifications: (orgId: string) => `org.${orgId}.notifications`,
-  orgActiveSessions: (orgId: string) => `org.${orgId}.capture.active`
+  orgActiveSessions: (orgId: string) => `org.${orgId}.capture.active`,
+  // Pending go-live requests — the Live screen's request panel watches this.
+  liveRequests: (orgId: string) => `org.${orgId}.live.requests`
 } as const;
 
 export type ChannelName = string;

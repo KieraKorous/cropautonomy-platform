@@ -70,6 +70,15 @@ function ensureLoaded() {
     .catch(() => setStoreState({ session: null, loading: false }));
 }
 
+// Adopt a session the phone did NOT create itself — used by the request/accept
+// go-live flow, where a portal watcher accepts the request and the API creates
+// the capture_session. The granted session is installed here so CapturePage
+// mounts and the live publisher starts. Mirrors what start() does on its tail.
+export async function adoptActiveSession(session: ActiveSession): Promise<void> {
+  await persistActiveSession(session);
+  setStoreState({ session, loading: false });
+}
+
 export function useActiveSession(): {
   session: ActiveSession | null;
   loading: boolean;
