@@ -72,9 +72,19 @@ export function useLiveRequest(device: PairedDevice | null): UseLiveRequestResul
 
     void check();
     const interval = setInterval(check, 2500);
+    // Background tabs throttle setInterval to ~once/minute, so a phone/portal in
+    // two tabs of one machine would be slow to notice the accept. Re-check the
+    // moment this tab is focused/visible again.
+    const onWake = () => {
+      if (document.visibilityState === "visible") void check();
+    };
+    document.addEventListener("visibilitychange", onWake);
+    window.addEventListener("focus", onWake);
     return () => {
       alive = false;
       clearInterval(interval);
+      document.removeEventListener("visibilitychange", onWake);
+      window.removeEventListener("focus", onWake);
     };
   }, [status, requestId]);
 

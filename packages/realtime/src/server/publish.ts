@@ -31,8 +31,15 @@ export async function publish(
 ): Promise<void> {
   const event = validateForPublish(input);
   const client = getServiceClient();
+  // ack: true is essential — `send` then resolves only after the Realtime server
+  // acknowledges receipt, so we know the broadcast actually reached the broker
+  // (and will fan out to subscribers) BEFORE we remove the channel. With ack:false
+  // `send` resolves as soon as the frame is written locally, and the immediate
+  // removeChannel below would close the socket before the message flushed —
+  // silently dropping every server-published event. That bug made the field PWA
+  // never receive go-live grants and the Live wall never update in real time.
   const channel = client.channel(channelName, {
-    config: { broadcast: { ack: false, self: false } }
+    config: { broadcast: { ack: true, self: false } }
   });
 
   await new Promise<void>((resolve, reject) => {
@@ -46,11 +53,20 @@ export async function publish(
 
     channel.subscribe(async (status) => {
       if (status === "SUBSCRIBED" && !settled) {
-        const result = await channel.send({
-          type: "broadcast",
-          event: BROADCAST_EVENT,
-          payload: event
-        });
+        let result: string;
+        try {
+          result = await channel.send({
+            type: "broadcast",
+            event: BROADCAST_EVENT,
+            payload: event
+          });
+        } catch (err) {
+          clearTimeout(timer);
+          settled = true;
+          await client.removeChannel(channel);
+          reject(err instanceof Error ? err : new Error(String(err)));
+          return;
+        }
         clearTimeout(timer);
         settled = true;
         await client.removeChannel(channel);
