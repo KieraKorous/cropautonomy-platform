@@ -108,6 +108,15 @@ export function discardCapture(
   return apiFetch(`/v1/captures/${id}/discard`, { method: "POST" });
 }
 
+// Re-queue analysis for a capture whose analysis failed. The image already
+// exists in Storage, so this just hands the worker a fresh job; the capture
+// returns to 'analysis_queued'. Only valid for 'failed' captures (409 otherwise).
+export function reanalyzeCapture(
+  id: string
+): Promise<{ captureId: string; analysisJobId: string; status: CaptureStatus }> {
+  return apiFetch(`/v1/captures/${id}/reanalyze`, { method: "POST" });
+}
+
 // Only discarded captures appear here — drives the settings cleanup view.
 export function listDiscardedCaptures(): Promise<ListCapturesResponse> {
   return apiFetch<ListCapturesResponse>("/v1/captures?discarded=true");

@@ -1,6 +1,7 @@
 import { CameraIcon, StatusPill } from "@gaia/ui";
 import type { CaptureSummary } from "../../../lib/api";
 import { DiscardButton } from "./DiscardButton";
+import { RetryButton } from "./RetryButton";
 import { dateFormat, statusDisplay } from "./captureDisplay";
 
 // Grid/gallery card for a capture. What shows under the image, and the pill,
@@ -67,8 +68,9 @@ export function CaptureCard({
           </span>
           <span className="text-xs text-base-content/55">{dateFormat.format(new Date(when))}</span>
         </div>
-        {/* Stop propagation so discarding doesn't also open the lightbox. */}
-        <div onClick={(event) => event.stopPropagation()}>
+        {/* Stop propagation so these actions don't also open the lightbox. */}
+        <div className="flex items-center gap-1" onClick={(event) => event.stopPropagation()}>
+          {capture.status === "failed" ? <RetryButton captureId={capture.id} /> : null}
           <DiscardButton captureId={capture.id} />
         </div>
       </div>

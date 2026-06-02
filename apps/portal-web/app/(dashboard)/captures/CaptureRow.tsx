@@ -1,6 +1,7 @@
 import { CameraIcon, StatusPill } from "@gaia/ui";
 import type { CaptureSummary } from "../../../lib/api";
 import { DiscardButton } from "./DiscardButton";
+import { RetryButton } from "./RetryButton";
 import { dateFormat, mediaLabel, statusDisplay } from "./captureDisplay";
 
 // One row in the captures table. Clicking the row (anywhere but the discard
@@ -59,10 +60,13 @@ export function CaptureRow({
         {display.pill ? (
           <StatusPill label={display.pill.label} tone={display.pill.tone} />
         ) : capture.status === "failed" ? (
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-error/15 px-2.5 py-1 text-xs font-semibold text-error">
-            <span className="h-1.5 w-1.5 rounded-full bg-error" />
-            Failed
-          </span>
+          <div className="flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-error/15 px-2.5 py-1 text-xs font-semibold text-error">
+              <span className="h-1.5 w-1.5 rounded-full bg-error" />
+              Failed
+            </span>
+            <RetryButton captureId={capture.id} />
+          </div>
         ) : null}
       </td>
       {/* Stop propagation so discarding doesn't also open the lightbox. */}

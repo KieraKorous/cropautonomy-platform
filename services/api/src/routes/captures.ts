@@ -441,6 +441,76 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
     }
   );
 
+  // Re-queue analysis for a capture whose analysis previously failed. The
+  // Storage object already exists, so this just inserts a fresh analysis_jobs
+  // row, points the capture back at it, and re-enqueues the worker — the same
+  // tail as finalize. Only 'failed' captures are retryable (the active-job
+  // unique index in 0004 forbids re-queuing one that's still in flight).
+  app.post<{ Params: { id: string } }>(
+    "/v1/captures/:id/reanalyze",
+    { preHandler: app.requireAuth("captures.update") },
+    async (request, _reply) => {
+      const { id } = request.params;
+      if (!UUID_RE.test(id)) {
+        throw badRequest("captures.invalid_id", "Invalid capture id.");
+      }
+      const caller = request.auth!;
+      const supabase = getDb();
+
+      const { data: row, error: loadErr } = await supabase
+        .from("captures")
+        .select("id, org_id, status")
+        .eq("id", id)
+        .maybeSingle();
+      if (loadErr) throw loadErr;
+      if (!row || (row as { org_id: string }).org_id !== caller.orgId) {
+        throw notFound("captures.not_found", "Capture not found.");
+      }
+      if ((row as { status: string }).status !== "failed") {
+        throw conflict(
+          "captures.invalid_transition",
+          `Only failed captures can be re-analyzed (status '${(row as { status: string }).status}').`
+        );
+      }
+
+      const { data: job, error: jobErr } = await supabase
+        .from("analysis_jobs")
+        .insert({ org_id: caller.orgId, capture_id: id, status: "queued" })
+        .select("id")
+        .single();
+      if (jobErr) throw jobErr;
+      const jobId = (job as { id: string }).id;
+
+      const { error: linkErr } = await supabase
+        .from("captures")
+        .update({
+          analysis_job_id: jobId,
+          status: "analysis_queued",
+          status_message: null
+        })
+        .eq("id", id);
+      if (linkErr) throw linkErr;
+
+      try {
+        const boss = await getBoss({ connectionString: loadConfig().DATABASE_URL });
+        await boss.send(QUEUE_NAMES.scanAnalysisRequested, {
+          captureId: id,
+          analysisJobId: jobId,
+          orgId: caller.orgId,
+          task: "plant_classification"
+        });
+      } catch (queueErr) {
+        request.log.error(
+          { err: queueErr, captureId: id, analysisJobId: jobId },
+          "failed to enqueue scan.analysis.requested (reanalyze)"
+        );
+        throw queueErr;
+      }
+
+      return { captureId: id, analysisJobId: jobId, status: "analysis_queued" };
+    }
+  );
+
   // Permanent delete — removes the Storage object(s) and the capture row. Only
   // discarded captures are purgeable. analysis_jobs / analysis_results cascade
   // on the captures FK (0004). Requires captures.delete (manager and up).

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowRight, CameraIcon, StatusPill } from "@gaia/ui";
 import type { CaptureSummary } from "../../../lib/api";
 import { dateFormat, mediaLabel, statusDisplay } from "./captureDisplay";
+import { RetryButton } from "./RetryButton";
 
 const MIN_SCALE = 1;
 const MAX_SCALE = 6;
@@ -187,7 +188,7 @@ export function CaptureDetailModal({
         // lands directly on it (not the inner panel) should close.
         if (event.target === ref.current) onClose();
       }}
-      className="m-auto w-full max-w-4xl rounded-xl border border-base-content/10 bg-base-100 p-0 text-base-content shadow-lg backdrop:bg-neutral/60"
+      className="m-auto w-full max-w-6xl rounded-xl border border-base-content/10 bg-base-100 p-0 text-base-content shadow-lg backdrop:bg-neutral/60"
     >
       {capture && display ? (
         <div className="flex flex-col md:flex-row">
@@ -197,7 +198,7 @@ export function CaptureDetailModal({
               // eslint-disable-next-line @next/next/no-img-element -- signed Storage URL, not a static asset
               <img
                 alt={capture.plantType ?? "Capture"}
-                className="max-h-[70vh] w-full object-contain"
+                className="max-h-[80vh] w-full object-contain"
                 src={capture.imageUrl}
               />
             ) : (
@@ -246,10 +247,13 @@ export function CaptureDetailModal({
                 {display.pill ? (
                   <StatusPill label={display.pill.label} tone={display.pill.tone} />
                 ) : capture.status === "failed" ? (
-                  <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-error/15 px-2.5 py-1 text-xs font-semibold text-error">
-                    <span className="h-1.5 w-1.5 rounded-full bg-error" />
-                    Failed
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-error/15 px-2.5 py-1 text-xs font-semibold text-error">
+                      <span className="h-1.5 w-1.5 rounded-full bg-error" />
+                      Failed
+                    </span>
+                    <RetryButton captureId={capture.id} />
+                  </div>
                 ) : null}
                 <h2
                   className={`text-lg font-semibold ${
