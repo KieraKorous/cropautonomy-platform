@@ -136,7 +136,16 @@ export function useActiveSession(): {
 
   const end = async () => {
     if (!state.session) return;
-    await api.patchSession(state.session.sessionId, { action: "end" });
+    // If the server already ended this session (a watcher ended it, or it was
+    // reaped after the phone went away), clearing it locally is still the right
+    // outcome — don't let the 409 bubble up as an uncaught error.
+    try {
+      await api.patchSession(state.session.sessionId, { action: "end" });
+    } catch (err) {
+      if (!(err instanceof Error && /already[_ ]ended/i.test(err.message))) {
+        throw err;
+      }
+    }
     await persistActiveSession(null);
     setStoreState({ session: null, loading: false });
   };
