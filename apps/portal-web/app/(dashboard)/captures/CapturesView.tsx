@@ -5,6 +5,7 @@ import { GridIcon, RowsIcon } from "@gaia/ui";
 import type { CaptureStatus, CaptureSummary } from "../../../lib/api";
 import { CaptureRow } from "./CaptureRow";
 import { CaptureCard } from "./CaptureCard";
+import { CaptureDetailModal } from "./CaptureDetailModal";
 
 type ViewMode = "table" | "grid";
 const STORAGE_KEY = "captures.viewMode";
@@ -59,6 +60,12 @@ export function CapturesView({ captures }: { captures: CaptureSummary[] }) {
 
   // Default newest-first, matching how the API already returns captures.
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "date", dir: "desc" });
+
+  // Index into `sorted` of the capture open in the detail lightbox; null = closed.
+  // Index-based (not id-based) so prev/next is a plain ±1 walk. Re-sorting while
+  // open keeps the position in-bounds but may land on a different capture — fine
+  // for v1.
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
 
   useEffect(() => {
     const saved = window.localStorage.getItem(STORAGE_KEY);
@@ -128,8 +135,8 @@ export function CapturesView({ captures }: { captures: CaptureSummary[] }) {
                   </td>
                 </tr>
               ) : (
-                sorted.map((capture) => (
-                  <CaptureRow capture={capture} key={capture.id} />
+                sorted.map((capture, i) => (
+                  <CaptureRow capture={capture} key={capture.id} onOpen={() => setSelectedIndex(i)} />
                 ))
               )}
             </tbody>
@@ -146,13 +153,20 @@ export function CapturesView({ captures }: { captures: CaptureSummary[] }) {
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-4 p-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-              {sorted.map((capture) => (
-                <CaptureCard capture={capture} key={capture.id} />
+              {sorted.map((capture, i) => (
+                <CaptureCard capture={capture} key={capture.id} onOpen={() => setSelectedIndex(i)} />
               ))}
             </div>
           )}
         </div>
       )}
+
+      <CaptureDetailModal
+        captures={sorted}
+        index={selectedIndex}
+        onClose={() => setSelectedIndex(null)}
+        onNavigate={setSelectedIndex}
+      />
     </div>
   );
 }

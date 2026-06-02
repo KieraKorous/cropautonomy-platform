@@ -1,50 +1,34 @@
-import { CameraIcon, StatusPill, type Tone } from "@gaia/ui";
-import type { CaptureStatus, CaptureSummary } from "../../../lib/api";
+import { CameraIcon, StatusPill } from "@gaia/ui";
+import type { CaptureSummary } from "../../../lib/api";
 import { DiscardButton } from "./DiscardButton";
+import { dateFormat, statusDisplay } from "./captureDisplay";
 
 // Grid/gallery card for a capture. What shows under the image, and the pill,
-// depend on where the capture is in the pipeline. Plant type only exists once
-// analysis has succeeded; until then we surface the in-flight state.
-function statusDisplay(
-  status: CaptureStatus,
-  plantType: string | null
-): { label: string; pill: { label: string; tone: Tone } | null; muted: boolean } {
-  switch (status) {
-    case "analyzed":
-      return {
-        label: plantType ?? "Unidentified",
-        pill: { label: "Identified", tone: "success" },
-        muted: plantType == null
-      };
-    case "analysis_queued":
-    case "analysis_running":
-      return { label: "Analyzing…", pill: { label: "Analyzing", tone: "accent" }, muted: true };
-    case "uploaded":
-      return { label: "Queued for analysis", pill: { label: "Queued", tone: "muted" }, muted: true };
-    case "pending_upload":
-    case "uploading":
-      return { label: "Uploading…", pill: { label: "Uploading", tone: "muted" }, muted: true };
-    case "failed":
-      return { label: "Analysis failed", pill: null, muted: true };
-    default:
-      return { label: status, pill: null, muted: true };
-  }
-}
-
-const dateFormat = new Intl.DateTimeFormat("en-US", {
-  month: "2-digit",
-  day: "2-digit",
-  year: "numeric",
-  hour: "numeric",
-  minute: "2-digit"
-});
-
-export function CaptureCard({ capture }: { capture: CaptureSummary }) {
+// depend on where the capture is in the pipeline. Clicking the card (anywhere
+// but the discard button) opens the detail lightbox.
+export function CaptureCard({
+  capture,
+  onOpen
+}: {
+  capture: CaptureSummary;
+  onOpen: () => void;
+}) {
   const display = statusDisplay(capture.status, capture.plantType);
   const when = capture.uploadedAt ?? capture.capturedAt;
 
   return (
-    <article className="overflow-hidden rounded-xl border border-base-content/10 bg-base-100">
+    <article
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onOpen();
+        }
+      }}
+      className="cursor-pointer overflow-hidden rounded-xl border border-base-content/10 bg-base-100 transition-colors hover:border-base-content/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+    >
       <div className="relative aspect-square bg-base-content/[0.04]">
         {capture.imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- signed Storage URL, not a static asset
@@ -83,7 +67,10 @@ export function CaptureCard({ capture }: { capture: CaptureSummary }) {
           </span>
           <span className="text-xs text-base-content/55">{dateFormat.format(new Date(when))}</span>
         </div>
-        <DiscardButton captureId={capture.id} />
+        {/* Stop propagation so discarding doesn't also open the lightbox. */}
+        <div onClick={(event) => event.stopPropagation()}>
+          <DiscardButton captureId={capture.id} />
+        </div>
       </div>
     </article>
   );

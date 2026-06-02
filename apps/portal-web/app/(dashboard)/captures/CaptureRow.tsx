@@ -1,55 +1,26 @@
-import { CameraIcon, StatusPill, type Tone } from "@gaia/ui";
-import type { CaptureStatus, CaptureSummary } from "../../../lib/api";
+import { CameraIcon, StatusPill } from "@gaia/ui";
+import type { CaptureSummary } from "../../../lib/api";
 import { DiscardButton } from "./DiscardButton";
+import { dateFormat, mediaLabel, statusDisplay } from "./captureDisplay";
 
-// One row in the captures table. Plant column only carries a real species name
-// once analysis has succeeded; everything else surfaces the in-flight state.
-function statusDisplay(
-  status: CaptureStatus,
-  plantType: string | null
-): { plantLabel: string; pill: { label: string; tone: Tone } | null; muted: boolean } {
-  switch (status) {
-    case "analyzed":
-      return {
-        plantLabel: plantType ?? "Unidentified",
-        pill: { label: "Identified", tone: "success" },
-        muted: plantType == null
-      };
-    case "analysis_queued":
-    case "analysis_running":
-      return { plantLabel: "Analyzing…", pill: { label: "Analyzing", tone: "accent" }, muted: true };
-    case "uploaded":
-      return { plantLabel: "Queued for analysis", pill: { label: "Queued", tone: "muted" }, muted: true };
-    case "pending_upload":
-    case "uploading":
-      return { plantLabel: "Uploading…", pill: { label: "Uploading", tone: "muted" }, muted: true };
-    case "failed":
-      return { plantLabel: "Analysis failed", pill: null, muted: true };
-    default:
-      return { plantLabel: status, pill: null, muted: true };
-  }
-}
-
-const dateFormat = new Intl.DateTimeFormat("en-US", {
-  month: "2-digit",
-  day: "2-digit",
-  year: "numeric",
-  hour: "numeric",
-  minute: "2-digit"
-});
-
-export function CaptureRow({ capture }: { capture: CaptureSummary }) {
+// One row in the captures table. Clicking the row (anywhere but the discard
+// button) opens the detail lightbox. Plant column only carries a real species
+// name once analysis has succeeded; everything else surfaces in-flight state.
+export function CaptureRow({
+  capture,
+  onOpen
+}: {
+  capture: CaptureSummary;
+  onOpen: () => void;
+}) {
   const display = statusDisplay(capture.status, capture.plantType);
   const when = capture.uploadedAt ?? capture.capturedAt;
-  const mediaLabel =
-    capture.mediaType === "burst_frame"
-      ? "Burst"
-      : capture.mediaType === "video"
-        ? "Video"
-        : "Photo";
 
   return (
-    <tr className="border-t border-base-content/10 align-middle">
+    <tr
+      onClick={onOpen}
+      className="cursor-pointer border-t border-base-content/10 align-middle transition-colors hover:bg-base-content/[0.03]"
+    >
       <td className="px-3 py-2.5">
         <div className="relative h-14 w-14 overflow-hidden rounded-md bg-base-content/[0.04]">
           {capture.imageUrl ? (
@@ -71,7 +42,7 @@ export function CaptureRow({ capture }: { capture: CaptureSummary }) {
           <span className="text-sm font-medium text-neutral">
             {dateFormat.format(new Date(when))}
           </span>
-          <span className="text-xs text-base-content/55">{mediaLabel}</span>
+          <span className="text-xs text-base-content/55">{mediaLabel(capture.mediaType)}</span>
         </div>
       </td>
       <td className="px-3 py-2.5">
@@ -79,9 +50,9 @@ export function CaptureRow({ capture }: { capture: CaptureSummary }) {
           className={`text-sm ${
             display.muted ? "text-base-content/55" : "italic text-neutral"
           }`}
-          title={display.plantLabel}
+          title={display.label}
         >
-          {display.plantLabel}
+          {display.label}
         </span>
       </td>
       <td className="px-3 py-2.5">
@@ -94,7 +65,8 @@ export function CaptureRow({ capture }: { capture: CaptureSummary }) {
           </span>
         ) : null}
       </td>
-      <td className="px-3 py-2.5 text-right">
+      {/* Stop propagation so discarding doesn't also open the lightbox. */}
+      <td className="px-3 py-2.5 text-right" onClick={(event) => event.stopPropagation()}>
         <DiscardButton captureId={capture.id} />
       </td>
     </tr>
