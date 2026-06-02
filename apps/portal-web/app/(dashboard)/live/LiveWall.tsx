@@ -85,7 +85,8 @@ export function LiveWall({ orgId, viewerUserId, initialSessions }: LiveWallProps
       });
       setFocusedId((cur) => (cur && !fetchedMap.has(cur) ? null : cur));
     };
-    const interval = setInterval(reconcile, 20_000);
+    void reconcile();
+    const interval = setInterval(reconcile, 10_000);
     return () => {
       alive = false;
       clearInterval(interval);

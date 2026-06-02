@@ -1,16 +1,16 @@
-import { channels } from "@gaia/realtime/channels";
-import { useRealtimeChannel } from "@gaia/realtime/client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { api } from "./api.js";
 import type { PairedDevice } from "./db.js";
+import { adoptActiveSession } from "./session.js";
 
 // The phone side of the request/accept gate. A paired device asks to go live;
-// a portal watcher accepts, and the API grants the session over the device's
-// commands channel. The GRANT (adopt session + jump to /capture) is handled
-// app-globally by GoLiveGrantWatcher so it lands even if the operator left this
-// screen. This hook owns the picker-local UI: sending the request, the pending
-// state, cancel, and surfacing a rejection so the operator can retry.
+// a portal watcher accepts and the API creates the session. We discover the
+// decision by POLLING the request — reliable regardless of whether a realtime
+// broadcast reaches the device (the app-global GoLiveGrantWatcher is the fast
+// path when realtime does deliver; this poll is the guarantee). On accept we
+// adopt the session, which redirects the picker to /capture and starts the
+// publisher. On reject we surface it so the operator can retry.
 
 export type LiveRequestStatus =
   | "idle"
@@ -34,34 +34,55 @@ export function useLiveRequest(device: PairedDevice | null): UseLiveRequestResul
   const [status, setStatus] = useState<LiveRequestStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
+  const adoptedRef = useRef(false);
 
-  // Subscribe to the device's command channel for the grant/reject. Active the
-  // whole time a device is paired, so we never miss the watcher's decision.
-  useRealtimeChannel(
-    device
-      ? channels.deviceCommands(device.orgId, device.deviceId)
-      : "org.none.device.none.commands",
-    {
-      enabled: Boolean(device),
-      historyLimit: 1,
-      onEvent: (event) => {
-        // Grant is handled by GoLiveGrantWatcher (app-global). Here we only need
-        // to clear the pending UI on grant and surface a rejection.
-        if (event.type === "device.command.live_granted") {
-          setStatus("idle");
-          setRequestId(null);
-        } else if (event.type === "device.command.live_rejected") {
-          setStatus("rejected");
-          setRequestId(null);
-        }
+  // While a request is pending, poll its status every 2.5s until it's decided.
+  useEffect(() => {
+    if (status !== "pending" || !requestId) return;
+    let alive = true;
+
+    const check = async () => {
+      let res;
+      try {
+        res = await api.getLiveRequest(requestId);
+      } catch {
+        return; // transient — keep polling
       }
-    }
-  );
+      if (!alive) return;
+      if (res.status === "accepted" && res.sessionId && !adoptedRef.current) {
+        adoptedRef.current = true;
+        setStatus("idle");
+        setRequestId(null);
+        // Installs the session → the picker's `if (session)` guard redirects to
+        // /capture, where the live publisher starts.
+        void adoptActiveSession({
+          sessionId: res.sessionId,
+          orgId: res.orgId,
+          startedAt: new Date().toISOString(),
+          status: "live"
+        });
+      } else if (res.status === "rejected") {
+        setStatus("rejected");
+        setRequestId(null);
+      } else if (res.status === "cancelled" || res.status === "expired") {
+        setStatus("idle");
+        setRequestId(null);
+      }
+    };
+
+    void check();
+    const interval = setInterval(check, 2500);
+    return () => {
+      alive = false;
+      clearInterval(interval);
+    };
+  }, [status, requestId]);
 
   const request: UseLiveRequestResult["request"] = async (opts) => {
     if (!device) return;
     setStatus("requesting");
     setError(null);
+    adoptedRef.current = false;
     try {
       const res = await api.createLiveRequest({
         deviceId: device.deviceId,

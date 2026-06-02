@@ -266,6 +266,47 @@ const devicesRoutes: FastifyPluginAsync = async (app) => {
     }
   );
 
+  // GET /v1/live-requests/:id — the PHONE polls its own request while waiting,
+  // so going live doesn't depend on a realtime broadcast reaching the device.
+  app.get<{ Params: { id: string } }>(
+    "/v1/live-requests/:id",
+    { preHandler: app.requireAuth("capture_sessions.read") },
+    async (request, _reply) => {
+      const { id } = request.params;
+      if (!UUID_RE.test(id)) throw badRequest("live_requests.invalid_id", "Invalid request id.");
+      const caller = request.auth!;
+      const supabase = getDb();
+
+      const { data, error } = await supabase
+        .from("live_requests")
+        .select("id, org_id, status, session_id, device_id, expires_at")
+        .eq("id", id)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) throw notFound("live_requests.not_found", "Live request not found.");
+      const row = data as {
+        id: string;
+        org_id: string;
+        status: string;
+        session_id: string | null;
+        device_id: string;
+        expires_at: string;
+      };
+      if (row.org_id !== caller.orgId) {
+        throw notFound("live_requests.not_found", "Live request not found.");
+      }
+      const expired =
+        row.status === "pending" && new Date(row.expires_at).getTime() < Date.now();
+      return {
+        requestId: row.id,
+        status: expired ? "expired" : row.status,
+        sessionId: row.session_id,
+        deviceId: row.device_id,
+        orgId: row.org_id
+      };
+    }
+  );
+
   // POST /v1/live-requests — the PHONE asks to go live.
   app.post(
     "/v1/live-requests",

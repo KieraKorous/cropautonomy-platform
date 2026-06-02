@@ -77,6 +77,14 @@ export interface CreateLiveRequestResponse {
   orgId: string;
 }
 
+export interface LiveRequestStatusResponse {
+  requestId: string;
+  status: "pending" | "accepted" | "rejected" | "cancelled" | "expired";
+  sessionId: string | null;
+  deviceId: string;
+  orgId: string;
+}
+
 export interface FieldRecord {
   id: string;
   farmId: string;
@@ -161,5 +169,9 @@ export const api = {
   cancelLiveRequest: (id: string) =>
     call<{ requestId: string; status: string }>(`/v1/live-requests/${id}/cancel`, {
       method: "POST"
-    })
+    }),
+  // Poll a request's status while waiting for a watcher to decide — the reliable
+  // path to going live (doesn't depend on a realtime broadcast reaching us).
+  getLiveRequest: (id: string) =>
+    call<LiveRequestStatusResponse>(`/v1/live-requests/${id}`, { method: "GET" })
 };
