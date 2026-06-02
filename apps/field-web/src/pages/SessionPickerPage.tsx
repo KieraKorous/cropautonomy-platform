@@ -134,15 +134,22 @@ export function SessionPickerPage() {
         )}
 
         {device && (live.status === "pending" || live.status === "requesting") && (
-          <div className="flex items-center justify-between gap-3 rounded-md border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-base-content/80">
-            <span>Waiting for a supervisor to accept “{device.deviceName}”…</span>
-            <button
-              type="button"
-              onClick={() => void live.cancel()}
-              className="font-semibold text-base-content/60 hover:text-error"
-            >
-              Cancel
-            </button>
+          <div className="flex flex-col gap-2 rounded-md border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-base-content/80">
+            <div className="flex items-center justify-between gap-3">
+              <span>Waiting for a supervisor to accept “{device.deviceName}”…</span>
+              <button
+                type="button"
+                onClick={() => void live.cancel()}
+                className="font-semibold text-base-content/60 hover:text-error"
+              >
+                Cancel
+              </button>
+            </div>
+            {live.debug ? (
+              <p className="font-mono text-[11px] leading-tight text-base-content/55">
+                {live.debug}
+              </p>
+            ) : null}
           </div>
         )}
         {device && live.status === "rejected" && (

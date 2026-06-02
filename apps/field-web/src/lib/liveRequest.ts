@@ -22,6 +22,9 @@ export type LiveRequestStatus =
 export interface UseLiveRequestResult {
   status: LiveRequestStatus;
   error: string | null;
+  // Human-readable trace of what the poll last saw — surfaced on screen so we
+  // can see exactly where the accept→go-live handoff is (or isn't) happening.
+  debug: string | null;
   request: (opts?: {
     farmId?: string;
     fieldId?: string;
@@ -33,6 +36,7 @@ export interface UseLiveRequestResult {
 export function useLiveRequest(device: PairedDevice | null): UseLiveRequestResult {
   const [status, setStatus] = useState<LiveRequestStatus>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [debug, setDebug] = useState<string | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
   const adoptedRef = useRef(false);
 
@@ -45,12 +49,15 @@ export function useLiveRequest(device: PairedDevice | null): UseLiveRequestResul
       let res;
       try {
         res = await api.getLiveRequest(requestId);
-      } catch {
+      } catch (err) {
+        setDebug(`poll error: ${err instanceof Error ? err.message : String(err)}`);
         return; // transient — keep polling
       }
       if (!alive) return;
+      setDebug(`poll ok — status=${res.status}${res.sessionId ? `, session=${res.sessionId.slice(0, 8)}` : ""}`);
       if (res.status === "accepted" && res.sessionId && !adoptedRef.current) {
         adoptedRef.current = true;
+        setDebug(`accepted — adopting session ${res.sessionId.slice(0, 8)}, going to /capture`);
         setStatus("idle");
         setRequestId(null);
         // Installs the session → the picker's `if (session)` guard redirects to
@@ -93,6 +100,7 @@ export function useLiveRequest(device: PairedDevice | null): UseLiveRequestResul
     setStatus("requesting");
     setError(null);
     adoptedRef.current = false;
+    setDebug("sending request…");
     try {
       const res = await api.createLiveRequest({
         deviceId: device.deviceId,
@@ -102,9 +110,11 @@ export function useLiveRequest(device: PairedDevice | null): UseLiveRequestResul
       });
       setRequestId(res.requestId);
       setStatus("pending");
+      setDebug(`request ${res.requestId.slice(0, 8)} sent — polling…`);
     } catch (err) {
       setStatus("error");
       setError(err instanceof Error ? err.message : "Could not send request.");
+      setDebug(`request failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   };
 
@@ -121,5 +131,5 @@ export function useLiveRequest(device: PairedDevice | null): UseLiveRequestResul
     setError(null);
   };
 
-  return { status, error, request, cancel };
+  return { status, error, debug, request, cancel };
 }
