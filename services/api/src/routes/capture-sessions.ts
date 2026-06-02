@@ -33,8 +33,15 @@ const patchSchema = z.discriminatedUnion("action", [
   // Authoritative disconnect/reconnect: any watcher (not just the operator) can
   // pull a live camera off-air and put it back. Signals the publishing device.
   z.object({ action: z.literal("disconnect") }),
-  z.object({ action: z.literal("reconnect") })
+  z.object({ action: z.literal("reconnect") }),
+  // Liveness ping from the publishing phone. Keeps the session on the wall; a
+  // session that stops pinging (phone closed / left) goes stale and drops off.
+  z.object({ action: z.literal("heartbeat") })
 ]);
+
+// How long a device-backed session may go without a heartbeat before the wall
+// treats it as gone. Phones ping ~every 15s, so 45s tolerates two missed beats.
+const LIVE_STALE_MS = 45_000;
 
 // Actions any technician+/manager watcher may run on someone else's session.
 // The lifecycle actions (pause/resume/end) stay operator-only.
@@ -53,6 +60,7 @@ interface LiveSessionRow {
   started_at: string;
   live_disconnected_at: string | null;
   operator: { clerk_user_id: string; display_name: string | null; email: string } | null;
+  device: { display_name: string | null } | null;
   field: { name: string } | null;
   farm: { name: string } | null;
 }
@@ -73,11 +81,14 @@ const captureSessionsRoutes: FastifyPluginAsync = async (app) => {
       const { data, error } = await supabase
         .from("capture_sessions")
         .select(
-          "id, status, started_at, live_disconnected_at, operator:users!started_by_user_id(clerk_user_id, display_name, email), field:fields(name), farm:farms(name)"
+          "id, status, started_at, live_disconnected_at, operator:users!started_by_user_id(clerk_user_id, display_name, email), device:devices!started_by_device_id(display_name), field:fields(name), farm:farms(name)"
         )
         .eq("org_id", caller.orgId)
         .in("status", ACTIVE_STATUSES as unknown as string[])
         .not("started_by_device_id", "is", null)
+        // Drop sessions whose phone stopped heartbeating — a camera that went
+        // away leaves no live tile behind.
+        .gt("last_heartbeat_at", new Date(Date.now() - LIVE_STALE_MS).toISOString())
         .order("started_at", { ascending: false });
       if (error) throw error;
 
@@ -90,6 +101,9 @@ const captureSessionsRoutes: FastifyPluginAsync = async (app) => {
           status: row.status,
           operatorUserId: row.operator?.clerk_user_id ?? null,
           operatorName: row.operator?.display_name ?? row.operator?.email ?? "Operator",
+          // The Live wall labels each camera by its device name (set on the
+          // devices page); fall back to "Unknown" when the device has no name.
+          deviceName: row.device?.display_name ?? "Unknown",
           fieldName: row.field?.name ?? null,
           farmName: row.farm?.name ?? null,
           startedAt: row.started_at,
@@ -244,6 +258,14 @@ const captureSessionsRoutes: FastifyPluginAsync = async (app) => {
             }
           );
         }
+      } else if (body.action === "heartbeat") {
+        // Liveness only — bump last_heartbeat_at. No realtime event; the wall
+        // reads liveness from the /live roster (and its poll), not per-ping.
+        const { error } = await supabase
+          .from("capture_sessions")
+          .update({ last_heartbeat_at: now })
+          .eq("id", id);
+        if (error) throw error;
       } else if (body.action === "pause") {
         if (row.status !== "live") {
           throw conflict(

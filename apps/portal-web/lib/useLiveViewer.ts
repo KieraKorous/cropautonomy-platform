@@ -75,21 +75,35 @@ export function useLiveViewer(options: UseLiveViewerOptions): LiveViewerState {
     }
   });
 
-  // Announce ourselves only once the channel is actually connected, so we don't
-  // publish the join before we're subscribed and miss the publisher's offer.
+  // Announce ourselves once the channel is connected — and KEEP re-announcing
+  // until the peer is connected. In the request/accept go-live flow the portal
+  // viewer joins the instant the session appears, but the phone publisher only
+  // comes online seconds later (navigate → camera permission → publish). A join
+  // is a no-replay broadcast, so a single announce sent before the publisher is
+  // listening would be lost forever — leaving a tile stuck on "Connecting". The
+  // publisher ignores duplicate joins for a viewerId it already has a peer for,
+  // so re-announcing is safe; we stop as soon as we're connected.
   useEffect(() => {
-    if (!enabled || channelStatus !== "connected" || joinedRef.current) return;
-    joinedRef.current = true;
-    void publishFromClient(channelName, {
-      type: "signal.viewer.join",
-      version: 1,
-      payload: {
-        viewerId,
-        viewerUserId,
-        joinedAt: new Date().toISOString()
-      }
-    }).catch(() => {});
-  }, [enabled, channelStatus, channelName, viewerId, viewerUserId]);
+    if (!enabled || channelStatus !== "connected") return;
+    if (connectionState === "connected") return;
+
+    const announce = () => {
+      joinedRef.current = true;
+      void publishFromClient(channelName, {
+        type: "signal.viewer.join",
+        version: 1,
+        payload: {
+          viewerId,
+          viewerUserId,
+          joinedAt: new Date().toISOString()
+        }
+      }).catch(() => {});
+    };
+
+    announce();
+    const interval = setInterval(announce, 2500);
+    return () => clearInterval(interval);
+  }, [enabled, channelStatus, channelName, viewerId, viewerUserId, connectionState]);
 
   // Teardown: close the peer and tell the publisher we're gone so it can drop
   // our connection from its mesh.

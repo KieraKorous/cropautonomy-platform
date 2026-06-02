@@ -137,6 +137,7 @@ export const api = {
       | { action: "pause"; reason?: string }
       | { action: "resume" }
       | { action: "end"; reason?: string }
+      | { action: "heartbeat" }
   ) =>
     call<{ sessionId: string; action: string }>(`/v1/capture-sessions/${id}`, {
       method: "PATCH",

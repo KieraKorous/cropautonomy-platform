@@ -2,9 +2,19 @@
 
 import {
   acceptLiveRequest,
+  listLiveSessions,
   rejectLiveRequest,
-  setSessionConnection
+  setSessionConnection,
+  type LiveSessionSummary
 } from "../../../lib/api";
+
+// Current live roster — polled by the wall to drop cameras that stopped
+// streaming (their session goes stale server-side) and to self-heal any missed
+// realtime add/remove events.
+export async function listLiveSessionsAction(): Promise<LiveSessionSummary[]> {
+  const res = await listLiveSessions();
+  return res.sessions;
+}
 
 // Accept a phone's go-live request: spawns a live session (the wall lights up via
 // the capture.session.started fanout) and grants the phone permission to publish.

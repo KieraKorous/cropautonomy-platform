@@ -6,6 +6,7 @@ import { useRealtimeChannel } from "@gaia/realtime/client";
 
 import { OverlayChrome } from "../components/OverlayChrome.js";
 import { SurfaceSwitcher } from "../components/SurfaceSwitcher.js";
+import { api } from "../lib/api.js";
 import {
     blobToThumbnailDataUrl,
     nowIso,
@@ -104,6 +105,24 @@ export function CapturePage() {
         stream,
         enabled: Boolean(session && stream && user) && !livePaused
     });
+
+    // Liveness heartbeat: while this phone holds the session, ping the server so
+    // the Live wall knows the camera is still here. When the phone closes or
+    // leaves, the pings stop and the session goes stale and drops off the wall.
+    // Pings continue even while authoritatively disconnected (livePaused) so a
+    // disconnected-but-present camera keeps its "Reconnect" tile.
+    const heartbeatSessionId = session?.sessionId ?? null;
+    useEffect(() => {
+        if (!heartbeatSessionId) return;
+        const ping = () => {
+            void api
+                .patchSession(heartbeatSessionId, { action: "heartbeat" })
+                .catch(() => {});
+        };
+        ping();
+        const interval = setInterval(ping, 15_000);
+        return () => clearInterval(interval);
+    }, [heartbeatSessionId]);
 
     useEffect(() => {
         const video = videoRef.current;

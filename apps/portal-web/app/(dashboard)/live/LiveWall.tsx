@@ -5,6 +5,7 @@ import { useRealtimeChannel } from "@gaia/realtime/client";
 import { useEffect, useState } from "react";
 
 import type { LiveSessionSummary } from "../../../lib/api";
+import { listLiveSessionsAction } from "./actions";
 import { CameraTile } from "./CameraTile";
 
 export interface LiveWallProps {
@@ -41,8 +42,9 @@ export function LiveWall({ orgId, viewerUserId, initialSessions }: LiveWallProps
                 status: "live",
                 operatorUserId: p.operatorUserId,
                 // The realtime event carries ids, not display names — those fill
-                // in on the next full page load. Show a neutral label meanwhile.
+                // in on the next full page load. Show neutral labels meanwhile.
                 operatorName: "Operator",
+                deviceName: "Unknown",
                 fieldName: null,
                 farmName: null,
                 startedAt: p.startedAt,
@@ -57,6 +59,38 @@ export function LiveWall({ orgId, viewerUserId, initialSessions }: LiveWallProps
       setFocusedId((cur) => (cur === endedId ? null : cur));
     }
   }, [latest]);
+
+  // Reconcile against the server roster every 20s: drops cameras that stopped
+  // streaming (their session goes stale once the phone stops heartbeating) and
+  // self-heals any add/remove realtime event we may have missed. Existing tiles
+  // keep their position (and their peer/stream) — only metadata is refreshed.
+  useEffect(() => {
+    let alive = true;
+    const reconcile = async () => {
+      let fetched: LiveSessionSummary[];
+      try {
+        fetched = await listLiveSessionsAction();
+      } catch {
+        return; // transient — keep the current wall rather than blanking it
+      }
+      if (!alive) return;
+      const fetchedMap = new Map(fetched.map((s) => [s.sessionId, s]));
+      setSessions((prev) => {
+        const kept = prev
+          .filter((s) => fetchedMap.has(s.sessionId))
+          .map((s) => fetchedMap.get(s.sessionId)!);
+        const keptIds = new Set(kept.map((s) => s.sessionId));
+        const added = fetched.filter((s) => !keptIds.has(s.sessionId));
+        return [...added, ...kept];
+      });
+      setFocusedId((cur) => (cur && !fetchedMap.has(cur) ? null : cur));
+    };
+    const interval = setInterval(reconcile, 20_000);
+    return () => {
+      alive = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   if (sessions.length === 0) {
     return <EmptyState />;

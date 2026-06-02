@@ -139,6 +139,8 @@ export interface LiveSessionSummary {
   status: LiveSessionStatus;
   operatorUserId: string | null;
   operatorName: string;
+  // Device name from the devices page; "Unknown" when the device has no name.
+  deviceName: string;
   fieldName: string | null;
   farmName: string | null;
   startedAt: string;

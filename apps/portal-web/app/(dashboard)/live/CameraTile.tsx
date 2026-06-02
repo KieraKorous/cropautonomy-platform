@@ -140,11 +140,11 @@ export function CameraTile({
           </div>
         ) : null}
 
-        {/* Operator label — non-interactive, clicks fall through to focus. */}
+        {/* Device label — non-interactive, clicks fall through to focus. */}
         <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 bg-gradient-to-t from-neutral/90 via-neutral/40 to-transparent px-3 pb-2 pt-8">
           <div className="min-w-0">
             <p className="truncate text-sm font-medium text-base-100">
-              {session.operatorName}
+              {session.deviceName}
             </p>
             {!compact ? (
               <p className="truncate text-xs text-base-100/70">
