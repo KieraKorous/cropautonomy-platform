@@ -59,7 +59,10 @@ interface LiveSessionRow {
 
 const captureSessionsRoutes: FastifyPluginAsync = async (app) => {
   // GET /v1/capture-sessions/live — org-scoped roster of in-flight sessions for
-  // the portal Live page. Each row is one camera (an operator's field session).
+  // the portal Live page. Each row is one camera that went live through the
+  // request/accept gate — i.e. a device-backed session (started_by_device_id is
+  // set by the accept handler). Capture-only / legacy sessions (no device) are
+  // deliberately excluded: they capture but never appear as a live camera.
   app.get(
     "/v1/capture-sessions/live",
     { preHandler: app.requireAuth("capture_sessions.read") },
@@ -74,6 +77,7 @@ const captureSessionsRoutes: FastifyPluginAsync = async (app) => {
         )
         .eq("org_id", caller.orgId)
         .in("status", ACTIVE_STATUSES as unknown as string[])
+        .not("started_by_device_id", "is", null)
         .order("started_at", { ascending: false });
       if (error) throw error;
 

@@ -114,7 +114,12 @@ export async function createLiveSession(
     channels.captureSessionState(input.orgId, sessionId),
     startedEvent
   );
-  await publishBestEffort(log, channels.orgActiveSessions(input.orgId), startedEvent);
+  // Only device-backed sessions (those that went live through the request/accept
+  // gate) belong on the Live wall. Capture-only sessions skip the org-wide active
+  // index so they never appear as a camera tile.
+  if (input.startedByDeviceId) {
+    await publishBestEffort(log, channels.orgActiveSessions(input.orgId), startedEvent);
+  }
 
   return { sessionId, startedAt };
 }
