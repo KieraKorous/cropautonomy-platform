@@ -4,12 +4,13 @@ import { useState } from "react";
 
 import { api } from "./api.js";
 import type { PairedDevice } from "./db.js";
-import { adoptActiveSession } from "./session.js";
 
 // The phone side of the request/accept gate. A paired device asks to go live;
 // a portal watcher accepts, and the API grants the session over the device's
-// commands channel. On grant we adopt the session so CapturePage mounts and the
-// live publisher starts. On reject we surface it so the operator can retry.
+// commands channel. The GRANT (adopt session + jump to /capture) is handled
+// app-globally by GoLiveGrantWatcher so it lands even if the operator left this
+// screen. This hook owns the picker-local UI: sending the request, the pending
+// state, cancel, and surfacing a rejection so the operator can retry.
 
 export type LiveRequestStatus =
   | "idle"
@@ -44,15 +45,11 @@ export function useLiveRequest(device: PairedDevice | null): UseLiveRequestResul
       enabled: Boolean(device),
       historyLimit: 1,
       onEvent: (event) => {
+        // Grant is handled by GoLiveGrantWatcher (app-global). Here we only need
+        // to clear the pending UI on grant and surface a rejection.
         if (event.type === "device.command.live_granted") {
           setStatus("idle");
           setRequestId(null);
-          void adoptActiveSession({
-            sessionId: event.payload.sessionId,
-            orgId: event.payload.orgId,
-            startedAt: event.payload.grantedAt,
-            status: "live"
-          });
         } else if (event.type === "device.command.live_rejected") {
           setStatus("rejected");
           setRequestId(null);

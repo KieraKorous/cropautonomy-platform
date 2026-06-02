@@ -146,9 +146,24 @@ export function SessionPickerPage() {
           </div>
         )}
         {device && live.status === "rejected" && (
-          <div className="rounded-md border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-base-content/80">
-            Your request to go live was declined. You can request again.
-          </div>
+          <section className="flex flex-col items-start gap-3 rounded-xl border border-dashed border-warning/40 bg-warning/[0.07] px-5 py-5">
+            <span className="rounded-full bg-warning/20 px-2.5 py-1 text-xs font-semibold text-warning">
+              Request declined
+            </span>
+            <h2 className="text-base font-semibold text-neutral">Held at the gate.</h2>
+            <p className="text-sm leading-relaxed text-base-content/70">
+              A supervisor didn&rsquo;t wave “{device.deviceName}” onto the live wall
+              this time. No harm done — line up another request whenever you&rsquo;re
+              ready to roll.
+            </p>
+            <button
+              type="button"
+              onClick={handleRequestGoLive}
+              className="mt-1 inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-content shadow-sm hover:bg-primary/90"
+            >
+              Request again
+            </button>
+          </section>
         )}
         {device && live.status === "error" && live.error && (
           <div className="rounded-md border border-error/30 bg-error/10 px-4 py-3 text-sm text-error">

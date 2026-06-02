@@ -73,10 +73,12 @@ function ensureLoaded() {
 // Adopt a session the phone did NOT create itself — used by the request/accept
 // go-live flow, where a portal watcher accepts the request and the API creates
 // the capture_session. The granted session is installed here so CapturePage
-// mounts and the live publisher starts. Mirrors what start() does on its tail.
+// mounts and the live publisher starts. The store is set synchronously (before
+// the IndexedDB write) so a navigate("/capture") immediately after sees the
+// session and doesn't bounce back through the picker's redirect guard.
 export async function adoptActiveSession(session: ActiveSession): Promise<void> {
-  await persistActiveSession(session);
   setStoreState({ session, loading: false });
+  await persistActiveSession(session);
 }
 
 export function useActiveSession(): {

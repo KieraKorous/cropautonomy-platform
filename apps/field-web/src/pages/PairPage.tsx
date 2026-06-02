@@ -17,7 +17,9 @@ import {
 
 export function PairPage() {
   const [params] = useSearchParams();
-  const code = (params.get("code") ?? "").trim();
+  // Prefill from the link/QR (?code=…) but keep it editable so the operator can
+  // also just type the code shown on the portal.
+  const [code, setCode] = useState((params.get("code") ?? "").trim().toUpperCase());
   const [deviceName, setDeviceName] = useState("");
   const [existing, setExisting] = useState<PairedDevice | null>(null);
   const [busy, setBusy] = useState(false);
@@ -30,14 +32,16 @@ export function PairPage() {
     setDeviceName(defaultDeviceName());
   }, []);
 
+  const trimmedCode = code.trim();
+
   async function claim() {
-    if (!code) return;
+    if (!trimmedCode) return;
     setBusy(true);
     setError(null);
     try {
       const serial = await getOrCreatePhoneSerial();
       const res = await api.claimPairing({
-        code,
+        code: trimmedCode,
         deviceName: deviceName.trim() || defaultDeviceName(),
         serial
       });
@@ -61,8 +65,6 @@ export function PairPage() {
       <div className="flex h-full flex-col gap-6 px-6 pb-8 pt-6">
         {paired ? (
           <Success device={paired} />
-        ) : !code ? (
-          <NoCode existing={existing} />
         ) : (
           <>
             <div>
@@ -70,8 +72,9 @@ export function PairPage() {
                 Connect this phone
               </h2>
               <p className="mt-2 text-base text-base-content/65">
-                Pairing registers this phone as a camera in your fleet. The portal
-                can then accept it onto the live screen.
+                Enter the code from the portal (Devices → Add device → Connect a
+                phone camera), or open the link it shows. Pairing registers this
+                phone as a camera the portal can accept onto the live screen.
               </p>
               {existing ? (
                 <p className="mt-3 rounded-md border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-base-content/75">
@@ -80,6 +83,22 @@ export function PairPage() {
                 </p>
               ) : null}
             </div>
+
+            <label className="flex flex-col gap-1.5 text-sm font-medium text-neutral">
+              Pairing code
+              <input
+                type="text"
+                inputMode="text"
+                autoCapitalize="characters"
+                autoCorrect="off"
+                spellCheck={false}
+                value={code}
+                onChange={(e) => setCode(e.target.value.toUpperCase())}
+                placeholder="e.g. 7K2QPM"
+                maxLength={12}
+                className="rounded-md border border-base-content/15 bg-base-100 px-3 py-3 text-center font-mono text-2xl font-semibold tracking-[0.3em] text-neutral outline-none focus:border-primary"
+              />
+            </label>
 
             <label className="flex flex-col gap-1.5 text-sm font-medium text-neutral">
               Camera name
@@ -102,7 +121,7 @@ export function PairPage() {
               <button
                 type="button"
                 onClick={claim}
-                disabled={busy}
+                disabled={busy || !trimmedCode}
                 className="flex h-16 w-full items-center justify-center rounded-md bg-primary text-base font-semibold text-primary-content shadow-sm disabled:opacity-60"
               >
                 {busy ? "Pairing…" : "Pair this phone"}
@@ -130,31 +149,6 @@ function Success({ device }: { device: PairedDevice }) {
         className="mt-auto flex h-16 items-center justify-center rounded-md bg-primary text-base font-semibold text-primary-content shadow-sm"
       >
         Go to sessions
-      </Link>
-    </div>
-  );
-}
-
-function NoCode({ existing }: { existing: PairedDevice | null }) {
-  return (
-    <div className="flex h-full flex-col gap-4">
-      <h2 className="text-2xl font-semibold tracking-tight text-neutral">
-        No pairing code
-      </h2>
-      <p className="text-base text-base-content/65">
-        Open the portal, go to Devices → “Add device” → “Connect a phone camera”,
-        then scan the QR or open the link on this phone.
-      </p>
-      {existing ? (
-        <p className="rounded-md border border-base-content/15 bg-base-100 px-4 py-3 text-sm text-base-content/75">
-          This phone is currently paired as “{existing.deviceName}”.
-        </p>
-      ) : null}
-      <Link
-        to="/"
-        className="mt-auto flex h-16 items-center justify-center rounded-md border border-base-content/15 bg-base-100 text-base font-semibold text-neutral shadow-sm"
-      >
-        Back to sessions
       </Link>
     </div>
   );

@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import { SignedIn, SignedOut, RedirectToSignIn } from "@clerk/clerk-react";
 
+import { GoLiveGrantWatcher } from "./components/GoLiveGrantWatcher.js";
 import { CapturePage } from "./pages/CapturePage.js";
 import { MapPage } from "./pages/MapPage.js";
 import { PairPage } from "./pages/PairPage.js";
@@ -15,6 +16,7 @@ export function App() {
         <RedirectToSignIn />
       </SignedOut>
       <SignedIn>
+        <GoLiveGrantWatcher />
         <Routes>
           <Route path="/" element={<SessionPickerPage />} />
           <Route path="/pair" element={<PairPage />} />
