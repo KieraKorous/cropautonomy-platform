@@ -35,6 +35,48 @@ const createRequestSchema = z.object({
   cropTypeId: z.string().uuid().nullable().optional()
 });
 
+// Device edits from the portal: rename (display_name + metadata.nickname) and
+// status changes (retire / reactivate). 'unregistered' is intentionally not a
+// settable status — it's only the pre-claim initial state.
+const updateDeviceSchema = z.object({
+  displayName: z.string().min(1).max(80).optional(),
+  nickname: z.string().max(80).nullable().optional(),
+  status: z.enum(["active", "inactive", "maintenance", "retired"]).optional()
+});
+
+// Shape selected by the list/patch device queries (registered_by is the joined
+// user row, or null if the registrant was removed).
+interface DeviceRow {
+  id: string;
+  device_family: string;
+  serial_number: string;
+  display_name: string | null;
+  firmware_version: string | null;
+  status: string;
+  registered_at: string | null;
+  last_seen_at: string | null;
+  metadata: Record<string, unknown> | null;
+  registered_by: { display_name: string | null; email: string } | null;
+}
+
+// One device row → the portal-facing summary. nickname lives in metadata;
+// registeredByName falls back through display_name → email → "Unknown".
+function toDeviceSummary(row: DeviceRow) {
+  const nickname = (row.metadata?.nickname as string | undefined) ?? null;
+  return {
+    id: row.id,
+    deviceFamily: row.device_family,
+    serialNumber: row.serial_number,
+    displayName: row.display_name,
+    nickname,
+    firmwareVersion: row.firmware_version,
+    status: row.status,
+    registeredByName: row.registered_by?.display_name ?? row.registered_by?.email ?? null,
+    registeredAt: row.registered_at,
+    lastSeenAt: row.last_seen_at
+  };
+}
+
 const devicesRoutes: FastifyPluginAsync = async (app) => {
   // ────────────────────────────────────────────────────────────────────────
   // Pairing: the portal mints a code, the phone claims it.
@@ -211,6 +253,131 @@ const devicesRoutes: FastifyPluginAsync = async (app) => {
         deviceName: device.display_name ?? deviceName,
         orgId: caller.orgId
       };
+    }
+  );
+
+  // ────────────────────────────────────────────────────────────────────────
+  // Device registry: list, edit (rename / retire), delete. Drives the portal
+  // Devices page. All org-scoped; writes gated on devices.update/deregister.
+  // ────────────────────────────────────────────────────────────────────────
+
+  // GET /v1/devices — the org's device registry for the portal grid. Hides
+  // retired devices unless ?includeRetired=true. Returns the full per-device
+  // shape so the detail modal needs no follow-up fetch.
+  app.get<{ Querystring: { includeRetired?: string } }>(
+    "/v1/devices",
+    { preHandler: app.requireAuth("devices.read") },
+    async (request, _reply) => {
+      const caller = request.auth!;
+      const supabase = getDb();
+      const includeRetired = request.query.includeRetired === "true";
+
+      let query = supabase
+        .from("devices")
+        .select(
+          "id, device_family, serial_number, display_name, firmware_version, status, registered_at, last_seen_at, metadata, registered_by:users!registered_by_user_id(display_name, email)"
+        )
+        .eq("org_id", caller.orgId)
+        .order("created_at", { ascending: false });
+      if (!includeRetired) query = query.neq("status", "retired");
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      const rows = (data ?? []) as unknown as DeviceRow[];
+      return { orgId: caller.orgId, devices: rows.map(toDeviceSummary) };
+    }
+  );
+
+  // PATCH /v1/devices/:id — rename (display_name + metadata.nickname) and/or
+  // change status (retire / reactivate). One endpoint for every device edit.
+  app.patch<{ Params: { id: string } }>(
+    "/v1/devices/:id",
+    { preHandler: app.requireAuth("devices.update") },
+    async (request, _reply) => {
+      const { id } = request.params;
+      if (!UUID_RE.test(id)) throw badRequest("devices.invalid_id", "Invalid device id.");
+      const parsed = updateDeviceSchema.safeParse(request.body);
+      if (!parsed.success) {
+        throw badRequest("devices.invalid_input", "Invalid device update.", {
+          issues: parsed.error.issues
+        });
+      }
+      const body = parsed.data;
+      if (
+        body.displayName === undefined &&
+        body.nickname === undefined &&
+        body.status === undefined
+      ) {
+        throw badRequest("devices.empty_update", "No fields to update.");
+      }
+      const caller = request.auth!;
+      const supabase = getDb();
+
+      // Load + org-scope before writing (also gives us metadata to merge into).
+      const { data: existing, error: loadErr } = await supabase
+        .from("devices")
+        .select("id, org_id, metadata")
+        .eq("id", id)
+        .maybeSingle();
+      if (loadErr) throw loadErr;
+      if (!existing || (existing as { org_id: string }).org_id !== caller.orgId) {
+        throw notFound("devices.not_found", "Device not found.");
+      }
+
+      const patch: Record<string, unknown> = {};
+      if (body.displayName !== undefined) patch.display_name = body.displayName;
+      if (body.status !== undefined) patch.status = body.status;
+      if (body.nickname !== undefined) {
+        const current = ((existing as { metadata: Record<string, unknown> | null }).metadata) ?? {};
+        // null clears the nickname; a string sets it. Other metadata is preserved.
+        patch.metadata = { ...current, nickname: body.nickname };
+      }
+
+      const { data: updated, error: updErr } = await supabase
+        .from("devices")
+        .update(patch)
+        .eq("id", id)
+        .eq("org_id", caller.orgId)
+        .select(
+          "id, device_family, serial_number, display_name, firmware_version, status, registered_at, last_seen_at, metadata, registered_by:users!registered_by_user_id(display_name, email)"
+        )
+        .single();
+      if (updErr) throw updErr;
+
+      return toDeviceSummary(updated as unknown as DeviceRow);
+    }
+  );
+
+  // DELETE /v1/devices/:id — permanent deregister. Captures/sessions/audit keep
+  // their (now-null) device link; telemetry + live_requests cascade away.
+  app.delete<{ Params: { id: string } }>(
+    "/v1/devices/:id",
+    { preHandler: app.requireAuth("devices.deregister") },
+    async (request, _reply) => {
+      const { id } = request.params;
+      if (!UUID_RE.test(id)) throw badRequest("devices.invalid_id", "Invalid device id.");
+      const caller = request.auth!;
+      const supabase = getDb();
+
+      const { data: existing, error: loadErr } = await supabase
+        .from("devices")
+        .select("id, org_id")
+        .eq("id", id)
+        .maybeSingle();
+      if (loadErr) throw loadErr;
+      if (!existing || (existing as { org_id: string }).org_id !== caller.orgId) {
+        throw notFound("devices.not_found", "Device not found.");
+      }
+
+      const { error: delErr } = await supabase
+        .from("devices")
+        .delete()
+        .eq("id", id)
+        .eq("org_id", caller.orgId);
+      if (delErr) throw delErr;
+
+      return { deviceId: id, deleted: true };
     }
   );
 

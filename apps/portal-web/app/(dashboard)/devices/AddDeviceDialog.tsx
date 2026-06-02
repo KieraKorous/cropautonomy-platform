@@ -35,7 +35,17 @@ type PairState =
 
 // Native <dialog> (Escape + backdrop close for free). Primary action is pairing a
 // phone camera; the fleet list below previews what registration will add next.
-export function AddDeviceDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+// onPaired fires once the phone claims the code so the grid can refresh and show
+// the new device card.
+export function AddDeviceDialog({
+  open,
+  onClose,
+  onPaired
+}: {
+  open: boolean;
+  onClose: () => void;
+  onPaired?: () => void;
+}) {
   const ref = useRef<HTMLDialogElement>(null);
   const [pair, setPair] = useState<PairState>({ kind: "idle" });
 
@@ -64,6 +74,7 @@ export function AddDeviceDialog({ open, onClose }: { open: boolean; onClose: () 
       onEvent: (event) => {
         if (event.type === "device.pairing.claimed") {
           setPair({ kind: "claimed", deviceName: event.payload.deviceName });
+          onPaired?.();
         }
       }
     }
@@ -80,6 +91,7 @@ export function AddDeviceDialog({ open, onClose }: { open: boolean; onClose: () 
         if (cancelled) return;
         if (status.status === "claimed") {
           setPair({ kind: "claimed", deviceName: "Phone camera" });
+          onPaired?.();
         } else if (status.status === "expired") {
           setPair({ kind: "error", message: "Pairing code expired. Generate a new one." });
         }

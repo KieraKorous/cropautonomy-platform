@@ -200,6 +200,73 @@ export function getDevicePairing(pairingId: string): Promise<DevicePairingStatus
   return apiFetch<DevicePairingStatus>(`/v1/device-pairings/${pairingId}`);
 }
 
+// --- Devices --------------------------------------------------------------
+
+export type DeviceFamily =
+  | "gaia_r"
+  | "gaia_d"
+  | "gaia_s"
+  | "phone"
+  | "third_party"
+  | "simulator";
+
+export type DeviceStatus =
+  | "unregistered"
+  | "active"
+  | "inactive"
+  | "maintenance"
+  | "retired";
+
+// A registered device in the org's fleet. `nickname` is the operator-given label
+// (stored in metadata); `displayName` is the name set at registration.
+export interface Device {
+  id: string;
+  deviceFamily: DeviceFamily;
+  serialNumber: string;
+  displayName: string | null;
+  nickname: string | null;
+  firmwareVersion: string | null;
+  status: DeviceStatus;
+  registeredByName: string | null;
+  registeredAt: string | null;
+  lastSeenAt: string | null;
+}
+
+interface ListDevicesResponse {
+  orgId: string;
+  devices: Device[];
+}
+
+// The org's device registry for the Devices grid. Retired devices are hidden
+// unless includeRetired is set.
+export function listDevices(
+  params: { includeRetired?: boolean } = {}
+): Promise<ListDevicesResponse> {
+  const query = params.includeRetired ? "?includeRetired=true" : "";
+  return apiFetch<ListDevicesResponse>(`/v1/devices${query}`);
+}
+
+// Rename (name + nickname) and/or change status (retire → 'retired',
+// reactivate → 'active'). Returns the updated device. Requires devices.update.
+export function updateDevice(
+  id: string,
+  body: { displayName?: string; nickname?: string | null; status?: DeviceStatus }
+): Promise<Device> {
+  return apiFetch<Device>(`/v1/devices/${id}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body)
+  });
+}
+
+// Permanent deregister. Captures/sessions keep their (nulled) device link;
+// telemetry + live requests cascade away. Requires devices.deregister.
+export function deleteDevice(
+  id: string
+): Promise<{ deviceId: string; deleted: boolean }> {
+  return apiFetch(`/v1/devices/${id}`, { method: "DELETE" });
+}
+
 // --- Live requests --------------------------------------------------------
 
 export interface LiveRequestSummary {
