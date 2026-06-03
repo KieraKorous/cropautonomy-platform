@@ -7,6 +7,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 
 import type { LiveSessionSummary } from "../../../lib/api";
 import { setSessionConnectionAction } from "./actions";
+import { uploadRecording } from "./recording-upload";
 import { useLiveViewer } from "../../../lib/useLiveViewer";
 
 export interface CameraTileProps {
@@ -45,6 +46,62 @@ export function CameraTile({
     viewerUserId,
     enabled: connected
   });
+
+  // Watcher-side recording of the received WebRTC stream. Independent of the
+  // phone's own session recording. On stop, the blob uploads as a video capture.
+  const [recording, setRecording] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+
+  // Stop recording if the stream goes away (disconnect / session end), so we
+  // don't leak a recorder bound to a dead stream.
+  useEffect(() => {
+    if (!stream && recorderRef.current) {
+      recorderRef.current.stop();
+    }
+  }, [stream]);
+
+  const toggleRecord = () => {
+    if (recording) {
+      recorderRef.current?.stop();
+      return;
+    }
+    if (!stream) return;
+    let recorder: MediaRecorder;
+    try {
+      recorder = new MediaRecorder(stream, { mimeType: pickVideoMime() });
+    } catch {
+      return;
+    }
+    chunksRef.current = [];
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) chunksRef.current.push(e.data);
+    };
+    const startedAt = new Date().toISOString();
+    const startedMs = Date.now();
+    recorder.onstop = () => {
+      const mimeType = recorder.mimeType || "video/webm";
+      const blob = new Blob(chunksRef.current, { type: mimeType });
+      chunksRef.current = [];
+      setRecording(false);
+      if (blob.size === 0) return;
+      setUploading(true);
+      void uploadRecording({
+        sessionId: session.sessionId,
+        blob,
+        durationMs: Date.now() - startedMs,
+        capturedAt: startedAt
+      })
+        .catch(() => {
+          /* surfaced via the Recordings section absence; non-fatal here */
+        })
+        .finally(() => setUploading(false));
+    };
+    recorderRef.current = recorder;
+    recorder.start(1000);
+    setRecording(true);
+  };
 
   // Flip with every watcher when anyone disconnects/reconnects this camera.
   useRealtimeChannel(channels.captureSessionState(orgId, session.sessionId), {
@@ -110,18 +167,49 @@ export function CameraTile({
           className="absolute inset-0 z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
         />
 
-        {/* Disconnect, top-left — mirrors the status pill. */}
+        {/* Disconnect + Record, top-left — mirror the status pill. */}
         {connected ? (
-          <button
-            type="button"
-            onClick={() => setConnection(false)}
-            disabled={pending}
-            aria-label="Disconnect camera"
-            title="Disconnect camera"
-            className="absolute left-2 top-2 z-20 inline-flex items-center justify-center rounded-md bg-neutral/45 p-1.5 text-base-100/80 backdrop-blur-sm transition-colors hover:bg-error/80 hover:text-error-content disabled:opacity-50"
-          >
-            <PowerIcon />
-          </button>
+          <div className="absolute left-2 top-2 z-20 flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setConnection(false)}
+              disabled={pending}
+              aria-label="Disconnect camera"
+              title="Disconnect camera"
+              className="inline-flex items-center justify-center rounded-md bg-neutral/45 p-1.5 text-base-100/80 backdrop-blur-sm transition-colors hover:bg-error/80 hover:text-error-content disabled:opacity-50"
+            >
+              <PowerIcon />
+            </button>
+            {stream ? (
+              <button
+                type="button"
+                onClick={toggleRecord}
+                disabled={uploading}
+                aria-label={recording ? "Stop recording" : "Record stream"}
+                title={
+                  uploading
+                    ? "Saving recording…"
+                    : recording
+                      ? "Stop recording"
+                      : "Record stream"
+                }
+                className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-semibold backdrop-blur-sm transition-colors disabled:opacity-50 ${
+                  recording
+                    ? "bg-error/85 text-error-content"
+                    : "bg-neutral/45 text-base-100/80 hover:bg-neutral/70"
+                }`}
+              >
+                <span
+                  className={`h-2.5 w-2.5 ${
+                    recording
+                      ? "animate-pulse rounded-sm bg-error-content"
+                      : "rounded-full bg-error"
+                  }`}
+                />
+                {uploading ? "Saving…" : recording ? "Stop" : "Rec"}
+              </button>
+            ) : null}
+          </div>
         ) : null}
 
         {/* Disconnected overlay with a Reconnect affordance. */}
@@ -189,6 +277,24 @@ function connectionLabel(connectionState: RTCPeerConnectionState | "idle"): stri
     default:
       return "Connecting…";
   }
+}
+
+function pickVideoMime(): string {
+  const candidates = [
+    "video/mp4;codecs=h264",
+    "video/webm;codecs=vp9",
+    "video/webm;codecs=vp8",
+    "video/webm"
+  ];
+  for (const candidate of candidates) {
+    if (
+      typeof MediaRecorder !== "undefined" &&
+      MediaRecorder.isTypeSupported(candidate)
+    ) {
+      return candidate;
+    }
+  }
+  return "video/webm";
 }
 
 // Local glyphs — packages/ui has no power/play icon, and these are tile-specific.

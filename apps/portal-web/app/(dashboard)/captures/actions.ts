@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import {
   discardCapture,
   reanalyzeCapture,
-  updateCaptureDescription
+  updateCaptureAnnotation,
+  type CaptureAnnotationPatch
 } from "../../../lib/api";
 
 // Soft-discards a capture, then refreshes the table. The capture stays in the
@@ -22,14 +23,12 @@ export async function reanalyzeCaptureAction(id: string): Promise<void> {
   revalidatePath("/captures");
 }
 
-// Saves the operator-authored description for a capture, then refreshes the
-// detail page so the persisted value is reflected. Returns the normalized value
-// (empty -> null) so the editor can sync its "saved" baseline.
-export async function updateCaptureDescriptionAction(
+// Saves operator-authored annotation (note / observation type / severity) for a
+// capture, then refreshes the detail page so the persisted values are reflected.
+export async function updateCaptureAnnotationAction(
   id: string,
-  description: string
-): Promise<{ description: string | null }> {
-  const result = await updateCaptureDescription(id, description);
+  patch: CaptureAnnotationPatch
+): Promise<void> {
+  await updateCaptureAnnotation(id, patch);
   revalidatePath(`/captures/${id}`);
-  return { description: result.description };
 }

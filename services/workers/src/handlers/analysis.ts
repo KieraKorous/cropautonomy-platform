@@ -288,17 +288,19 @@ async function runOne(
     });
   }
 
-  // 8. Stamp capture-level inferred classification from the top detection.
+  // 8. Stamp capture-level inferred classification from the top detection,
+  //    plus the agronomic summary (if the optional summary stage produced one).
+  //    Both are model output, kept separate from the operator's `description`.
+  const captureUpdate: { inferred_species?: string; inferred_summary?: string } = {};
   if (inference.detections.length > 0) {
     const top = inference.detections.reduce((best, current) =>
       current.confidence > best.confidence ? current : best
     );
-    if (top.category) {
-      await supabase
-        .from("captures")
-        .update({ inferred_species: top.category })
-        .eq("id", capture.id);
-    }
+    if (top.category) captureUpdate.inferred_species = top.category;
+  }
+  if (inference.summary) captureUpdate.inferred_summary = inference.summary;
+  if (Object.keys(captureUpdate).length > 0) {
+    await supabase.from("captures").update(captureUpdate).eq("id", capture.id);
   }
 
   // 9. Mark complete; record per-stage telemetry in analysis_jobs.metadata.

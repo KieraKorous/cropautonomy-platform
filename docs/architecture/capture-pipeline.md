@@ -99,6 +99,19 @@ create index captures_status_idx
   on captures (status) where status in ('pending_upload', 'uploading', 'analysis_queued', 'analysis_running');
 ```
 
+#### Annotation, brief details, and recordings (added in 0015 / 0016)
+
+Later migrations extend `captures` beyond the original 0004 shape:
+
+- `description text` (0015) — operator-authored free-form note.
+- `observation_type text` (0016) — structured tag: `pest | disease | weed | nutrient | irrigation | damage | growth_stage | other`.
+- `severity text` (0016) — `low | medium | high`.
+- `inferred_summary text` (0016) — **model-authored** agronomic brief produced by the optional `summary` pipeline stage (see [Analysis](#4-analysis-server-side-asynchronous)). Kept separate from `description` so the AI blurb never overwrites operator text. Mirrors `inferred_species`.
+- `kind text not null default 'observation'` (0016) — `observation` vs `session_recording` (a saved live-feed video). Indexed `(org_id, kind)`. The portal Captures grid filters `kind='observation'`; the **Recordings** section filters `kind='session_recording'`.
+- `source` (0016) gains `portal_recording` — a watcher recorded the live WebRTC stream from the portal. Phone recordings keep `field_capture_pwa` + `kind='session_recording'`.
+
+`description`, `observation_type`, and `severity` can be set at reserve time (Field PWA Queue annotate panel) or edited later via `PATCH /v1/captures/{id}` (portal capture detail; field Queue for already-reserved items). Where these are changed, keep the four touch-points in sync per [CLAUDE.md](../../CLAUDE.md) (SQL · reserve/finalize schema · field `db.ts`/`upload.ts` · realtime events).
+
 ### `capture_sessions`
 
 Operator-initiated session spanning multiple captures. Required for live-preview workflows.
@@ -250,9 +263,10 @@ Server:
 2. Verifies the object exists in Supabase Storage at the expected path with the expected size + checksum
 3. If a thumbnail was provided, uploads it to `{path}_thumb.jpg`
 4. Transitions `status` to `uploaded`, sets `uploaded_at`
-5. Enqueues a pg-boss `scan.analysis.requested` job with `{ captureId }`
-6. Transitions `status` to `analysis_queued`
-7. Returns the updated `captures` row
+5. **If `media_type = 'video'`** (incl. `kind='session_recording'`): stops here — videos are stored raw for v0 and skip the still-image classification pipeline. Returns with `status='uploaded'`, `analysisJobId: null`. Keyframe-based analysis of recordings is future work.
+6. Otherwise enqueues a pg-boss `scan.analysis.requested` job with `{ captureId }`
+7. Transitions `status` to `analysis_queued`
+8. Returns the updated `captures` row
 
 ### 4. Analysis (server-side, asynchronous)
 
@@ -263,8 +277,10 @@ pg-boss worker picks up the job:
 3. Runs analysis (Phase 2 is a stub or basic vision model; Phase 5+ is the real pipeline)
 4. As detections are found, publishes `scan.detection` events
 5. Periodically publishes `scan.progress`
-6. On completion, writes `analysis_results` rows, transitions `status` to `analyzed`, publishes `scan.completed`
+6. On completion, writes `analysis_results` rows, stamps `captures.inferred_species` (top detection) and `captures.inferred_summary` (if the summary stage produced one), transitions `status` to `analyzed`, publishes `scan.completed`
 7. On failure, transitions to `failed`, publishes `scan.failed` with retry flag
+
+The production pipeline `default-plant@v2` runs RT-DETR (detection) → PlantNet (species classification) → **`agronomic_summary` (optional `summary` stage)**. The summary stage is a Claude call in `services/vision` ([`agronomic_summary.py`](../../services/vision/src/vision/stages/agronomic_summary.py)) that turns the detections into a 1-2 sentence agronomic brief surfaced as `inferred_summary`. It is **optional** (`required=false`): when `ANTHROPIC_API_KEY` is unset the stage reports unconfigured and the pipeline still succeeds with species + detections. Set `ANTHROPIC_API_KEY` (and optionally `ANTHROPIC_SUMMARY_MODEL`) in `services/vision`'s env to enable it; the concrete model id is also overridable per-pipeline in `pipeline_stages.config.model`.
 
 See [`packages/realtime` spec](./realtime-package-spec.md) for the exact event schemas.
 

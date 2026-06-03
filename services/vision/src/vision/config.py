@@ -26,9 +26,21 @@ class Settings(BaseSettings):
     rtdetr_model_id: str = "PekingU/rtdetr_r50vd_coco_o365"
     rtdetr_device: str = "cpu"  # "cpu" | "cuda" (auto-falls-back to cpu if unavailable)
 
+    # Agronomic summary stage (Claude). Optional: when the key is unset the
+    # stage reports unconfigured and the pipeline still succeeds. The concrete
+    # model id is overridable per pipeline_stages.config.model; this is the
+    # fallback default.
+    anthropic_api_key: str | None = None
+    anthropic_summary_model: str = "claude-sonnet-4-6"
+    anthropic_summary_max_tokens: int = 200
+
     @property
     def plantnet_configured(self) -> bool:
         return bool(self.plantnet_api_key)
+
+    @property
+    def anthropic_configured(self) -> bool:
+        return bool(self.anthropic_api_key)
 
 
 @lru_cache(maxsize=1)

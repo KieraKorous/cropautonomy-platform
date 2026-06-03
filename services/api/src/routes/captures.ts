@@ -12,6 +12,21 @@ import { loadConfig } from "../config.js";
 import { CAPTURES_BUCKET, capturePath } from "../lib/storage.js";
 import { QUEUE_NAMES } from "@gaia/workers/queues";
 
+// Operator observation taxonomy — kept in sync with the captures.observation_type
+// and captures.severity check constraints in
+// packages/db/migrations/0016_capture_annotations_and_recordings.sql.
+const OBSERVATION_TYPE = z.enum([
+  "pest",
+  "disease",
+  "weed",
+  "nutrient",
+  "irrigation",
+  "damage",
+  "growth_stage",
+  "other"
+]);
+const SEVERITY = z.enum(["low", "medium", "high"]);
+
 const reserveSchema = z.object({
   farmId: z.string().uuid().nullable().optional(),
   fieldId: z.string().uuid().nullable().optional(),
@@ -21,12 +36,15 @@ const reserveSchema = z.object({
   source: z.enum([
     "field_capture_pwa",
     "bulk_upload",
+    "portal_recording",
     "gaia_r",
     "gaia_d",
     "gaia_s",
     "integration"
   ]),
   mediaType: z.enum(["photo", "burst_frame", "video"]),
+  // 'observation' (default) vs 'session_recording' (a saved live-feed video).
+  kind: z.enum(["observation", "session_recording"]).optional(),
   burstIndex: z.number().int().nonnegative().nullable().optional(),
   videoDurationMs: z.number().int().nonnegative().nullable().optional(),
   mimeType: z.string().min(1).max(128),
@@ -42,6 +60,11 @@ const reserveSchema = z.object({
     .nullable()
     .optional(),
   headingDegrees: z.number().nullable().optional(),
+  // Operator annotation, optionally set at capture time (also editable later
+  // via PATCH). Empty string on description clears it.
+  description: z.string().max(4000).nullable().optional(),
+  observationType: OBSERVATION_TYPE.nullable().optional(),
+  severity: SEVERITY.nullable().optional(),
   metadata: z.record(z.unknown()).optional()
 });
 
@@ -51,16 +74,26 @@ const finalizeSchema = z.object({
   thumbnailDataUrl: z.string().optional()
 });
 
-// Operator-authored description. Empty string clears it (stored as null).
-const updateSchema = z.object({
-  description: z.string().max(4000)
-});
+// Operator-authored fields. Every field optional; only provided keys are
+// written. Empty-string description clears it (stored as null).
+const updateSchema = z
+  .object({
+    description: z.string().max(4000).optional(),
+    observationType: OBSERVATION_TYPE.nullable().optional(),
+    severity: SEVERITY.nullable().optional()
+  })
+  .refine((v) => Object.keys(v).length > 0, {
+    message: "At least one field must be provided."
+  });
 
 const listQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(100).default(50),
   offset: z.coerce.number().int().nonnegative().default(0),
   // false (default) → only live captures; true → only discarded (settings view).
-  discarded: z.coerce.boolean().default(false)
+  discarded: z.coerce.boolean().default(false),
+  // Optional kind filter — the portal Recordings section passes
+  // kind=session_recording; the captures grid defaults to observations.
+  kind: z.enum(["observation", "session_recording"]).optional()
 });
 
 // Statuses whose storage object exists and can be signed for viewing.
@@ -79,11 +112,17 @@ interface CaptureListRow {
   captured_at: string;
   uploaded_at: string | null;
   inferred_species: string | null;
+  inferred_summary: string | null;
   description: string | null;
+  observation_type: string | null;
+  severity: string | null;
+  kind: string;
   thumbnail_path: string | null;
   storage_path: string;
   size_bytes: number | null;
+  video_duration_ms: number | null;
   field_id: string | null;
+  session_id: string | null;
   analysis_job_id: string | null;
   discarded_at: string | null;
 }
@@ -91,7 +130,7 @@ interface CaptureListRow {
 // Columns selected for the summary shape returned by the list and single-capture
 // endpoints. Kept in one place so the row interface and selects stay in sync.
 const CAPTURE_SELECT =
-  "id, status, status_message, media_type, captured_at, uploaded_at, inferred_species, description, thumbnail_path, storage_path, size_bytes, field_id, analysis_job_id, discarded_at";
+  "id, status, status_message, media_type, captured_at, uploaded_at, inferred_species, inferred_summary, description, observation_type, severity, kind, thumbnail_path, storage_path, size_bytes, video_duration_ms, field_id, session_id, analysis_job_id, discarded_at";
 
 // Same columns plus org_id, for the single-capture handlers that tenant-check
 // before mapping. `as const` keeps it a literal so the typed client can parse it.
@@ -107,10 +146,16 @@ function toCaptureSummary(row: CaptureListRow, imageUrl: string | null) {
     capturedAt: row.captured_at,
     uploadedAt: row.uploaded_at,
     plantType: row.inferred_species,
+    summary: row.inferred_summary,
     description: row.description,
+    observationType: row.observation_type,
+    severity: row.severity,
+    kind: row.kind,
     imageUrl,
     fieldId: row.field_id,
+    sessionId: row.session_id,
     sizeBytes: row.size_bytes,
+    videoDurationMs: row.video_duration_ms,
     analysisJobId: row.analysis_job_id,
     discardedAt: row.discarded_at
   };
@@ -145,7 +190,7 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
           issues: parsed.error.issues
         });
       }
-      const { limit, offset, discarded } = parsed.data;
+      const { limit, offset, discarded, kind } = parsed.data;
       const supabase = getDb();
 
       let query = supabase
@@ -155,6 +200,7 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
       query = discarded
         ? query.not("discarded_at", "is", null)
         : query.is("discarded_at", null);
+      if (kind) query = query.eq("kind", kind);
 
       const { data, error } = await query
         .order("captured_at", { ascending: false })
@@ -314,14 +360,26 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
         throw notFound("captures.not_found", "Capture not found.");
       }
 
-      const description = parsed.data.description.trim() || null;
+      // Only write the keys the caller supplied. Empty-string description
+      // clears it; null clears the structured fields.
+      const patch: Record<string, string | null> = {};
+      if (parsed.data.description !== undefined) {
+        patch.description = parsed.data.description.trim() || null;
+      }
+      if (parsed.data.observationType !== undefined) {
+        patch.observation_type = parsed.data.observationType ?? null;
+      }
+      if (parsed.data.severity !== undefined) {
+        patch.severity = parsed.data.severity ?? null;
+      }
+
       const { error: updateErr } = await supabase
         .from("captures")
-        .update({ description })
+        .update(patch)
         .eq("id", id);
       if (updateErr) throw updateErr;
 
-      return { captureId: id, description };
+      return { captureId: id, ...patch };
     }
   );
 
@@ -356,8 +414,12 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
           crop_type_id: body.cropTypeId ?? null,
           session_id: body.sessionId ?? null,
           source: body.source,
+          kind: body.kind ?? "observation",
           captured_by_user_id: caller.userId,
           media_type: body.mediaType,
+          description: body.description?.trim() || null,
+          observation_type: body.observationType ?? null,
+          severity: body.severity ?? null,
           burst_index: body.burstIndex ?? null,
           video_duration_ms: body.videoDurationMs ?? null,
           mime_type: body.mimeType,
@@ -428,7 +490,7 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
       const { data: captureRow, error: loadErr } = await supabase
         .from("captures")
         .select(
-          "id, org_id, storage_path, storage_bucket, status, mime_type, captured_at, session_id, captured_by_user_id"
+          "id, org_id, storage_path, storage_bucket, status, mime_type, media_type, kind, captured_at, session_id, captured_by_user_id"
         )
         .eq("id", id)
         .maybeSingle();
@@ -442,6 +504,8 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
         storage_bucket: string;
         status: string;
         mime_type: string;
+        media_type: string;
+        kind: string;
         captured_at: string;
         session_id: string | null;
         captured_by_user_id: string;
@@ -504,6 +568,19 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
         })
         .eq("id", id);
       if (updateErr) throw updateErr;
+
+      // The plant-classification pipeline expects a still image. Videos —
+      // including saved live-feed recordings (kind='session_recording') — are
+      // stored as raw for v0 and skip analysis entirely. Keyframe-based analysis
+      // is future work (see docs/architecture/capture-pipeline.md).
+      if (capture.media_type === "video") {
+        return {
+          captureId: id,
+          analysisJobId: null,
+          status: "uploaded",
+          thumbnailPath
+        };
+      }
 
       const { data: job, error: jobErr } = await supabase
         .from("analysis_jobs")

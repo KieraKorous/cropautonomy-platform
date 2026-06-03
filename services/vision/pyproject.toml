@@ -31,6 +31,9 @@ dependencies = [
     "torch>=2.10,<2.11",
     "transformers>=4.46,<4.51",
     "pillow>=10.4,<12.0",
+    # Agronomic summary stage. Optional at runtime (no ANTHROPIC_API_KEY → the
+    # stage reports unconfigured and is skipped), but the SDK is always present.
+    "anthropic>=0.40.0",
 ]
 
 [project.optional-dependencies]

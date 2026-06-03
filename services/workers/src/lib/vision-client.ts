@@ -18,7 +18,8 @@ export type StageRole =
   | "detection"
   | "classification"
   | "refinement"
-  | "filter";
+  | "filter"
+  | "summary";
 
 export interface VisionStageSpec {
   role: StageRole;
@@ -75,6 +76,9 @@ export interface VisionInferenceResponse {
   detections: VisionDetection[];
   duration_ms: number;
   stage_reports: VisionStageReport[];
+  // Natural-language agronomic brief from the optional summary stage; null when
+  // no summary stage ran or it was skipped/unconfigured.
+  summary: string | null;
 }
 
 export class VisionNotConfiguredError extends Error {}

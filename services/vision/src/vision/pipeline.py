@@ -84,6 +84,7 @@ class PipelineExecutor:
             detections=ctx.detections,
             duration_ms=duration_ms,
             stage_reports=reports,
+            summary=ctx.summary,
         )
 
     async def _run_stage(self, spec: StageSpec, ctx: StageContext) -> StageReport:

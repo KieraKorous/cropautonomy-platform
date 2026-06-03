@@ -6,6 +6,7 @@ import {
   ChecklistIcon,
   CogIcon,
   FarmIcon,
+  FilmIcon,
   GridIcon,
   HomeIcon,
   LiveIcon,
@@ -27,6 +28,7 @@ const navConfig: AppShellProps["navGroups"] = [
         icon: <LiveIcon size={16} />,
         badge: { tone: "success", label: "5" }
       },
+      { label: "Recordings", href: "/recordings", icon: <FilmIcon size={16} /> },
       { label: "Farms", href: "/farms", icon: <FarmIcon />, meta: "7" },
       { label: "Fields", href: "/fields", icon: <GridIcon size={16} />, meta: "33" },
       {

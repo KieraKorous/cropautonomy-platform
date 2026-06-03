@@ -285,8 +285,23 @@ export function CaptureDetailModal({
               <p className="text-sm leading-relaxed text-base-content/65">{capture.statusMessage}</p>
             ) : null}
 
+            {capture.summary ? (
+              <p className="rounded-lg border border-accent/25 bg-accent/[0.06] px-3 py-2.5 text-sm leading-relaxed text-neutral">
+                <span className="mr-1.5 rounded-full bg-accent/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-accent-content">
+                  AI
+                </span>
+                {capture.summary}
+              </p>
+            ) : null}
+
             <dl className="flex flex-col gap-3 text-sm">
               <DetailRow label="Plant type" value={capture.plantType ?? "—"} />
+              {capture.observationType ? (
+                <DetailRow label="Observation" value={titleCase(capture.observationType.replace(/_/g, " "))} />
+              ) : null}
+              {capture.severity ? (
+                <DetailRow label="Severity" value={titleCase(capture.severity)} />
+              ) : null}
               <DetailRow
                 label="Captured"
                 value={dateFormat.format(new Date(capture.capturedAt))}
@@ -407,6 +422,10 @@ export function CaptureDetailModal({
       ) : null}
     </dialog>
   );
+}
+
+function titleCase(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 function DetailRow({ label, value }: { label: string; value: string }) {

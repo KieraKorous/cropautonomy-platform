@@ -45,6 +45,12 @@ export function CapturePage() {
     const [videoRecording, setVideoRecording] = useState(false);
     const recorderRef = useRef<MediaRecorder | null>(null);
     const videoChunksRef = useRef<Blob[]>([]);
+    // Session recording is independent of capture mode: it records the live
+    // feed (the same camera stream that's being published to portal watchers)
+    // and saves it as a kind='session_recording' video capture.
+    const [sessionRecording, setSessionRecording] = useState(false);
+    const sessionRecorderRef = useRef<MediaRecorder | null>(null);
+    const sessionChunksRef = useRef<Blob[]>([]);
     const burstAbortRef = useRef<{ aborted: boolean } | null>(null);
     const libraryInputRef = useRef<HTMLInputElement | null>(null);
     const [device, setDevice] = useState<PairedDevice | null>(null);
@@ -282,6 +288,65 @@ export function CapturePage() {
         setVideoRecording(true);
     }
 
+    // Record the live feed for the duration the operator chooses. Reuses the
+    // same MediaStream the live publisher broadcasts, so the saved recording is
+    // exactly what watchers see. Saved as a video capture tagged
+    // kind='session_recording' (finalize skips analysis for video).
+    //
+    // NOTE: chunks are buffered in memory for v0. A full multi-minute session
+    // should flush chunks to IndexedDB incrementally instead — future hardening.
+    async function toggleSessionRecording() {
+        if (sessionRecording) {
+            sessionRecorderRef.current?.stop();
+            return;
+        }
+        if (!stream || !session) return;
+        if (!stream.getAudioTracks().length) {
+            try {
+                const micStream = await navigator.mediaDevices.getUserMedia({
+                    audio: true
+                });
+                micStream.getAudioTracks().forEach((track) => stream.addTrack(track));
+            } catch {
+                /* mic denied — record silently */
+            }
+        }
+        const recorder = new MediaRecorder(stream, { mimeType: pickVideoMime() });
+        sessionChunksRef.current = [];
+        recorder.ondataavailable = (e) => {
+            if (e.data.size > 0) sessionChunksRef.current.push(e.data);
+        };
+        const startedAt = nowIso();
+        const startedMs = Date.now();
+        recorder.onstop = async () => {
+            const mimeType = recorder.mimeType || "video/webm";
+            const blob = new Blob(sessionChunksRef.current, { type: mimeType });
+            sessionChunksRef.current = [];
+            setSessionRecording(false);
+            await enqueueCapture({
+                id: crypto.randomUUID(),
+                sessionId: session.sessionId,
+                orgId: session.orgId,
+                farmId: session.farmId,
+                fieldId: session.fieldId,
+                cropTypeId: session.cropTypeId,
+                source: "field_capture_pwa",
+                mediaType: "video",
+                kind: "session_recording",
+                videoDurationMs: Date.now() - startedMs,
+                mimeType,
+                sizeBytes: blob.size,
+                capturedAt: startedAt,
+                location,
+                blob
+            });
+            kickUploadWorker();
+        };
+        sessionRecorderRef.current = recorder;
+        recorder.start(1000);
+        setSessionRecording(true);
+    }
+
     async function handleLibraryFiles(files: FileList | null) {
         if (!files || files.length === 0) return;
         setBusy(true);
@@ -346,12 +411,43 @@ export function CapturePage() {
                 </div>
             )}
 
+            {sessionRecording && (
+                <div className="safe-top pointer-events-none fixed left-1/2 top-12 z-30 -translate-x-1/2 px-3">
+                    <span className="pointer-events-auto flex items-center gap-2 rounded-full bg-error/85 px-3 py-1 text-xs font-semibold text-error-content shadow-lg">
+                        <span className="h-2 w-2 animate-pulse rounded-full bg-error-content" />
+                        Recording session
+                    </span>
+                </div>
+            )}
+
             {livePaused && (
                 <div className="safe-top pointer-events-none fixed left-1/2 top-24 z-30 -translate-x-1/2 px-3">
                     <span className="pointer-events-auto rounded-full bg-warning/90 px-3 py-1 text-xs font-semibold text-warning-content shadow-lg">
                         Live paused by supervisor
                     </span>
                 </div>
+            )}
+
+            {/* Record-the-live-feed toggle — only meaningful inside a live
+                session. Independent of the photo/burst/video capture mode. */}
+            {stream && (
+                <button
+                    type="button"
+                    onClick={toggleSessionRecording}
+                    className="safe-top fixed left-4 top-16 z-30 flex items-center gap-2 rounded-full bg-black/45 px-3 py-2 text-xs font-semibold text-white backdrop-blur-md"
+                    aria-label={
+                        sessionRecording ? "Stop session recording" : "Record session"
+                    }
+                >
+                    <span
+                        className={`h-3 w-3 ${
+                            sessionRecording
+                                ? "rounded-sm bg-error"
+                                : "rounded-full bg-error"
+                        }`}
+                    />
+                    {sessionRecording ? "Stop" : "Record"}
+                </button>
             )}
 
             <OverlayChrome

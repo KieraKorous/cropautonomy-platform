@@ -46,6 +46,15 @@ export function CameraIcon(props: IconProps) {
   );
 }
 
+export function FilmIcon(props: IconProps) {
+  return (
+    <Base size={16} {...props}>
+      <rect x="2.5" y="4" width="19" height="16" rx="2" />
+      <path d="M7 4v16M17 4v16M2.5 9h4.5M2.5 15h4.5M17 9h4.5M17 15h4.5" />
+    </Base>
+  );
+}
+
 export function RowsIcon(props: IconProps) {
   return (
     <Base size={16} {...props}>

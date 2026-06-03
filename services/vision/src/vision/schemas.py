@@ -32,6 +32,7 @@ StageRole = Literal[
     "classification",
     "refinement",
     "filter",
+    "summary",
 ]
 
 
@@ -132,6 +133,9 @@ class InferenceResponse(BaseModel):
     detections: list[Detection]
     duration_ms: int
     stage_reports: list[StageReport]
+    # Natural-language brief produced by the optional summary stage (agronomic
+    # blurb). None when no summary stage ran or it was skipped/unconfigured.
+    summary: str | None = None
 
 
 class StageDescriptor(BaseModel):

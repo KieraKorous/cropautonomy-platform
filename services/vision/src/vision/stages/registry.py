@@ -13,6 +13,7 @@ from __future__ import annotations
 from functools import lru_cache
 
 from ..config import get_settings
+from .agronomic_summary import AgronomicSummaryStage
 from .base import Stage
 from .plantnet import PlantNetStage
 from .rtdetr import RTDetrStage
@@ -44,6 +45,12 @@ def get_registry() -> StageRegistry:
             base_url=settings.plantnet_api_base_url,
             project=settings.plantnet_project,
             default_organs=settings.plantnet_default_organs,
+            timeout_seconds=settings.vision_provider_timeout_seconds,
+        ),
+        AgronomicSummaryStage(
+            api_key=settings.anthropic_api_key,
+            default_model=settings.anthropic_summary_model,
+            default_max_tokens=settings.anthropic_summary_max_tokens,
             timeout_seconds=settings.vision_provider_timeout_seconds,
         ),
     ]

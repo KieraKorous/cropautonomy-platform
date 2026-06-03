@@ -71,13 +71,17 @@ async function processOne(record: QueuedCaptureRecord) {
       sessionId: record.sessionId ?? null,
       source: record.source,
       mediaType: record.mediaType,
+      kind: record.kind ?? "observation",
       burstIndex: record.burstIndex ?? null,
       videoDurationMs: record.videoDurationMs ?? null,
       mimeType: record.mimeType,
       sizeBytes: record.sizeBytes,
       capturedAt: record.capturedAt,
       location: record.location ?? null,
-      headingDegrees: record.headingDegrees ?? null
+      headingDegrees: record.headingDegrees ?? null,
+      description: record.description ?? null,
+      observationType: record.observationType ?? null,
+      severity: record.severity ?? null
     });
     record = (await patchCapture(record.id, {
       remoteCaptureId: reservation.captureId,

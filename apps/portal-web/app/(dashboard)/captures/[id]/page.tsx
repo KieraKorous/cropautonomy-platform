@@ -19,6 +19,14 @@ function formatSize(bytes: number | null): string | null {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function titleCase(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function observationLabel(value: string): string {
+  return titleCase(value.replace(/_/g, " "));
+}
+
 export default async function CaptureDetailPage({
   params
 }: {
@@ -75,8 +83,27 @@ export default async function CaptureDetailPage({
 
         {/* Description + metadata */}
         <div className="flex w-full flex-col gap-6 lg:w-2/5">
+          {/* Model-authored brief details (read-only). Only shown once the
+              summary stage has produced something. */}
+          {capture.summary ? (
+            <section className="rounded-xl border border-accent/25 bg-accent/[0.06] p-5">
+              <h2 className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-base-content/55">
+                Brief details
+                <span className="rounded-full bg-accent/20 px-2 py-0.5 text-[10px] font-semibold text-accent-content">
+                  AI
+                </span>
+              </h2>
+              <p className="text-sm leading-relaxed text-neutral">{capture.summary}</p>
+            </section>
+          ) : null}
+
           <section className="rounded-xl border border-base-content/10 bg-base-100 p-5">
-            <CaptureDescriptionEditor captureId={capture.id} initial={capture.description} />
+            <CaptureDescriptionEditor
+              captureId={capture.id}
+              initial={capture.description}
+              initialObservationType={capture.observationType}
+              initialSeverity={capture.severity}
+            />
           </section>
 
           <section className="rounded-xl border border-base-content/10 bg-base-100 p-5">
@@ -85,6 +112,12 @@ export default async function CaptureDetailPage({
             </h2>
             <dl className="flex flex-col gap-3 text-sm">
               <DetailRow label="Plant type" value={capture.plantType ?? "—"} />
+              {capture.observationType ? (
+                <DetailRow label="Observation" value={observationLabel(capture.observationType)} />
+              ) : null}
+              {capture.severity ? (
+                <DetailRow label="Severity" value={titleCase(capture.severity)} />
+              ) : null}
               <DetailRow label="Captured" value={dateFormat.format(new Date(capture.capturedAt))} />
               {capture.uploadedAt ? (
                 <DetailRow

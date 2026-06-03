@@ -69,19 +69,40 @@ export type CaptureStatus =
   | "analyzed"
   | "failed";
 
+export type ObservationType =
+  | "pest"
+  | "disease"
+  | "weed"
+  | "nutrient"
+  | "irrigation"
+  | "damage"
+  | "growth_stage"
+  | "other";
+
+export type Severity = "low" | "medium" | "high";
+
+export type CaptureKind = "observation" | "session_recording";
+
 export interface CaptureSummary {
   id: string;
   status: CaptureStatus;
   statusMessage: string | null;
   mediaType: "photo" | "burst_frame" | "video";
+  kind: CaptureKind;
   capturedAt: string;
   uploadedAt: string | null;
   plantType: string | null;
+  // Model-authored agronomic brief (read-only). Distinct from `description`.
+  summary: string | null;
   // Operator-authored free-form notes, edited on the detail page.
   description: string | null;
+  observationType: ObservationType | null;
+  severity: Severity | null;
   imageUrl: string | null;
   fieldId: string | null;
+  sessionId: string | null;
   sizeBytes: number | null;
+  videoDurationMs: number | null;
   analysisJobId: string | null;
   discardedAt: string | null;
 }
@@ -99,14 +120,27 @@ interface ListCapturesResponse {
 }
 
 export function listCaptures(
-  params: { limit?: number; offset?: number; discarded?: boolean } = {}
+  params: {
+    limit?: number;
+    offset?: number;
+    discarded?: boolean;
+    kind?: CaptureKind;
+  } = {}
 ): Promise<ListCapturesResponse> {
   const search = new URLSearchParams();
   if (params.limit != null) search.set("limit", String(params.limit));
   if (params.offset != null) search.set("offset", String(params.offset));
   if (params.discarded != null) search.set("discarded", String(params.discarded));
+  if (params.kind != null) search.set("kind", params.kind);
   const query = search.toString();
   return apiFetch<ListCapturesResponse>(`/v1/captures${query ? `?${query}` : ""}`);
+}
+
+// Session recordings (kind='session_recording') for the Recordings section.
+export function listRecordings(
+  params: { limit?: number; offset?: number } = {}
+): Promise<ListCapturesResponse> {
+  return listCaptures({ ...params, kind: "session_recording" });
 }
 
 // Single capture for the /captures/{id} detail page, with same-plant siblings
@@ -119,15 +153,67 @@ export function getCapture(
   return apiFetch<CaptureDetailResponse>(`/v1/captures/${id}${query}`);
 }
 
-// Save the operator-authored description. Empty string clears it (-> null).
-export function updateCaptureDescription(
+// Save operator-authored annotation. Any subset of fields; empty-string
+// description clears it, null clears the structured fields.
+export interface CaptureAnnotationPatch {
+  description?: string;
+  observationType?: ObservationType | null;
+  severity?: Severity | null;
+}
+
+export function updateCaptureAnnotation(
   id: string,
-  description: string
-): Promise<{ captureId: string; description: string | null }> {
+  patch: CaptureAnnotationPatch
+): Promise<{ captureId: string } & Record<string, unknown>> {
   return apiFetch(`/v1/captures/${id}`, {
     method: "PATCH",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ description })
+    body: JSON.stringify(patch)
+  });
+}
+
+// --- Portal recordings (watcher records the live WebRTC stream) -----------
+
+export interface ReserveCaptureBody {
+  sessionId?: string | null;
+  fieldId?: string | null;
+  farmId?: string | null;
+  source: "portal_recording";
+  mediaType: "video";
+  kind: "session_recording";
+  videoDurationMs?: number | null;
+  mimeType: string;
+  sizeBytes: number;
+  capturedAt: string;
+}
+
+export interface ReserveCaptureResult {
+  captureId: string;
+  storagePath: string;
+  uploadUrl: string;
+  uploadToken: string;
+  uploadHeaders: Record<string, string>;
+  expiresAt: string;
+}
+
+export function reserveCapture(
+  body: ReserveCaptureBody
+): Promise<ReserveCaptureResult> {
+  return apiFetch<ReserveCaptureResult>("/v1/captures", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body)
+  });
+}
+
+export function finalizeCapture(
+  id: string,
+  body: { actualSizeBytes: number }
+): Promise<{ captureId: string; analysisJobId: string | null; status: string }> {
+  return apiFetch(`/v1/captures/${id}/finalize`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body)
   });
 }
 

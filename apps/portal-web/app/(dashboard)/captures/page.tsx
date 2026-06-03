@@ -11,7 +11,8 @@ export default async function CapturesPage() {
   let loadError: string | null = null;
 
   try {
-    const result = await listCaptures({ limit: 50 });
+    // Session recordings live in their own Recordings section, not the grid.
+    const result = await listCaptures({ limit: 50, kind: "observation" });
     captures = result.captures;
   } catch (err) {
     loadError =

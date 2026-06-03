@@ -55,6 +55,18 @@ export function CaptureCard({
             </span>
           </div>
         ) : null}
+        {capture.severity ? (
+          <span
+            title={`Severity: ${capture.severity}`}
+            className={`absolute right-2 top-2 h-3 w-3 rounded-full ring-2 ring-base-100 ${
+              capture.severity === "high"
+                ? "bg-error"
+                : capture.severity === "medium"
+                  ? "bg-warning"
+                  : "bg-success"
+            }`}
+          />
+        ) : null}
       </div>
       <div className="flex items-end justify-between gap-2 px-3.5 py-3">
         <div className="flex min-w-0 flex-col gap-0.5">

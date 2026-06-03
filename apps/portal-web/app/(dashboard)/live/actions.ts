@@ -2,10 +2,13 @@
 
 import {
   acceptLiveRequest,
+  finalizeCapture,
   listLiveSessions,
   rejectLiveRequest,
+  reserveCapture,
   setSessionConnection,
-  type LiveSessionSummary
+  type LiveSessionSummary,
+  type ReserveCaptureResult
 } from "../../../lib/api";
 
 // Current live roster — polled by the wall to drop cameras that stopped
@@ -39,4 +42,37 @@ export async function setSessionConnectionAction(
   connected: boolean
 ): Promise<void> {
   await setSessionConnection(sessionId, connected);
+}
+
+// --- Portal-side session recording ----------------------------------------
+// A watcher records the live WebRTC stream in-browser. The blob upload itself
+// (PUT to the signed Storage URL) happens client-side; these two actions bracket
+// it with the server-authenticated reserve + finalize. The recording lands as a
+// kind='session_recording', source='portal_recording' video capture; finalize
+// skips analysis for video.
+
+export async function reserveRecordingAction(input: {
+  sessionId: string;
+  mimeType: string;
+  sizeBytes: number;
+  capturedAt: string;
+  videoDurationMs: number;
+}): Promise<ReserveCaptureResult> {
+  return reserveCapture({
+    sessionId: input.sessionId,
+    source: "portal_recording",
+    mediaType: "video",
+    kind: "session_recording",
+    mimeType: input.mimeType,
+    sizeBytes: input.sizeBytes,
+    capturedAt: input.capturedAt,
+    videoDurationMs: input.videoDurationMs
+  });
+}
+
+export async function finalizeRecordingAction(
+  captureId: string,
+  actualSizeBytes: number
+): Promise<void> {
+  await finalizeCapture(captureId, { actualSizeBytes });
 }
