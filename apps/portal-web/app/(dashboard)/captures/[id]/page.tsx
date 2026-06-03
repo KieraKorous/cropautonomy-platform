@@ -4,6 +4,7 @@ import { ArrowRight, CameraIcon, StatusPill } from "@gaia/ui";
 import { ApiError, getCapture, type CaptureSummary } from "../../../../lib/api";
 import { dateFormat, mediaLabel, statusDisplay } from "../captureDisplay";
 import { CaptureDescriptionEditor } from "./CaptureDescriptionEditor";
+import { CaptureImage } from "./CaptureImage";
 
 // Per-capture detail page reached from the "See more" button in the captures
 // lightbox. Header is the identified plant name; below it an editable
@@ -69,21 +70,8 @@ export default async function CaptureDetailPage({
 
       {/* Image + sidebar */}
       <div className="flex flex-col gap-6 lg:flex-row">
-        {/* Image */}
-        <div className="flex aspect-square w-full items-center justify-center overflow-hidden rounded-xl border border-base-content/10 bg-neutral/95 lg:w-3/5">
-          {capture.imageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element -- signed Storage URL, not a static asset
-            <img
-              alt={capture.plantType ?? "Capture"}
-              className="max-h-[70vh] w-full object-contain"
-              src={capture.imageUrl}
-            />
-          ) : (
-            <div className="flex h-full min-h-[40vh] w-full items-center justify-center text-base-100/30">
-              <CameraIcon size={56} />
-            </div>
-          )}
-        </div>
+        {/* Image (with fullscreen zoom/pan viewer) */}
+        <CaptureImage imageUrl={capture.imageUrl} alt={capture.plantType ?? "Capture"} />
 
         {/* Description + metadata */}
         <div className="flex w-full flex-col gap-6 lg:w-2/5">
