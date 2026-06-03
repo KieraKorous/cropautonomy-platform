@@ -1,14 +1,17 @@
-"""Agronomic summary stage — a short natural-language brief via Claude.
+"""Agronomic summary stage — a short brief + structured tags via Claude.
 
 This is a `summary`-role stage: it runs after detection + classification and
 synthesizes the structured detections (RT-DETR objects + PlantNet species) into
-a 1-2 sentence agronomic note surfaced on the capture as `inferred_summary`.
-It produces NO detections — it reads `ctx.detections` and writes `ctx.summary`.
+(1) a 1-2 sentence agronomic brief, (2) a best-effort observation type, and
+(3) a best-effort severity. It produces NO detections — it reads
+`ctx.detections` and writes `ctx.summary`, `ctx.observation_type`,
+`ctx.severity`, which the worker stamps onto the capture. This replaces operator
+hand-annotation: capture metadata is filled automatically.
 
 Optional by design: when ANTHROPIC_API_KEY is unset the stage reports
 unconfigured and the PipelineExecutor skips it (the pipeline still succeeds with
-species + detections). It builds ON the full v2 output (detection +
-classification); it is not a classification shortcut.
+species + detections). It builds ON the full v2 output; it is not a
+classification shortcut.
 
 Per-stage config keys (pipeline_stages.config):
   model        — Claude model id; defaults to settings.anthropic_summary_model
@@ -17,7 +20,9 @@ Per-stage config keys (pipeline_stages.config):
 
 from __future__ import annotations
 
+import json
 import logging
+import re
 from typing import Any
 
 from ..schemas import Detection, StageRole
@@ -25,18 +30,40 @@ from .base import Stage, StageContext, StageError, StageNotConfigured
 
 logger = logging.getLogger(__name__)
 
+# Mirror the captures.observation_type / captures.severity check constraints in
+# packages/db/migrations/0016_capture_annotations_and_recordings.sql. Invalid or
+# unknown model output is coerced to None (the column stays null).
+_OBSERVATION_TYPES = {
+    "pest",
+    "disease",
+    "weed",
+    "nutrient",
+    "irrigation",
+    "damage",
+    "growth_stage",
+    "other",
+}
+_SEVERITIES = {"low", "medium", "high"}
+
 # Stable system prompt → cache it (claude-api guidance). The variable per-call
 # input is the detection digest, which rides in the user turn.
 _SYSTEM_PROMPT = (
     "You are an agronomist assisting a field-scouting platform. You receive the "
     "structured output of a computer-vision pipeline (object detections and a "
-    "whole-image plant species identification) for a single field photo. Write a "
-    "brief, plain-language note (1-2 sentences, max ~45 words) summarizing what "
-    "the plant likely is and any agronomic cues worth a scout's attention "
-    "(e.g. likely pest/disease symptoms, growth stage, stress signs). Ground every "
-    "claim in the provided detections and their confidence; never invent findings. "
-    "When confidence is low or signals conflict, say so plainly. Do not restate raw "
-    "scores or bounding boxes. No preamble, no markdown, no bullet points."
+    "whole-image plant species identification) for a single field photo. Respond "
+    "with ONLY a JSON object (no prose, no markdown) with exactly these keys:\n"
+    '  "summary": a 1-2 sentence plain-language note (max ~45 words) on what the '
+    "plant likely is and any agronomic cues worth a scout's attention (likely "
+    "pest/disease symptoms, growth stage, stress). Ground every claim in the "
+    "provided detections and confidence; never invent findings; if confidence is "
+    "low or signals conflict, say so.\n"
+    '  "observation_type": the single most relevant category, one of '
+    '["pest","disease","weed","nutrient","irrigation","damage","growth_stage",'
+    '"other"], or null if nothing notable.\n'
+    '  "severity": your best estimate of how urgent any issue is, one of '
+    '["low","medium","high"], or null if there is no issue or it can\'t be '
+    "judged from the image.\n"
+    "Do not restate raw scores or bounding boxes. Output the JSON object only."
 )
 
 
@@ -104,16 +131,65 @@ class AgronomicSummaryStage(Stage):
             block.text for block in message.content if block.type == "text"
         ).strip()
 
-        ctx.summary = text or None
+        parsed = _parse_response(text)
+        ctx.summary = parsed["summary"]
+        ctx.observation_type = parsed["observation_type"]
+        ctx.severity = parsed["severity"]
+
         usage = getattr(message, "usage", None)
         ctx.output_metadata[self.key] = {
             "model": model,
+            "observation_type": ctx.observation_type,
+            "severity": ctx.severity,
+            "parsed": parsed["ok"],
             "input_tokens": getattr(usage, "input_tokens", None),
             "output_tokens": getattr(usage, "output_tokens", None),
             "cache_read_input_tokens": getattr(
                 usage, "cache_read_input_tokens", None
             ),
         }
+
+
+def _parse_response(text: str) -> dict[str, Any]:
+    """Extract {summary, observation_type, severity} from the model text.
+
+    Tolerant: pulls the first JSON object out of the text and validates the
+    structured fields against the allowed enums (invalid → None). Falls back to
+    using the whole text as the summary if JSON parsing fails.
+    """
+    obj: dict[str, Any] | None = None
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if match:
+        try:
+            candidate = json.loads(match.group(0))
+            if isinstance(candidate, dict):
+                obj = candidate
+        except json.JSONDecodeError:
+            obj = None
+
+    if obj is None:
+        return {
+            "summary": text or None,
+            "observation_type": None,
+            "severity": None,
+            "ok": False,
+        }
+
+    summary = obj.get("summary")
+    summary = summary.strip() if isinstance(summary, str) and summary.strip() else None
+
+    obs = obj.get("observation_type")
+    obs = obs if isinstance(obs, str) and obs in _OBSERVATION_TYPES else None
+
+    sev = obj.get("severity")
+    sev = sev if isinstance(sev, str) and sev in _SEVERITIES else None
+
+    return {
+        "summary": summary,
+        "observation_type": obs,
+        "severity": sev,
+        "ok": True,
+    }
 
 
 def _summarize_detections(detections: list[Detection]) -> str:

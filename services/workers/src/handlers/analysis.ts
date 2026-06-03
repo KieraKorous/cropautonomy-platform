@@ -288,10 +288,16 @@ async function runOne(
     });
   }
 
-  // 8. Stamp capture-level inferred classification from the top detection,
-  //    plus the agronomic summary (if the optional summary stage produced one).
-  //    Both are model output, kept separate from the operator's `description`.
-  const captureUpdate: { inferred_species?: string; inferred_summary?: string } = {};
+  // 8. Stamp capture-level inferred fields from the pipeline output: the top
+  //    detection's species, plus the agronomic summary + best-effort
+  //    observation_type / severity (if the optional summary stage produced
+  //    them). All model-authored — captures are not hand-annotated.
+  const captureUpdate: {
+    inferred_species?: string;
+    inferred_summary?: string;
+    observation_type?: string;
+    severity?: string;
+  } = {};
   if (inference.detections.length > 0) {
     const top = inference.detections.reduce((best, current) =>
       current.confidence > best.confidence ? current : best
@@ -299,6 +305,10 @@ async function runOne(
     if (top.category) captureUpdate.inferred_species = top.category;
   }
   if (inference.summary) captureUpdate.inferred_summary = inference.summary;
+  if (inference.observation_type) {
+    captureUpdate.observation_type = inference.observation_type;
+  }
+  if (inference.severity) captureUpdate.severity = inference.severity;
   if (Object.keys(captureUpdate).length > 0) {
     await supabase.from("captures").update(captureUpdate).eq("id", capture.id);
   }

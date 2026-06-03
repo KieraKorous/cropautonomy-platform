@@ -60,11 +60,9 @@ const reserveSchema = z.object({
     .nullable()
     .optional(),
   headingDegrees: z.number().nullable().optional(),
-  // Operator annotation, optionally set at capture time (also editable later
-  // via PATCH). Empty string on description clears it.
-  description: z.string().max(4000).nullable().optional(),
-  observationType: OBSERVATION_TYPE.nullable().optional(),
-  severity: SEVERITY.nullable().optional(),
+  // Note: observation description / type / severity are NOT set here. They are
+  // produced automatically by the analysis pipeline's summary stage, not
+  // hand-entered at capture time.
   metadata: z.record(z.unknown()).optional()
 });
 
@@ -417,9 +415,6 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
           kind: body.kind ?? "observation",
           captured_by_user_id: caller.userId,
           media_type: body.mediaType,
-          description: body.description?.trim() || null,
-          observation_type: body.observationType ?? null,
-          severity: body.severity ?? null,
           burst_index: body.burstIndex ?? null,
           video_duration_ms: body.videoDurationMs ?? null,
           mime_type: body.mimeType,

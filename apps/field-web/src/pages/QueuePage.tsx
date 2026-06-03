@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { ChromeLayout } from "../components/ChromeLayout.js";
-import { api, type ObservationType, type Severity } from "../lib/api.js";
 import {
   deleteCapture,
   listQueued,
@@ -11,23 +10,6 @@ import {
 } from "../lib/db.js";
 import { kickUploadWorker } from "../lib/upload.js";
 
-const OBSERVATION_TYPES: { value: ObservationType; label: string }[] = [
-  { value: "pest", label: "Pest" },
-  { value: "disease", label: "Disease" },
-  { value: "weed", label: "Weed" },
-  { value: "nutrient", label: "Nutrient" },
-  { value: "irrigation", label: "Irrigation" },
-  { value: "damage", label: "Damage" },
-  { value: "growth_stage", label: "Growth" },
-  { value: "other", label: "Other" }
-];
-
-const SEVERITIES: { value: Severity; label: string }[] = [
-  { value: "low", label: "Low" },
-  { value: "medium", label: "Med" },
-  { value: "high", label: "High" }
-];
-
 // The queue page is what gives the offline mode credibility — the operator
 // can see exactly what hasn't shipped yet, retry, or drop something they
 // don't want to upload.
@@ -35,7 +17,6 @@ const SEVERITIES: { value: Severity; label: string }[] = [
 export function QueuePage() {
   const navigate = useNavigate();
   const [records, setRecords] = useState<QueuedCaptureRecord[]>([]);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -62,34 +43,6 @@ export function QueuePage() {
       }
     }
     kickUploadWorker();
-  }
-
-  // Persist annotation locally so it rides along on reserve; if the capture is
-  // already reserved on the server, also PATCH it (the reserve already shipped
-  // without these fields). Optimistically reflect the change in local state so
-  // the controls don't wait a refresh tick.
-  async function saveAnnotation(
-    record: QueuedCaptureRecord,
-    patch: Partial<
-      Pick<QueuedCaptureRecord, "description" | "observationType" | "severity">
-    >
-  ) {
-    setRecords((prev) =>
-      prev.map((r) => (r.id === record.id ? { ...r, ...patch } : r))
-    );
-    await patchCapture(record.id, patch);
-    if (record.remoteCaptureId) {
-      try {
-        await api.updateCapture(record.remoteCaptureId, {
-          description: patch.description,
-          observationType: patch.observationType,
-          severity: patch.severity
-        });
-      } catch {
-        // Non-fatal: the local record keeps the annotation; the operator can
-        // re-edit from the portal once synced.
-      }
-    }
   }
 
   return (
@@ -132,77 +85,47 @@ export function QueuePage() {
               No captures in the queue.
             </li>
           )}
-          {records.map((record) => {
-            const expanded = expandedId === record.id;
-            const annotated =
-              !!record.description ||
-              !!record.observationType ||
-              !!record.severity;
-            return (
-              <li
-                key={record.id}
-                className="flex flex-col rounded-md border border-base-content/10 bg-base-100"
-              >
-                <div className="flex items-center gap-3 px-3 py-3">
-                  {record.thumbnailDataUrl ? (
-                    <img
-                      src={record.thumbnailDataUrl}
-                      alt=""
-                      className="h-14 w-14 flex-shrink-0 rounded object-cover"
-                    />
-                  ) : (
-                    <div className="grid h-14 w-14 flex-shrink-0 place-items-center rounded bg-base-content/[0.06] text-base-content/55">
-                      <CameraIcon />
-                    </div>
-                  )}
-                  <div className="flex min-w-0 flex-1 flex-col">
-                    <span className="text-sm font-medium text-neutral">
-                      {labelForMedia(record.mediaType, record.burstIndex, record.kind)}
-                    </span>
-                    <span className="text-xs text-base-content/55">
-                      {formatBytes(record.sizeBytes)} ·{" "}
-                      {new Date(record.capturedAt).toLocaleTimeString()}
-                    </span>
-                    {record.lastError && (
-                      <span className="mt-1 text-xs text-error">
-                        {record.lastError}
-                      </span>
-                    )}
-                  </div>
-                  <StatusBadge status={record.status} />
-                  {record.status === "failed" && (
-                    <button
-                      type="button"
-                      onClick={() => deleteCapture(record.id)}
-                      className="flex h-11 items-center px-3 text-xs font-semibold text-base-content/55 hover:text-error"
-                      aria-label="Discard capture"
-                    >
-                      Drop
-                    </button>
-                  )}
+          {records.map((record) => (
+            <li
+              key={record.id}
+              className="flex items-center gap-3 rounded-md border border-base-content/10 bg-base-100 px-3 py-3"
+            >
+              {record.thumbnailDataUrl ? (
+                <img
+                  src={record.thumbnailDataUrl}
+                  alt=""
+                  className="h-14 w-14 flex-shrink-0 rounded object-cover"
+                />
+              ) : (
+                <div className="grid h-14 w-14 flex-shrink-0 place-items-center rounded bg-base-content/[0.06] text-base-content/55">
+                  <CameraIcon />
                 </div>
+              )}
+              <div className="flex min-w-0 flex-1 flex-col">
+                <span className="text-sm font-medium text-neutral">
+                  {labelForMedia(record.mediaType, record.burstIndex, record.kind)}
+                </span>
+                <span className="text-xs text-base-content/55">
+                  {formatBytes(record.sizeBytes)} ·{" "}
+                  {new Date(record.capturedAt).toLocaleTimeString()}
+                </span>
+                {record.lastError && (
+                  <span className="mt-1 text-xs text-error">{record.lastError}</span>
+                )}
+              </div>
+              <StatusBadge status={record.status} />
+              {record.status === "failed" && (
                 <button
                   type="button"
-                  onClick={() => setExpandedId(expanded ? null : record.id)}
-                  className="flex items-center justify-between border-t border-base-content/[0.07] px-3 py-2 text-xs font-semibold text-base-content/60 hover:text-neutral"
+                  onClick={() => deleteCapture(record.id)}
+                  className="flex h-11 items-center px-3 text-xs font-semibold text-base-content/55 hover:text-error"
+                  aria-label="Discard capture"
                 >
-                  <span>
-                    {annotated ? "Edit details" : "Add details"}
-                    {annotated && (
-                      <span className="ml-2 inline-block h-1.5 w-1.5 rounded-full bg-success align-middle" />
-                    )}
-                  </span>
-                  <Chevron open={expanded} />
+                  Drop
                 </button>
-                {expanded && (
-                  <AnnotatePanel
-                    record={record}
-                    onSave={(patch) => saveAnnotation(record, patch)}
-                  />
-                )}
-              </li>
-            );
-          })}
+              )}
+            </li>
+          ))}
         </ul>
       </div>
     </ChromeLayout>
@@ -218,115 +141,6 @@ function labelForMedia(
   if (mediaType === "burst_frame") return `Burst frame ${(burstIndex ?? 0) + 1}`;
   if (mediaType === "video") return "Video";
   return "Photo";
-}
-
-function AnnotatePanel({
-  record,
-  onSave
-}: {
-  record: QueuedCaptureRecord;
-  onSave: (
-    patch: Partial<
-      Pick<QueuedCaptureRecord, "description" | "observationType" | "severity">
-    >
-  ) => void;
-}) {
-  const [note, setNote] = useState(record.description ?? "");
-
-  return (
-    <div className="flex flex-col gap-3 border-t border-base-content/[0.07] px-3 pb-4 pt-3">
-      <div className="flex flex-col gap-1.5">
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-base-content/45">
-          Observation
-        </span>
-        <div className="flex flex-wrap gap-1.5">
-          {OBSERVATION_TYPES.map((opt) => {
-            const active = record.observationType === opt.value;
-            return (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() =>
-                  onSave({ observationType: active ? undefined : opt.value })
-                }
-                className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
-                  active
-                    ? "bg-neutral text-neutral-content"
-                    : "bg-base-content/[0.06] text-base-content/65"
-                }`}
-              >
-                {opt.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-base-content/45">
-          Severity
-        </span>
-        <div className="flex gap-1.5">
-          {SEVERITIES.map((opt) => {
-            const active = record.severity === opt.value;
-            const tone =
-              opt.value === "high"
-                ? "bg-error text-error-content"
-                : opt.value === "medium"
-                  ? "bg-warning text-warning-content"
-                  : "bg-success text-success-content";
-            return (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => onSave({ severity: active ? undefined : opt.value })}
-                className={`flex-1 rounded-md px-3 py-2 text-xs font-semibold ${
-                  active ? tone : "bg-base-content/[0.06] text-base-content/65"
-                }`}
-              >
-                {opt.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-base-content/45">
-          Note
-        </span>
-        <textarea
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          onBlur={() => {
-            if ((record.description ?? "") !== note) onSave({ description: note });
-          }}
-          rows={2}
-          maxLength={4000}
-          placeholder="Symptoms, location, follow-up…"
-          className="w-full rounded-md border border-base-content/15 bg-base-100 px-3 py-2 text-sm text-neutral placeholder:text-base-content/40 focus:border-neutral focus:outline-none"
-        />
-      </div>
-    </div>
-  );
-}
-
-function Chevron({ open }: { open: boolean }) {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={open ? "rotate-180 transition-transform" : "transition-transform"}
-    >
-      <path d="M6 9l6 6 6-6" />
-    </svg>
-  );
 }
 
 function formatBytes(bytes: number): string {

@@ -78,10 +78,7 @@ async function processOne(record: QueuedCaptureRecord) {
       sizeBytes: record.sizeBytes,
       capturedAt: record.capturedAt,
       location: record.location ?? null,
-      headingDegrees: record.headingDegrees ?? null,
-      description: record.description ?? null,
-      observationType: record.observationType ?? null,
-      severity: record.severity ?? null
+      headingDegrees: record.headingDegrees ?? null
     });
     record = (await patchCapture(record.id, {
       remoteCaptureId: reservation.captureId,

@@ -85,6 +85,8 @@ class PipelineExecutor:
             duration_ms=duration_ms,
             stage_reports=reports,
             summary=ctx.summary,
+            observation_type=ctx.observation_type,
+            severity=ctx.severity,
         )
 
     async def _run_stage(self, spec: StageSpec, ctx: StageContext) -> StageReport:

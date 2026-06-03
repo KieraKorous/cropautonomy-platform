@@ -1,5 +1,4 @@
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
-import type { ObservationType, Severity } from "./api.js";
 
 // IndexedDB schema for the offline capture queue. The blob is held alongside
 // the metadata so a reload after offline capture survives without rebuilding
@@ -33,11 +32,6 @@ export interface QueuedCaptureRecord {
   location?: { lat: number; lng: number; accuracyMeters?: number };
   headingDegrees?: number;
   thumbnailDataUrl?: string;
-  // Operator annotation captured locally; sent on reserve and (for synced
-  // records) PATCHed via api.updateCapture from the Queue.
-  description?: string;
-  observationType?: ObservationType;
-  severity?: Severity;
   status: QueuedCaptureStatus;
   attempts: number;
   lastError?: string;

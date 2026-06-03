@@ -99,18 +99,18 @@ create index captures_status_idx
   on captures (status) where status in ('pending_upload', 'uploading', 'analysis_queued', 'analysis_running');
 ```
 
-#### Annotation, brief details, and recordings (added in 0015 / 0016)
+#### Inferred details, and recordings (added in 0015 / 0016)
 
-Later migrations extend `captures` beyond the original 0004 shape:
+Later migrations extend `captures` beyond the original 0004 shape. **Capture metadata is filled automatically by the analysis pipeline — captures are not hand-annotated.**
 
-- `description text` (0015) — operator-authored free-form note.
-- `observation_type text` (0016) — structured tag: `pest | disease | weed | nutrient | irrigation | damage | growth_stage | other`.
-- `severity text` (0016) — `low | medium | high`.
-- `inferred_summary text` (0016) — **model-authored** agronomic brief produced by the optional `summary` pipeline stage (see [Analysis](#4-analysis-server-side-asynchronous)). Kept separate from `description` so the AI blurb never overwrites operator text. Mirrors `inferred_species`.
+- `inferred_summary text` (0016) — model-authored agronomic brief (1-2 sentences) produced by the optional `summary` pipeline stage (see [Analysis](#4-analysis-server-side-asynchronous)). Mirrors `inferred_species`.
+- `observation_type text` (0016) — best-effort tag inferred by the same summary stage: `pest | disease | weed | nutrient | irrigation | damage | growth_stage | other`, or null.
+- `severity text` (0016) — best-effort `low | medium | high` inferred by the summary stage, or null.
 - `kind text not null default 'observation'` (0016) — `observation` vs `session_recording` (a saved live-feed video). Indexed `(org_id, kind)`. The portal Captures grid filters `kind='observation'`; the **Recordings** section filters `kind='session_recording'`.
 - `source` (0016) gains `portal_recording` — a watcher recorded the live WebRTC stream from the portal. Phone recordings keep `field_capture_pwa` + `kind='session_recording'`.
+- `description text` (0015) — legacy operator-note column. Retained but no longer written by any surface (the platform fills `inferred_summary` automatically instead). A `PATCH /v1/captures/{id}` endpoint still exists but is not wired to any UI.
 
-`description`, `observation_type`, and `severity` can be set at reserve time (Field PWA Queue annotate panel) or edited later via `PATCH /v1/captures/{id}` (portal capture detail; field Queue for already-reserved items). Where these are changed, keep the four touch-points in sync per [CLAUDE.md](../../CLAUDE.md) (SQL · reserve/finalize schema · field `db.ts`/`upload.ts` · realtime events).
+The worker stamps `inferred_species`, `inferred_summary`, `observation_type`, and `severity` together when analysis completes (see [Analysis](#4-analysis-server-side-asynchronous)). The Field PWA and portal display these read-only.
 
 ### `capture_sessions`
 
@@ -277,10 +277,10 @@ pg-boss worker picks up the job:
 3. Runs analysis (Phase 2 is a stub or basic vision model; Phase 5+ is the real pipeline)
 4. As detections are found, publishes `scan.detection` events
 5. Periodically publishes `scan.progress`
-6. On completion, writes `analysis_results` rows, stamps `captures.inferred_species` (top detection) and `captures.inferred_summary` (if the summary stage produced one), transitions `status` to `analyzed`, publishes `scan.completed`
+6. On completion, writes `analysis_results` rows, stamps `captures.inferred_species` (top detection) plus the summary stage's outputs — `inferred_summary`, `observation_type`, `severity` — transitions `status` to `analyzed`, publishes `scan.completed`
 7. On failure, transitions to `failed`, publishes `scan.failed` with retry flag
 
-The production pipeline `default-plant@v2` runs RT-DETR (detection) → PlantNet (species classification) → **`agronomic_summary` (optional `summary` stage)**. The summary stage is a Claude call in `services/vision` ([`agronomic_summary.py`](../../services/vision/src/vision/stages/agronomic_summary.py)) that turns the detections into a 1-2 sentence agronomic brief surfaced as `inferred_summary`. It is **optional** (`required=false`): when `ANTHROPIC_API_KEY` is unset the stage reports unconfigured and the pipeline still succeeds with species + detections. Set `ANTHROPIC_API_KEY` (and optionally `ANTHROPIC_SUMMARY_MODEL`) in `services/vision`'s env to enable it; the concrete model id is also overridable per-pipeline in `pipeline_stages.config.model`.
+The production pipeline `default-plant@v2` runs RT-DETR (detection) → PlantNet (species classification) → **`agronomic_summary` (optional `summary` stage)**. The summary stage is a Claude call in `services/vision` ([`agronomic_summary.py`](../../services/vision/src/vision/stages/agronomic_summary.py)) that turns the detections into a JSON `{ summary, observation_type, severity }` — a 1-2 sentence agronomic brief plus best-effort structured tags, surfaced as `inferred_summary` / `observation_type` / `severity`. This **replaces hand-annotation**: capture metadata is generated automatically. The stage is **optional** (`required=false`): when `ANTHROPIC_API_KEY` is unset it reports unconfigured and the pipeline still succeeds with species + detections (no brief/tags). Set `ANTHROPIC_API_KEY` (and optionally `ANTHROPIC_SUMMARY_MODEL`) in `services/vision`'s env to enable it; the concrete model id is also overridable per-pipeline in `pipeline_stages.config.model`.
 
 See [`packages/realtime` spec](./realtime-package-spec.md) for the exact event schemas.
 

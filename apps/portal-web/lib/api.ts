@@ -153,25 +153,6 @@ export function getCapture(
   return apiFetch<CaptureDetailResponse>(`/v1/captures/${id}${query}`);
 }
 
-// Save operator-authored annotation. Any subset of fields; empty-string
-// description clears it, null clears the structured fields.
-export interface CaptureAnnotationPatch {
-  description?: string;
-  observationType?: ObservationType | null;
-  severity?: Severity | null;
-}
-
-export function updateCaptureAnnotation(
-  id: string,
-  patch: CaptureAnnotationPatch
-): Promise<{ captureId: string } & Record<string, unknown>> {
-  return apiFetch(`/v1/captures/${id}`, {
-    method: "PATCH",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(patch)
-  });
-}
-
 // --- Portal recordings (watcher records the live WebRTC stream) -----------
 
 export interface ReserveCaptureBody {

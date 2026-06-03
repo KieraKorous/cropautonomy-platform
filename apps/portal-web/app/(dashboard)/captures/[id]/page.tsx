@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 import { ArrowRight, CameraIcon, StatusPill } from "@gaia/ui";
 import { ApiError, getCapture, type CaptureSummary } from "../../../../lib/api";
 import { dateFormat, mediaLabel, statusDisplay } from "../captureDisplay";
-import { CaptureDescriptionEditor } from "./CaptureDescriptionEditor";
 import { CaptureImage } from "./CaptureImage";
 
 // Per-capture detail page reached from the "See more" button in the captures
@@ -83,27 +82,25 @@ export default async function CaptureDetailPage({
 
         {/* Description + metadata */}
         <div className="flex w-full flex-col gap-6 lg:w-2/5">
-          {/* Model-authored brief details (read-only). Only shown once the
-              summary stage has produced something. */}
-          {capture.summary ? (
-            <section className="rounded-xl border border-accent/25 bg-accent/[0.06] p-5">
-              <h2 className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-base-content/55">
-                Brief details
-                <span className="rounded-full bg-accent/20 px-2 py-0.5 text-[10px] font-semibold text-accent-content">
-                  AI
-                </span>
-              </h2>
+          {/* Model-authored brief details (read-only). Capture metadata is
+              produced by the analysis pipeline, not hand-entered. Shows a
+              placeholder until the summary stage has run. */}
+          <section className="rounded-xl border border-accent/25 bg-accent/[0.06] p-5">
+            <h2 className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-base-content/55">
+              Brief details
+              <span className="rounded-full bg-accent/20 px-2 py-0.5 text-[10px] font-semibold text-accent-content">
+                AI
+              </span>
+            </h2>
+            {capture.summary ? (
               <p className="text-sm leading-relaxed text-neutral">{capture.summary}</p>
-            </section>
-          ) : null}
-
-          <section className="rounded-xl border border-base-content/10 bg-base-100 p-5">
-            <CaptureDescriptionEditor
-              captureId={capture.id}
-              initial={capture.description}
-              initialObservationType={capture.observationType}
-              initialSeverity={capture.severity}
-            />
+            ) : (
+              <p className="text-sm leading-relaxed text-base-content/55">
+                {capture.status === "analyzed"
+                  ? "No notable findings."
+                  : "Generated automatically once analysis completes."}
+              </p>
+            )}
           </section>
 
           <section className="rounded-xl border border-base-content/10 bg-base-100 p-5">

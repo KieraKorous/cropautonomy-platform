@@ -19,30 +19,7 @@ export interface ReserveCaptureRequest {
   capturedAt: string;
   location?: { lat: number; lng: number; accuracyMeters?: number } | null;
   headingDegrees?: number | null;
-  // Operator annotation, optionally set at capture time (also editable later
-  // via PATCH from the Queue / portal).
-  description?: string | null;
-  observationType?: ObservationType | null;
-  severity?: Severity | null;
   metadata?: Record<string, unknown>;
-}
-
-export type ObservationType =
-  | "pest"
-  | "disease"
-  | "weed"
-  | "nutrient"
-  | "irrigation"
-  | "damage"
-  | "growth_stage"
-  | "other";
-
-export type Severity = "low" | "medium" | "high";
-
-export interface UpdateCaptureRequest {
-  description?: string;
-  observationType?: ObservationType | null;
-  severity?: Severity | null;
 }
 
 export interface ReserveCaptureResponse {
@@ -159,13 +136,6 @@ export const api = {
       `/v1/captures/${id}/finalize`,
       { method: "POST", body: JSON.stringify(body) }
     ),
-  // Edit operator annotation on a capture already reserved on the server
-  // (note / observation type / severity). Used by the Queue for synced items.
-  updateCapture: (id: string, body: UpdateCaptureRequest) =>
-    call<{ captureId: string }>(`/v1/captures/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify(body)
-    }),
   startSession: (body: SessionStartRequest) =>
     call<SessionStartResponse>("/v1/capture-sessions", {
       method: "POST",

@@ -76,9 +76,11 @@ export interface VisionInferenceResponse {
   detections: VisionDetection[];
   duration_ms: number;
   stage_reports: VisionStageReport[];
-  // Natural-language agronomic brief from the optional summary stage; null when
-  // no summary stage ran or it was skipped/unconfigured.
+  // Outputs of the optional summary stage; null when no summary stage ran or it
+  // was skipped/unconfigured. observation_type/severity are best-effort tags.
   summary: string | null;
+  observation_type: string | null;
+  severity: string | null;
 }
 
 export class VisionNotConfiguredError extends Error {}

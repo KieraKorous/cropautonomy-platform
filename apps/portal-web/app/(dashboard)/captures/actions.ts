@@ -1,12 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import {
-  discardCapture,
-  reanalyzeCapture,
-  updateCaptureAnnotation,
-  type CaptureAnnotationPatch
-} from "../../../lib/api";
+import { discardCapture, reanalyzeCapture } from "../../../lib/api";
 
 // Soft-discards a capture, then refreshes the table. The capture stays in the
 // DB + Storage; it just drops out of the default list. Permanent deletion lives
@@ -23,12 +18,3 @@ export async function reanalyzeCaptureAction(id: string): Promise<void> {
   revalidatePath("/captures");
 }
 
-// Saves operator-authored annotation (note / observation type / severity) for a
-// capture, then refreshes the detail page so the persisted values are reflected.
-export async function updateCaptureAnnotationAction(
-  id: string,
-  patch: CaptureAnnotationPatch
-): Promise<void> {
-  await updateCaptureAnnotation(id, patch);
-  revalidatePath(`/captures/${id}`);
-}

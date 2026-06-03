@@ -49,8 +49,11 @@ class StageContext:
     detections: list[Detection] = field(default_factory=list)
     output_metadata: dict[str, dict[str, Any]] = field(default_factory=dict)
     # Set by a summary-role stage: a short natural-language brief surfaced on
-    # the capture as inferred_summary. Left None when no summary stage runs.
+    # the capture as inferred_summary, plus best-effort structured tags
+    # (observation_type / severity). Left None when no summary stage runs.
     summary: str | None = None
+    observation_type: str | None = None
+    severity: str | None = None
 
 
 class Stage(ABC):
