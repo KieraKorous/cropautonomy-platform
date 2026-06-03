@@ -98,7 +98,7 @@ insert into public.model_versions (
   'agronomic_summary',
   'v1',
   'plant_classification',
-  'anthropic',
+  'external_api',
   'anthropic',
   null,
   null,
