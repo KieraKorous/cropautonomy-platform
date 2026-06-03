@@ -153,6 +153,26 @@ export function getCapture(
   return apiFetch<CaptureDetailResponse>(`/v1/captures/${id}${query}`);
 }
 
+// Reviewer corrections to the AI-filled capture details. The analysis pipeline
+// fills these automatically; this lets a reviewer override any of them. Any
+// subset; empty-string summary clears it, null clears the structured fields.
+export interface CaptureDetailsPatch {
+  summary?: string;
+  observationType?: ObservationType | null;
+  severity?: Severity | null;
+}
+
+export function updateCaptureDetails(
+  id: string,
+  patch: CaptureDetailsPatch
+): Promise<{ captureId: string } & Record<string, unknown>> {
+  return apiFetch(`/v1/captures/${id}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(patch)
+  });
+}
+
 // --- Portal recordings (watcher records the live WebRTC stream) -----------
 
 export interface ReserveCaptureBody {

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowRight, CameraIcon, StatusPill } from "@gaia/ui";
 import { ApiError, getCapture, type CaptureSummary } from "../../../../lib/api";
 import { dateFormat, mediaLabel, statusDisplay } from "../captureDisplay";
+import { CaptureDetailsEditor } from "./CaptureDetailsEditor";
 import { CaptureImage } from "./CaptureImage";
 
 // Per-capture detail page reached from the "See more" button in the captures
@@ -18,13 +19,6 @@ function formatSize(bytes: number | null): string | null {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function titleCase(value: string): string {
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
-
-function observationLabel(value: string): string {
-  return titleCase(value.replace(/_/g, " "));
-}
 
 export default async function CaptureDetailPage({
   params
@@ -82,39 +76,24 @@ export default async function CaptureDetailPage({
 
         {/* Description + metadata */}
         <div className="flex w-full flex-col gap-6 lg:w-2/5">
-          {/* Model-authored brief details (read-only). Capture metadata is
-              produced by the analysis pipeline, not hand-entered. Shows a
-              placeholder until the summary stage has run. */}
-          <section className="rounded-xl border border-accent/25 bg-accent/[0.06] p-5">
-            <h2 className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-base-content/55">
-              Brief details
-              <span className="rounded-full bg-accent/20 px-2 py-0.5 text-[10px] font-semibold text-accent-content">
-                AI
-              </span>
-            </h2>
-            {capture.summary ? (
-              <p className="text-sm leading-relaxed text-neutral">{capture.summary}</p>
-            ) : (
-              <p className="text-sm leading-relaxed text-base-content/55">
-                {capture.status === "analyzed"
-                  ? "No notable findings."
-                  : "Generated automatically once analysis completes."}
-              </p>
-            )}
+          {/* Capture details — auto-filled by the analysis pipeline, editable
+              by a reviewer (suggest-then-confirm). */}
+          <section className="rounded-xl border border-base-content/10 bg-base-100 p-5">
+            <CaptureDetailsEditor
+              captureId={capture.id}
+              initialSummary={capture.summary}
+              initialObservationType={capture.observationType}
+              initialSeverity={capture.severity}
+              analyzed={capture.status === "analyzed"}
+            />
           </section>
 
           <section className="rounded-xl border border-base-content/10 bg-base-100 p-5">
             <h2 className="mb-3 text-xs font-medium uppercase tracking-wide text-base-content/55">
-              Details
+              Metadata
             </h2>
             <dl className="flex flex-col gap-3 text-sm">
               <DetailRow label="Plant type" value={capture.plantType ?? "—"} />
-              {capture.observationType ? (
-                <DetailRow label="Observation" value={observationLabel(capture.observationType)} />
-              ) : null}
-              {capture.severity ? (
-                <DetailRow label="Severity" value={titleCase(capture.severity)} />
-              ) : null}
               <DetailRow label="Captured" value={dateFormat.format(new Date(capture.capturedAt))} />
               {capture.uploadedAt ? (
                 <DetailRow

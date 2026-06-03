@@ -101,16 +101,16 @@ create index captures_status_idx
 
 #### Inferred details, and recordings (added in 0015 / 0016)
 
-Later migrations extend `captures` beyond the original 0004 shape. **Capture metadata is filled automatically by the analysis pipeline — captures are not hand-annotated.**
+Later migrations extend `captures` beyond the original 0004 shape. **Capture metadata is filled automatically by the analysis pipeline, then editable by a reviewer (suggest-then-confirm) — never hand-entered at capture time.**
 
-- `inferred_summary text` (0016) — model-authored agronomic brief (1-2 sentences) produced by the optional `summary` pipeline stage (see [Analysis](#4-analysis-server-side-asynchronous)). Mirrors `inferred_species`.
-- `observation_type text` (0016) — best-effort tag inferred by the same summary stage: `pest | disease | weed | nutrient | irrigation | damage | growth_stage | other`, or null.
-- `severity text` (0016) — best-effort `low | medium | high` inferred by the summary stage, or null.
+- `inferred_summary text` (0016) — agronomic brief (1-2 sentences) produced by the optional `summary` pipeline stage (see [Analysis](#4-analysis-server-side-asynchronous)). Mirrors `inferred_species`.
+- `observation_type text` (0016) — best-effort tag from the same summary stage: `pest | disease | weed | nutrient | irrigation | damage | growth_stage | other`, or null.
+- `severity text` (0016) — best-effort `low | medium | high` from the summary stage, or null.
 - `kind text not null default 'observation'` (0016) — `observation` vs `session_recording` (a saved live-feed video). Indexed `(org_id, kind)`. The portal Captures grid filters `kind='observation'`; the **Recordings** section filters `kind='session_recording'`.
 - `source` (0016) gains `portal_recording` — a watcher recorded the live WebRTC stream from the portal. Phone recordings keep `field_capture_pwa` + `kind='session_recording'`.
-- `description text` (0015) — legacy operator-note column. Retained but no longer written by any surface (the platform fills `inferred_summary` automatically instead). A `PATCH /v1/captures/{id}` endpoint still exists but is not wired to any UI.
+- `description text` (0015) — legacy operator-note column, superseded by `inferred_summary`. Retained but unused.
 
-The worker stamps `inferred_species`, `inferred_summary`, `observation_type`, and `severity` together when analysis completes (see [Analysis](#4-analysis-server-side-asynchronous)). The Field PWA and portal display these read-only.
+The worker stamps `inferred_species`, `inferred_summary`, `observation_type`, and `severity` together when analysis completes (see [Analysis](#4-analysis-server-side-asynchronous)). A reviewer can then correct `inferred_summary` / `observation_type` / `severity` from the portal capture **detail page**, which `PATCH /v1/captures/{id}` (captures.update; technician+) writes back over the AI values. The Field PWA does not edit these — the AI values are computed server-side after upload, so editing lives in the portal where captures are reviewed.
 
 ### `capture_sessions`
 

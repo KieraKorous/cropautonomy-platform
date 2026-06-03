@@ -72,11 +72,13 @@ const finalizeSchema = z.object({
   thumbnailDataUrl: z.string().optional()
 });
 
-// Operator-authored fields. Every field optional; only provided keys are
-// written. Empty-string description clears it (stored as null).
+// Reviewer corrections to the AI-filled capture details. The pipeline fills
+// these automatically (summary stage); this endpoint lets a reviewer override
+// them. Every field optional; only provided keys are written. Empty-string
+// summary clears it (stored as null); null clears the structured fields.
 const updateSchema = z
   .object({
-    description: z.string().max(4000).optional(),
+    summary: z.string().max(4000).optional(),
     observationType: OBSERVATION_TYPE.nullable().optional(),
     severity: SEVERITY.nullable().optional()
   })
@@ -329,8 +331,8 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
     }
   );
 
-  // Update operator-authored fields on a capture (currently the free-form
-  // description). Org-scoped; requires captures.update (technician and up).
+  // Reviewer corrections to the AI-filled capture details (brief summary,
+  // observation type, severity). Org-scoped; requires captures.update.
   app.patch<{ Params: { id: string } }>(
     "/v1/captures/:id",
     { preHandler: app.requireAuth("captures.update") },
@@ -358,11 +360,11 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
         throw notFound("captures.not_found", "Capture not found.");
       }
 
-      // Only write the keys the caller supplied. Empty-string description
-      // clears it; null clears the structured fields.
+      // Only write the keys the caller supplied. Empty-string summary clears it;
+      // null clears the structured fields. These overwrite the AI-filled values.
       const patch: Record<string, string | null> = {};
-      if (parsed.data.description !== undefined) {
-        patch.description = parsed.data.description.trim() || null;
+      if (parsed.data.summary !== undefined) {
+        patch.inferred_summary = parsed.data.summary.trim() || null;
       }
       if (parsed.data.observationType !== undefined) {
         patch.observation_type = parsed.data.observationType ?? null;

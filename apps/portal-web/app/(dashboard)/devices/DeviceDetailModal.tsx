@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { StatusPill } from "@gaia/ui";
 import type { Device } from "../../../lib/api";
@@ -30,6 +31,7 @@ export function DeviceDetailModal({
   canManage: boolean;
   onClose: () => void;
 }) {
+  const router = useRouter();
   const ref = useRef<HTMLDialogElement>(null);
   const open = device != null;
 
@@ -38,6 +40,10 @@ export function DeviceDetailModal({
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [statusBusy, setStatusBusy] = useState(false);
   const [autoLiveBusy, setAutoLiveBusy] = useState(false);
+  // Optimistic auto-live value so the switch reflects the click immediately and
+  // doesn't snap back while the server action round-trips. `null` = defer to the
+  // server prop; a boolean = pending local override until the prop catches up.
+  const [autoLiveOverride, setAutoLiveOverride] = useState<boolean | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,11 +63,21 @@ export function DeviceDetailModal({
     setNickname(device.nickname ?? "");
     setSaveState("idle");
     setConfirmingDelete(false);
+    setAutoLiveOverride(null);
     setError(null);
     // Intentionally keyed on the device id only — re-seeding on every prop change
     // would clobber edits the user is making mid-session.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deviceId]);
+
+  // Drop the optimistic override once the refreshed server prop catches up, so
+  // later external changes to the device aren't masked by a stale local value.
+  const serverAutoLive = device?.autoLiveEnabled;
+  useEffect(() => {
+    if (autoLiveOverride !== null && serverAutoLive === autoLiveOverride) {
+      setAutoLiveOverride(null);
+    }
+  }, [serverAutoLive, autoLiveOverride]);
 
   if (!device) {
     return <dialog ref={ref} onClose={onClose} className="hidden" />;
@@ -71,6 +87,8 @@ export function DeviceDetailModal({
   const status = deviceStatusDisplay(device.status);
   const isRetired = device.status === "retired";
   const dirty = name !== (device.displayName ?? "") || nickname !== (device.nickname ?? "");
+  // Optimistic override wins until the server prop confirms it (see effect above).
+  const autoLiveChecked = autoLiveOverride ?? device.autoLiveEnabled;
 
   async function onSave() {
     if (!device) return;
@@ -103,11 +121,19 @@ export function DeviceDetailModal({
 
   async function onToggleAutoLive() {
     if (!device) return;
+    const next = !(autoLiveOverride ?? device.autoLiveEnabled);
     setAutoLiveBusy(true);
     setError(null);
+    // Reflect the new state immediately; revert if the write fails.
+    setAutoLiveOverride(next);
     try {
-      await updateDeviceAction(device.id, { autoLiveEnabled: !device.autoLiveEnabled });
+      await updateDeviceAction(device.id, { autoLiveEnabled: next });
+      // The action revalidates server-side, but an already-open <dialog> driven
+      // by a parent prop won't re-read without an explicit client refresh — this
+      // is what makes the change actually stick in the grid + on reopen.
+      router.refresh();
     } catch (err) {
+      setAutoLiveOverride(null);
       setError(err instanceof Error ? err.message : "Couldn't change the auto go-live setting.");
     } finally {
       setAutoLiveBusy(false);
@@ -180,14 +206,14 @@ export function DeviceDetailModal({
           <div className="flex min-w-0 flex-col gap-0.5">
             <span className="text-sm font-semibold text-neutral">Auto go-live</span>
             <span className="text-xs leading-relaxed text-base-content/55">
-              {device.autoLiveEnabled
+              {autoLiveChecked
                 ? "Streams live immediately — no approval needed."
                 : "A watcher must approve each go-live request."}
               {!canManage ? " Only admins and managers can change this." : null}
             </span>
           </div>
           <Switch
-            checked={device.autoLiveEnabled}
+            checked={autoLiveChecked}
             disabled={!canManage || autoLiveBusy}
             onChange={onToggleAutoLive}
             label="Auto go-live"
