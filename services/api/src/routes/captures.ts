@@ -51,6 +51,11 @@ const finalizeSchema = z.object({
   thumbnailDataUrl: z.string().optional()
 });
 
+// Operator-authored description. Empty string clears it (stored as null).
+const updateSchema = z.object({
+  description: z.string().max(4000)
+});
+
 const listQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(100).default(50),
   offset: z.coerce.number().int().nonnegative().default(0),
@@ -74,12 +79,41 @@ interface CaptureListRow {
   captured_at: string;
   uploaded_at: string | null;
   inferred_species: string | null;
+  description: string | null;
   thumbnail_path: string | null;
   storage_path: string;
   size_bytes: number | null;
   field_id: string | null;
   analysis_job_id: string | null;
   discarded_at: string | null;
+}
+
+// Columns selected for the summary shape returned by the list and single-capture
+// endpoints. Kept in one place so the row interface and selects stay in sync.
+const CAPTURE_SELECT =
+  "id, status, status_message, media_type, captured_at, uploaded_at, inferred_species, description, thumbnail_path, storage_path, size_bytes, field_id, analysis_job_id, discarded_at";
+
+// Same columns plus org_id, for the single-capture handlers that tenant-check
+// before mapping. `as const` keeps it a literal so the typed client can parse it.
+const CAPTURE_SELECT_WITH_ORG = `${CAPTURE_SELECT}, org_id` as const;
+
+// Map a DB row → API summary, attaching an already-signed image URL (or null).
+function toCaptureSummary(row: CaptureListRow, imageUrl: string | null) {
+  return {
+    id: row.id,
+    status: row.status,
+    statusMessage: row.status_message,
+    mediaType: row.media_type,
+    capturedAt: row.captured_at,
+    uploadedAt: row.uploaded_at,
+    plantType: row.inferred_species,
+    description: row.description,
+    imageUrl,
+    fieldId: row.field_id,
+    sizeBytes: row.size_bytes,
+    analysisJobId: row.analysis_job_id,
+    discardedAt: row.discarded_at
+  };
 }
 
 const mimeToExt: Record<string, string> = {
@@ -93,6 +127,11 @@ const mimeToExt: Record<string, string> = {
 };
 
 const UUID_RE = /^[0-9a-f-]{36}$/i;
+
+// A storage_path is real once finalize has run; "pending" is the placeholder
+// written at reservation time before the object exists.
+const isRealPath = (path: string | null): path is string =>
+  !!path && path !== "pending";
 
 const capturesRoutes: FastifyPluginAsync = async (app) => {
   app.get(
@@ -111,9 +150,7 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
 
       let query = supabase
         .from("captures")
-        .select(
-          "id, status, status_message, media_type, captured_at, uploaded_at, inferred_species, thumbnail_path, storage_path, size_bytes, field_id, analysis_job_id, discarded_at"
-        )
+        .select(CAPTURE_SELECT)
         .eq("org_id", caller.orgId);
       query = discarded
         ? query.not("discarded_at", "is", null)
@@ -154,24 +191,137 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
       return {
         captures: rows.map((row) => {
           const path = pathByRow.get(row.id);
-          return {
-            id: row.id,
-            status: row.status,
-            statusMessage: row.status_message,
-            mediaType: row.media_type,
-            capturedAt: row.captured_at,
-            uploadedAt: row.uploaded_at,
-            plantType: row.inferred_species,
-            imageUrl: path ? (signedByPath.get(path) ?? null) : null,
-            fieldId: row.field_id,
-            sizeBytes: row.size_bytes,
-            analysisJobId: row.analysis_job_id,
-            discardedAt: row.discarded_at
-          };
+          return toCaptureSummary(row, path ? (signedByPath.get(path) ?? null) : null);
         }),
         limit,
         offset
       };
+    }
+  );
+
+  // Single capture detail for the portal's /captures/{id} page. Returns the
+  // capture with a signed full-size image (not the thumbnail) plus a `related`
+  // list of other captures sharing the same identified species — drives the
+  // detail page's same-plant bottom bar. Org-scoped; 404 across tenants.
+  app.get<{ Params: { id: string }; Querystring: { relatedLimit?: string } }>(
+    "/v1/captures/:id",
+    { preHandler: app.requireAuth("captures.read") },
+    async (request, _reply) => {
+      const { id } = request.params;
+      if (!UUID_RE.test(id)) {
+        throw badRequest("captures.invalid_id", "Invalid capture id.");
+      }
+      const caller = request.auth!;
+      const supabase = getDb();
+
+      const { data: row, error: loadErr } = await supabase
+        .from("captures")
+        .select(CAPTURE_SELECT_WITH_ORG)
+        .eq("id", id)
+        .maybeSingle();
+      if (loadErr) throw loadErr;
+      if (!row || (row as { org_id: string }).org_id !== caller.orgId) {
+        throw notFound("captures.not_found", "Capture not found.");
+      }
+      const capture = row as CaptureListRow & { org_id: string };
+
+      // Same-species siblings (excluding self). Only fetch when this capture has
+      // an identified species; otherwise there's nothing to relate it to.
+      const relatedLimit = Math.min(
+        Math.max(Number(request.query.relatedLimit ?? 12) || 12, 1),
+        50
+      );
+      let relatedRows: CaptureListRow[] = [];
+      if (capture.inferred_species) {
+        const { data: rel, error: relErr } = await supabase
+          .from("captures")
+          .select(CAPTURE_SELECT)
+          .eq("org_id", caller.orgId)
+          .eq("inferred_species", capture.inferred_species)
+          .neq("id", id)
+          .is("discarded_at", null)
+          .order("captured_at", { ascending: false })
+          .limit(relatedLimit);
+        if (relErr) throw relErr;
+        relatedRows = (rel ?? []) as CaptureListRow[];
+      }
+
+      // Sign the detail image (full-size original) and the related thumbnails in
+      // one batch. The detail image prefers the original; related prefer thumbs.
+      const pathByRow = new Map<string, string>();
+      if (VIEWABLE_STATUSES.has(capture.status) && isRealPath(capture.storage_path)) {
+        pathByRow.set(capture.id, capture.storage_path);
+      }
+      for (const rel of relatedRows) {
+        if (!VIEWABLE_STATUSES.has(rel.status)) continue;
+        const path = rel.thumbnail_path ?? rel.storage_path;
+        if (!isRealPath(path)) continue;
+        pathByRow.set(rel.id, path);
+      }
+
+      const signedByPath = new Map<string, string>();
+      const uniquePaths = [...new Set(pathByRow.values())];
+      if (uniquePaths.length > 0) {
+        const { data: signed, error: signErr } = await supabase.storage
+          .from(CAPTURES_BUCKET)
+          .createSignedUrls(uniquePaths, 60 * 60);
+        if (signErr) throw signErr;
+        for (const item of signed ?? []) {
+          if (item.signedUrl && !item.error && item.path) {
+            signedByPath.set(item.path, item.signedUrl);
+          }
+        }
+      }
+
+      const sign = (rowId: string): string | null => {
+        const path = pathByRow.get(rowId);
+        return path ? (signedByPath.get(path) ?? null) : null;
+      };
+
+      return {
+        capture: toCaptureSummary(capture, sign(capture.id)),
+        related: relatedRows.map((rel) => toCaptureSummary(rel, sign(rel.id)))
+      };
+    }
+  );
+
+  // Update operator-authored fields on a capture (currently the free-form
+  // description). Org-scoped; requires captures.update (technician and up).
+  app.patch<{ Params: { id: string } }>(
+    "/v1/captures/:id",
+    { preHandler: app.requireAuth("captures.update") },
+    async (request, _reply) => {
+      const { id } = request.params;
+      if (!UUID_RE.test(id)) {
+        throw badRequest("captures.invalid_id", "Invalid capture id.");
+      }
+      const caller = request.auth!;
+      const parsed = updateSchema.safeParse(request.body);
+      if (!parsed.success) {
+        throw badRequest("captures.invalid_input", "Invalid capture update body.", {
+          issues: parsed.error.issues
+        });
+      }
+      const supabase = getDb();
+
+      const { data: row, error: loadErr } = await supabase
+        .from("captures")
+        .select("id, org_id")
+        .eq("id", id)
+        .maybeSingle();
+      if (loadErr) throw loadErr;
+      if (!row || (row as { org_id: string }).org_id !== caller.orgId) {
+        throw notFound("captures.not_found", "Capture not found.");
+      }
+
+      const description = parsed.data.description.trim() || null;
+      const { error: updateErr } = await supabase
+        .from("captures")
+        .update({ description })
+        .eq("id", id);
+      if (updateErr) throw updateErr;
+
+      return { captureId: id, description };
     }
   );
 

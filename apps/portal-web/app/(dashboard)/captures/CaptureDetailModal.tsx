@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowRight, CameraIcon, StatusPill } from "@gaia/ui";
 import type { CaptureSummary } from "../../../lib/api";
@@ -188,10 +189,35 @@ export function CaptureDetailModal({
         // lands directly on it (not the inner panel) should close.
         if (event.target === ref.current) onClose();
       }}
-      className="m-auto w-full max-w-6xl rounded-xl border border-base-content/10 bg-base-100 p-0 text-base-content shadow-lg backdrop:bg-neutral/60"
+      className="relative m-auto w-full max-w-7xl bg-transparent p-0 text-base-content backdrop:bg-neutral/60"
     >
       {capture && display ? (
-        <div className="flex flex-col md:flex-row">
+        <>
+          {/* Prev / next arrows live on the backdrop, flanking the panel —
+              outside the white card, not overlaid on the image. The empty
+              space around them is the <dialog> itself, so clicking it closes. */}
+          <button
+            type="button"
+            onClick={() => hasPrev && onNavigate(index - 1)}
+            disabled={!hasPrev}
+            aria-label="Previous capture"
+            className="absolute left-0 top-1/2 z-10 -translate-y-1/2 rounded-full bg-base-100/90 p-2.5 text-neutral shadow-lg transition hover:bg-base-100 disabled:pointer-events-none disabled:opacity-0"
+          >
+            <ArrowRight size={20} className="rotate-180" />
+          </button>
+          <button
+            type="button"
+            onClick={() => hasNext && onNavigate(index + 1)}
+            disabled={!hasNext}
+            aria-label="Next capture"
+            className="absolute right-0 top-1/2 z-10 -translate-y-1/2 rounded-full bg-base-100/90 p-2.5 text-neutral shadow-lg transition hover:bg-base-100 disabled:pointer-events-none disabled:opacity-0"
+          >
+            <ArrowRight size={20} />
+          </button>
+
+          {/* The card itself, inset from the dialog edges to leave room for the
+              flanking arrows. */}
+          <div className="mx-12 flex flex-col overflow-hidden rounded-xl border border-base-content/10 bg-base-100 shadow-lg sm:mx-16 md:flex-row">
           {/* Image side */}
           <div className="relative flex aspect-square w-full items-center justify-center bg-neutral/95 md:aspect-auto md:w-2/3">
             {capture.imageUrl ? (
@@ -218,26 +244,6 @@ export function CaptureDetailModal({
                 <ExpandIcon />
               </button>
             ) : null}
-
-            {/* Prev / next arrows overlaid on the image edges. */}
-            <button
-              type="button"
-              onClick={() => hasPrev && onNavigate(index - 1)}
-              disabled={!hasPrev}
-              aria-label="Previous capture"
-              className="absolute left-3 top-1/2 -translate-y-1/2 rounded-full bg-base-100/90 p-2 text-neutral shadow-md transition hover:bg-base-100 disabled:pointer-events-none disabled:opacity-0"
-            >
-              <ArrowRight size={18} className="rotate-180" />
-            </button>
-            <button
-              type="button"
-              onClick={() => hasNext && onNavigate(index + 1)}
-              disabled={!hasNext}
-              aria-label="Next capture"
-              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-base-100/90 p-2 text-neutral shadow-md transition hover:bg-base-100 disabled:pointer-events-none disabled:opacity-0"
-            >
-              <ArrowRight size={18} />
-            </button>
           </div>
 
           {/* Metadata side */}
@@ -296,11 +302,22 @@ export function CaptureDetailModal({
               {capture.fieldId ? <DetailRow label="Field" value={capture.fieldId} /> : null}
             </dl>
 
-            <div className="mt-auto text-xs text-base-content/45">
+            {/* Jump to the full detail page for this capture (description,
+                same-plant gallery). */}
+            <Link
+              href={`/captures/${capture.id}`}
+              className="mt-auto inline-flex items-center justify-center gap-1.5 rounded-lg bg-neutral px-4 py-2.5 text-sm font-semibold text-base-100 transition-colors hover:bg-neutral/90"
+            >
+              See more
+              <ArrowRight size={16} />
+            </Link>
+
+            <div className="text-xs text-base-content/45">
               {position} of {captures.length}
             </div>
           </div>
-        </div>
+          </div>
+        </>
       ) : null}
 
       {/* Fullscreen zoom/pan viewer — covers the whole viewport above the

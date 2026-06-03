@@ -77,11 +77,19 @@ export interface CaptureSummary {
   capturedAt: string;
   uploadedAt: string | null;
   plantType: string | null;
+  // Operator-authored free-form notes, edited on the detail page.
+  description: string | null;
   imageUrl: string | null;
   fieldId: string | null;
   sizeBytes: number | null;
   analysisJobId: string | null;
   discardedAt: string | null;
+}
+
+export interface CaptureDetailResponse {
+  capture: CaptureSummary;
+  // Other captures sharing the same identified plant type (newest first).
+  related: CaptureSummary[];
 }
 
 interface ListCapturesResponse {
@@ -99,6 +107,28 @@ export function listCaptures(
   if (params.discarded != null) search.set("discarded", String(params.discarded));
   const query = search.toString();
   return apiFetch<ListCapturesResponse>(`/v1/captures${query ? `?${query}` : ""}`);
+}
+
+// Single capture for the /captures/{id} detail page, with same-plant siblings
+// for the bottom bar. 404s (ApiError) when the id is unknown or cross-tenant.
+export function getCapture(
+  id: string,
+  params: { relatedLimit?: number } = {}
+): Promise<CaptureDetailResponse> {
+  const query = params.relatedLimit != null ? `?relatedLimit=${params.relatedLimit}` : "";
+  return apiFetch<CaptureDetailResponse>(`/v1/captures/${id}${query}`);
+}
+
+// Save the operator-authored description. Empty string clears it (-> null).
+export function updateCaptureDescription(
+  id: string,
+  description: string
+): Promise<{ captureId: string; description: string | null }> {
+  return apiFetch(`/v1/captures/${id}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ description })
+  });
 }
 
 // Soft-discard: hides the capture from the default list. Reversible server-side.
