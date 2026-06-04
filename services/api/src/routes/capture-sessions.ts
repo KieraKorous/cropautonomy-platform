@@ -86,6 +86,9 @@ const captureSessionsRoutes: FastifyPluginAsync = async (app) => {
         .eq("org_id", caller.orgId)
         .in("status", ACTIVE_STATUSES as unknown as string[])
         .not("started_by_device_id", "is", null)
+        // A disconnected camera leaves the wall entirely (no placeholder tile);
+        // the operator is told in the field app and can rejoin from there.
+        .is("live_disconnected_at", null)
         // Drop sessions whose phone stopped heartbeating — a camera that went
         // away leaves no live tile behind.
         .gt("last_heartbeat_at", new Date(Date.now() - LIVE_STALE_MS).toISOString())

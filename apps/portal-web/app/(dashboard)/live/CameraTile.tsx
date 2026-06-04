@@ -17,6 +17,11 @@ export interface CameraTileProps {
   focused: boolean;
   compact: boolean;
   onToggleFocus: () => void;
+  // Drop this camera off the wall. Called when the camera is disconnected —
+  // either by this watcher clicking Disconnect or off the realtime event when
+  // another watcher (or the operator) disconnects it. Disconnected cameras leave
+  // no placeholder; the operator is told in the field app and can rejoin.
+  onRemove: () => void;
 }
 
 // One camera = one viewer-side peer connection to a live session's publisher.
@@ -35,9 +40,9 @@ export function CameraTile({
   viewerUserId,
   focused,
   compact,
-  onToggleFocus
+  onToggleFocus,
+  onRemove
 }: CameraTileProps) {
-  const [connected, setConnected] = useState(session.disconnectedAt == null);
   // Operator-paused state, kept live off the session-state channel. When paused
   // the peer stays connected (so this tile keeps its Disconnect control) but the
   // phone stops sending video — we cover the frozen frame with a paused notice.
@@ -48,7 +53,7 @@ export function CameraTile({
     orgId,
     sessionId: session.sessionId,
     viewerUserId,
-    enabled: connected
+    enabled: true
   });
 
   // Watcher-side recording of the received WebRTC stream. Independent of the
@@ -107,24 +112,25 @@ export function CameraTile({
     setRecording(true);
   };
 
-  // Flip with every watcher when anyone disconnects/reconnects this camera.
+  // Drop this camera off every watcher's wall the moment it's disconnected;
+  // track pause/resume so the tile shows the right state while it stays up.
   useRealtimeChannel(channels.captureSessionState(orgId, session.sessionId), {
     historyLimit: 1,
     onEvent: (event) => {
-      if (event.type === "capture.session.disconnected") setConnected(false);
-      else if (event.type === "capture.session.reconnected") setConnected(true);
+      if (event.type === "capture.session.disconnected") onRemove();
       else if (event.type === "capture.session.paused") setPaused(true);
       else if (event.type === "capture.session.resumed") setPaused(false);
     }
   });
 
-  const setConnection = (next: boolean) => {
-    setConnected(next); // optimistic; the realtime event confirms for all watchers
+  const disconnect = () => {
+    onRemove(); // optimistic; the realtime event removes it for other watchers
     startTransition(async () => {
       try {
-        await setSessionConnectionAction(session.sessionId, next);
+        await setSessionConnectionAction(session.sessionId, false);
       } catch {
-        setConnected(!next); // revert on failure
+        // Best-effort: if the call didn't take, the wall's reconcile poll
+        // re-adds the still-connected camera within ~10s.
       }
     });
   };
@@ -137,7 +143,7 @@ export function CameraTile({
     }
   }, [stream]);
 
-  const badge = statusBadge(connected, paused, connectionState, stream != null);
+  const badge = statusBadge(paused, connectionState, stream != null);
 
   return (
     <div className="group relative block w-full overflow-hidden rounded-xl border border-base-content/10 bg-neutral text-left transition-shadow hover:shadow-lg">
@@ -150,8 +156,8 @@ export function CameraTile({
           className="h-full w-full bg-neutral object-cover"
         />
 
-        {/* Connecting state (only while connected and waiting for media). */}
-        {connected && !stream ? (
+        {/* Connecting state (while waiting for media, unless paused). */}
+        {!stream && !paused ? (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-xs font-medium text-base-100/70">
             {connectionLabel(connectionState)}
           </div>
@@ -159,7 +165,7 @@ export function CameraTile({
 
         {/* Operator-paused overlay. pointer-events-none so the Disconnect /
             Record controls (z-20) and the focus toggle (z-10) stay usable. */}
-        {connected && paused ? (
+        {paused ? (
           <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-neutral/60">
             <span className="rounded-full bg-warning/90 px-3 py-1 text-xs font-semibold text-warning-content shadow-lg">
               Operator paused the live feed
@@ -184,11 +190,10 @@ export function CameraTile({
         />
 
         {/* Disconnect + Record, top-left — mirror the status pill. */}
-        {connected ? (
-          <div className="absolute left-2 top-2 z-20 flex items-center gap-1.5">
+        <div className="absolute left-2 top-2 z-20 flex items-center gap-1.5">
             <button
               type="button"
-              onClick={() => setConnection(false)}
+              onClick={disconnect}
               disabled={pending}
               aria-label="Disconnect camera"
               title="Disconnect camera"
@@ -225,24 +230,7 @@ export function CameraTile({
                 {uploading ? "Saving…" : recording ? "Stop" : "Rec"}
               </button>
             ) : null}
-          </div>
-        ) : null}
-
-        {/* Disconnected overlay with a Reconnect affordance. */}
-        {!connected ? (
-          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2.5 bg-neutral/70">
-            <p className="text-xs font-medium text-base-100/70">Camera disconnected</p>
-            <button
-              type="button"
-              onClick={() => setConnection(true)}
-              disabled={pending}
-              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-content transition-colors hover:bg-primary/90 disabled:opacity-50"
-            >
-              <PlayIcon />
-              Reconnect
-            </button>
-          </div>
-        ) : null}
+        </div>
 
         {/* Device label — non-interactive, clicks fall through to focus. */}
         <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 bg-gradient-to-t from-neutral/90 via-neutral/40 to-transparent px-3 pb-2 pt-8">
@@ -263,12 +251,10 @@ export function CameraTile({
 }
 
 function statusBadge(
-  connected: boolean,
   paused: boolean,
   connectionState: RTCPeerConnectionState | "idle",
   hasStream: boolean
 ): { tone: Tone; label: string } {
-  if (!connected) return { tone: "muted", label: "Disconnected" };
   if (paused) return { tone: "muted", label: "Paused" };
   if (hasStream && connectionState === "connected") {
     return { tone: "success", label: "Live" };
@@ -333,10 +319,3 @@ function PowerIcon() {
   );
 }
 
-function PlayIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <path d="M8 5v14l11-7z" />
-    </svg>
-  );
-}

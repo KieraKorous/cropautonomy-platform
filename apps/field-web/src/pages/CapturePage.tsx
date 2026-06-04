@@ -165,6 +165,22 @@ export function CapturePage() {
             }
             : undefined;
 
+    // Rejoin the live wall after a supervisor disconnected this camera. The
+    // server clears the disconnect and echoes device.command.reconnect back to
+    // this phone (which also clears livePaused); we clear optimistically so the
+    // feed resumes immediately.
+    async function reconnectLive() {
+        if (!session) return;
+        setLivePaused(false);
+        if (livePausedKey) void setSessionState(livePausedKey, false);
+        try {
+            await api.patchSession(session.sessionId, { action: "reconnect" });
+        } catch {
+            setLivePaused(true);
+            if (livePausedKey) void setSessionState(livePausedKey, true);
+        }
+    }
+
     async function shootPhoto() {
         if (busy) return;
         setBusy(true);
@@ -424,10 +440,17 @@ export function CapturePage() {
             )}
 
             {livePaused && (
-                <div className="safe-top pointer-events-none fixed left-1/2 top-24 z-30 -translate-x-1/2 px-3">
-                    <span className="pointer-events-auto rounded-full bg-warning/90 px-3 py-1 text-xs font-semibold text-warning-content shadow-lg">
-                        Live paused by supervisor
+                <div className="safe-top pointer-events-none fixed left-1/2 top-24 z-30 flex -translate-x-1/2 flex-col items-center gap-2 px-3">
+                    <span className="pointer-events-auto rounded-full bg-error/90 px-3 py-1 text-xs font-semibold text-error-content shadow-lg">
+                        A supervisor disconnected your live feed
                     </span>
+                    <button
+                        type="button"
+                        onClick={() => void reconnectLive()}
+                        className="pointer-events-auto rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-neutral shadow-lg active:scale-95"
+                    >
+                        Go live again
+                    </button>
                 </div>
             )}
 

@@ -121,6 +121,14 @@ export function LiveWall({ orgId, viewerUserId, initialSessions }: LiveWallProps
                   cur === session.sessionId ? null : session.sessionId
                 )
               }
+              onRemove={() => {
+                setSessions((prev) =>
+                  prev.filter((s) => s.sessionId !== session.sessionId)
+                );
+                setFocusedId((cur) =>
+                  cur === session.sessionId ? null : cur
+                );
+              }}
             />
           </div>
         );

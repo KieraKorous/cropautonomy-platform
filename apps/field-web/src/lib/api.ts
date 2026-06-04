@@ -157,6 +157,8 @@ export const api = {
       | { action: "resume" }
       | { action: "end"; reason?: string }
       | { action: "heartbeat" }
+      // Operator rejoins the live wall after a supervisor disconnected them.
+      | { action: "reconnect" }
   ) =>
     call<{ sessionId: string; action: string }>(`/v1/capture-sessions/${id}`, {
       method: "PATCH",
