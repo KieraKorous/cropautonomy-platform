@@ -3,7 +3,7 @@
 import { channels } from "@gaia/realtime/channels";
 import { useRealtimeChannel } from "@gaia/realtime/client";
 import { StatusPill, type Tone } from "@gaia/ui";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { LiveSessionSummary } from "../../../lib/api";
 import { setSessionConnectionAction } from "./actions";
@@ -47,7 +47,6 @@ export function CameraTile({
   // the peer stays connected (so this tile keeps its Disconnect control) but the
   // phone stops sending video — we cover the frozen frame with a paused notice.
   const [paused, setPaused] = useState(session.status === "paused");
-  const [pending, startTransition] = useTransition();
 
   const { stream, connectionState } = useLiveViewer({
     orgId,
@@ -124,15 +123,16 @@ export function CameraTile({
   });
 
   const disconnect = () => {
-    onRemove(); // optimistic; the realtime event removes it for other watchers
-    startTransition(async () => {
-      try {
-        await setSessionConnectionAction(session.sessionId, false);
-      } catch {
-        // Best-effort: if the call didn't take, the wall's reconcile poll
-        // re-adds the still-connected camera within ~10s.
-      }
+    // Fire the server disconnect FIRST so the request runs independent of this
+    // tile's lifecycle, THEN drop the tile. Removing the tile unmounts this
+    // component; if the network call were tied to a startTransition it could be
+    // dropped mid-flight, leaving live_disconnected_at unset and the field app
+    // never told. The realtime event removes the tile for the other watchers.
+    void setSessionConnectionAction(session.sessionId, false).catch(() => {
+      // Best-effort: if the call didn't take, the wall's reconcile poll re-adds
+      // the still-connected camera within ~10s.
     });
+    onRemove();
   };
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -194,7 +194,6 @@ export function CameraTile({
             <button
               type="button"
               onClick={disconnect}
-              disabled={pending}
               aria-label="Disconnect camera"
               title="Disconnect camera"
               className="inline-flex items-center justify-center rounded-md bg-neutral/45 p-1.5 text-base-100/80 backdrop-blur-sm transition-colors hover:bg-error/80 hover:text-error-content disabled:opacity-50"
