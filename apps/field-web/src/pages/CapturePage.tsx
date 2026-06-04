@@ -109,11 +109,30 @@ export function CapturePage() {
         sessionId: session?.sessionId ?? "",
         operatorId: user?.id ?? "",
         stream,
-        enabled: Boolean(session && stream && user) && !livePaused,
-        // Operator pause stops the outbound feed (watchers see "paused") while
-        // keeping the peers connected; the camera + recording keep running.
-        paused: session?.status === "paused"
+        // Pause fully tears the broadcast down — every peer connection is closed
+        // and the signaling subscription drops, so nothing lives on in the
+        // background. Resume re-establishes the broadcast from scratch (watchers
+        // rejoin). The local viewfinder keeps running so the operator still sees
+        // what they're pointing at.
+        enabled:
+            Boolean(session && stream && user) &&
+            !livePaused &&
+            session?.status !== "paused"
     });
+
+    // Pausing the session stops any recording in progress — a paused session
+    // must not keep capturing the live feed (or a video) in the background. The
+    // recorders' onstop handlers flush whatever was already captured to the
+    // upload queue, so nothing recorded before the pause is lost.
+    useEffect(() => {
+        if (session?.status !== "paused") return;
+        if (sessionRecorderRef.current?.state === "recording") {
+            sessionRecorderRef.current.stop();
+        }
+        if (recorderRef.current?.state === "recording") {
+            recorderRef.current.stop();
+        }
+    }, [session?.status]);
 
     // Liveness heartbeat: while this phone holds the session, ping the server so
     // the Live wall knows the camera is still here. When the phone closes or
