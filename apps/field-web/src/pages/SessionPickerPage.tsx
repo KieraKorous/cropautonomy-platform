@@ -2,6 +2,7 @@ import { Link, Navigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 
 import { ChromeLayout } from "../components/ChromeLayout.js";
+import { api } from "../lib/api.js";
 import { blobToThumbnailDataUrl, nowIso } from "../lib/capture-camera.js";
 import { enqueueCapture, getPairedDevice, type PairedDevice } from "../lib/db.js";
 import { useLiveRequest } from "../lib/liveRequest.js";
@@ -20,6 +21,10 @@ export function SessionPickerPage() {
   const [uploadCount, setUploadCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [device, setDevice] = useState<PairedDevice | null>(null);
+  // Whether this device is configured to go live without watcher approval. Read
+  // fresh on open so a portal toggle takes effect without re-pairing.
+  const [autoLive, setAutoLive] = useState(false);
+  const autoFiredRef = useRef(false);
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
 
   // A paired phone goes live through the request/accept gate; an unpaired phone
@@ -29,6 +34,33 @@ export function SessionPickerPage() {
   useEffect(() => {
     void getPairedDevice().then(setDevice);
   }, []);
+
+  // Learn this device's auto-live config once it's known.
+  useEffect(() => {
+    if (!device) return;
+    let alive = true;
+    void api
+      .getDeviceLiveConfig(device.deviceId)
+      .then((cfg) => {
+        if (alive) setAutoLive(cfg.autoLiveEnabled);
+      })
+      .catch(() => {
+        /* fall back to the manual request flow if config can't be read */
+      });
+    return () => {
+      alive = false;
+    };
+  }, [device]);
+
+  // Auto-live: connect to live automatically on open instead of waiting for the
+  // operator to tap "Request to go live". Fires once; the server grants
+  // immediately and the request hook adopts the session → redirect to /capture.
+  useEffect(() => {
+    if (!device || !autoLive || autoFiredRef.current) return;
+    if (live.status !== "idle") return;
+    autoFiredRef.current = true;
+    void live.request();
+  }, [device, autoLive, live]);
 
   if (loading) {
     return (
@@ -136,7 +168,11 @@ export function SessionPickerPage() {
         {device && (live.status === "pending" || live.status === "requesting") && (
           <div className="flex flex-col gap-2 rounded-md border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-base-content/80">
             <div className="flex items-center justify-between gap-3">
-              <span>Waiting for a supervisor to accept “{device.deviceName}”…</span>
+              <span>
+                {autoLive
+                  ? `Connecting “${device.deviceName}” to live…`
+                  : `Waiting for a supervisor to accept “${device.deviceName}”…`}
+              </span>
               <button
                 type="button"
                 onClick={() => void live.cancel()}
@@ -188,8 +224,12 @@ export function SessionPickerPage() {
             >
               {device
                 ? live.status === "pending" || live.status === "requesting"
-                  ? "Requested…"
-                  : "Request to go live"
+                  ? autoLive
+                    ? "Connecting…"
+                    : "Requested…"
+                  : autoLive
+                    ? "Connect to live"
+                    : "Request to go live"
                 : busy
                   ? "Starting…"
                   : "Start session"}

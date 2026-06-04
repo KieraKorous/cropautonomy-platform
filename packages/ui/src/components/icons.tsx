@@ -108,6 +108,28 @@ export function DroneIcon(props: IconProps) {
   );
 }
 
+export function SensorIcon(props: IconProps) {
+  return (
+    <Base size={22} {...props}>
+      <path d="M7.5 21 12 5l4.5 16" />
+      <path d="M9.4 15h5.2" />
+      <circle cx="12" cy="3.5" r="1" />
+      <path d="M9.6 3.9a3.3 3.3 0 0 1 4.8 0" />
+    </Base>
+  );
+}
+
+export function SimulatorIcon(props: IconProps) {
+  return (
+    <Base size={22} {...props}>
+      <rect x="2.5" y="4" width="19" height="13" rx="2" />
+      <path d="M12 17v4" />
+      <path d="M8 21h8" />
+      <path d="m10.5 8 4 2.5-4 2.5Z" />
+    </Base>
+  );
+}
+
 export function PlusIcon(props: IconProps) {
   return (
     <Base size={22} {...props}>

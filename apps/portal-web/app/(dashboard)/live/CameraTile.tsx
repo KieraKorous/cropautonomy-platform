@@ -38,6 +38,10 @@ export function CameraTile({
   onToggleFocus
 }: CameraTileProps) {
   const [connected, setConnected] = useState(session.disconnectedAt == null);
+  // Operator-paused state, kept live off the session-state channel. When paused
+  // the peer stays connected (so this tile keeps its Disconnect control) but the
+  // phone stops sending video — we cover the frozen frame with a paused notice.
+  const [paused, setPaused] = useState(session.status === "paused");
   const [pending, startTransition] = useTransition();
 
   const { stream, connectionState } = useLiveViewer({
@@ -109,6 +113,8 @@ export function CameraTile({
     onEvent: (event) => {
       if (event.type === "capture.session.disconnected") setConnected(false);
       else if (event.type === "capture.session.reconnected") setConnected(true);
+      else if (event.type === "capture.session.paused") setPaused(true);
+      else if (event.type === "capture.session.resumed") setPaused(false);
     }
   });
 
@@ -131,7 +137,7 @@ export function CameraTile({
     }
   }, [stream]);
 
-  const badge = statusBadge(connected, session, connectionState, stream != null);
+  const badge = statusBadge(connected, paused, connectionState, stream != null);
 
   return (
     <div className="group relative block w-full overflow-hidden rounded-xl border border-base-content/10 bg-neutral text-left transition-shadow hover:shadow-lg">
@@ -148,6 +154,16 @@ export function CameraTile({
         {connected && !stream ? (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-xs font-medium text-base-100/70">
             {connectionLabel(connectionState)}
+          </div>
+        ) : null}
+
+        {/* Operator-paused overlay. pointer-events-none so the Disconnect /
+            Record controls (z-20) and the focus toggle (z-10) stay usable. */}
+        {connected && paused ? (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-neutral/60">
+            <span className="rounded-full bg-warning/90 px-3 py-1 text-xs font-semibold text-warning-content shadow-lg">
+              Operator paused the live feed
+            </span>
           </div>
         ) : null}
 
@@ -248,12 +264,12 @@ export function CameraTile({
 
 function statusBadge(
   connected: boolean,
-  session: LiveSessionSummary,
+  paused: boolean,
   connectionState: RTCPeerConnectionState | "idle",
   hasStream: boolean
 ): { tone: Tone; label: string } {
   if (!connected) return { tone: "muted", label: "Disconnected" };
-  if (session.status === "paused") return { tone: "muted", label: "Paused" };
+  if (paused) return { tone: "muted", label: "Paused" };
   if (hasStream && connectionState === "connected") {
     return { tone: "success", label: "Live" };
   }

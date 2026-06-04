@@ -74,8 +74,8 @@ function DeviceCard({ device, onOpen }: { device: Device; onOpen: () => void }) 
       className="group flex aspect-square flex-col items-start justify-between gap-2 rounded-xl border border-base-content/10 bg-base-100 p-4 text-left transition-colors hover:border-primary/40 hover:bg-base-content/[0.02]"
     >
       <div className="flex w-full items-start justify-between gap-2">
-        <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <Icon size={20} />
+        <span className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-inset ring-primary/15 transition-colors group-hover:bg-primary/15">
+          <Icon size={28} />
         </span>
         <StatusPill label={status.label} tone={status.tone} />
       </div>

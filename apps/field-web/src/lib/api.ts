@@ -77,6 +77,15 @@ export interface CreateLiveRequestResponse {
   expiresAt: string;
   status: string;
   orgId: string;
+  // Present (and status "accepted") when the device is auto-live: the server
+  // grants immediately and spawns the session, so the phone can adopt it without
+  // waiting for a watcher.
+  sessionId?: string | null;
+}
+
+export interface DeviceLiveConfigResponse {
+  deviceId: string;
+  autoLiveEnabled: boolean;
 }
 
 export interface LiveRequestStatusResponse {
@@ -175,5 +184,11 @@ export const api = {
   // Poll a request's status while waiting for a watcher to decide — the reliable
   // path to going live (doesn't depend on a realtime broadcast reaching us).
   getLiveRequest: (id: string) =>
-    call<LiveRequestStatusResponse>(`/v1/live-requests/${id}`, { method: "GET" })
+    call<LiveRequestStatusResponse>(`/v1/live-requests/${id}`, { method: "GET" }),
+  // Read this device's go-live config (auto-live flag) so the field app knows
+  // whether to connect to live automatically on open.
+  getDeviceLiveConfig: (deviceId: string) =>
+    call<DeviceLiveConfigResponse>(`/v1/devices/${deviceId}/live-config`, {
+      method: "GET"
+    })
 };

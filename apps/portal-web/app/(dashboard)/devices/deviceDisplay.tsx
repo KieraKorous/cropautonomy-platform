@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import { CameraIcon, CogIcon, DroneIcon, MapPinIcon, RoverIcon, type Tone } from "@gaia/ui";
+import { CameraIcon, CogIcon, DroneIcon, RoverIcon, SensorIcon, SimulatorIcon, type Tone } from "@gaia/ui";
 import type { Device, DeviceFamily, DeviceStatus } from "../../../lib/api";
 
 // Shared device presentation — the family icon/label and status pill mapping are
@@ -10,10 +10,10 @@ type IconType = ComponentType<{ size?: number }>;
 const FAMILY: Record<DeviceFamily, { label: string; Icon: IconType }> = {
   gaia_r: { label: "Ground rover", Icon: RoverIcon },
   gaia_d: { label: "Aerial drone", Icon: DroneIcon },
-  gaia_s: { label: "Sensor station", Icon: MapPinIcon },
+  gaia_s: { label: "Sensor station", Icon: SensorIcon },
   phone: { label: "Phone camera", Icon: CameraIcon },
   third_party: { label: "Third-party device", Icon: CogIcon },
-  simulator: { label: "Simulator", Icon: CogIcon }
+  simulator: { label: "Simulator", Icon: SimulatorIcon }
 };
 
 export function deviceFamilyMeta(family: DeviceFamily): { label: string; Icon: IconType } {

@@ -19,6 +19,12 @@ export interface UseLivePublisherOptions {
   operatorId: string; // clerk user id, used as `from`/`publisherId`
   stream: MediaStream | null;
   enabled: boolean;
+  // Operator-paused the live feed: keep every peer connection alive (so watchers
+  // stay connected and can disconnect/resume instantly) but stop sending video
+  // by swapping each peer's video sender to a null track. The shared camera
+  // stream is never muted, so the local viewfinder and any session recording
+  // keep running while watchers see a paused feed.
+  paused?: boolean;
 }
 
 export interface LivePublisherState {
@@ -29,16 +35,29 @@ export interface LivePublisherState {
 export function useLivePublisher(
   options: UseLivePublisherOptions
 ): LivePublisherState {
-  const { orgId, sessionId, operatorId, stream, enabled } = options;
+  const { orgId, sessionId, operatorId, stream, enabled, paused = false } = options;
   const peersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
+  // The video RTCRtpSender per viewer, so a pause can swap it to null (and a
+  // resume swap it back) without renegotiating or touching the camera stream.
+  const videoSendersRef = useRef<Map<string, RTCRtpSender>>(new Map());
   const [viewers, setViewers] = useState<string[]>([]);
   const channelName = channels.captureSessionSignal(orgId, sessionId);
 
   // Ctx the signal handler reads, kept current without re-subscribing so the
-  // onEvent callback stays a stable closure over the latest stream/peers.
+  // onEvent callback stays a stable closure over the latest stream/peers/paused.
   const ctxRef = useRef<SignalContext | null>(null);
   ctxRef.current = stream
-    ? { orgId, sessionId, operatorId, stream, peersRef, setViewers, channelName }
+    ? {
+        orgId,
+        sessionId,
+        operatorId,
+        stream,
+        peersRef,
+        videoSendersRef,
+        setViewers,
+        channelName,
+        paused
+      }
     : null;
 
   // Subscribe to signaling events. We drive the handshake off every event
@@ -55,12 +74,25 @@ export function useLivePublisher(
     }
   });
 
+  // Pause/resume the outbound video on every live peer. Swapping the sender's
+  // track to null stops frames without closing the connection; on resume we swap
+  // the camera's video track back in. No renegotiation — same media kind.
+  useEffect(() => {
+    if (!enabled || !stream) return;
+    const videoTrack = stream.getVideoTracks()[0] ?? null;
+    for (const sender of videoSendersRef.current.values()) {
+      void sender.replaceTrack(paused ? null : videoTrack).catch(() => {});
+    }
+  }, [paused, enabled, stream]);
+
   useEffect(() => {
     if (!enabled || !stream) return;
     const peers = peersRef.current;
+    const videoSenders = videoSendersRef.current;
     return () => {
       for (const peer of peers.values()) peer.close();
       peers.clear();
+      videoSenders.clear();
       setViewers([]);
       // Best-effort terminate notification.
       void publishFromClient(channelName, {
@@ -83,8 +115,10 @@ interface SignalContext {
   operatorId: string;
   stream: MediaStream;
   peersRef: React.MutableRefObject<Map<string, RTCPeerConnection>>;
+  videoSendersRef: React.MutableRefObject<Map<string, RTCRtpSender>>;
   setViewers: React.Dispatch<React.SetStateAction<string[]>>;
   channelName: string;
+  paused: boolean;
 }
 
 async function handleSignal(
@@ -134,7 +168,13 @@ async function onViewerJoin(payload: ViewerJoinPayload, ctx: SignalContext) {
   ctx.setViewers((prev) => [...prev, payload.viewerId]);
 
   for (const track of ctx.stream.getTracks()) {
-    peer.addTrack(track, ctx.stream);
+    const sender = peer.addTrack(track, ctx.stream);
+    if (track.kind === "video") {
+      ctx.videoSendersRef.current.set(payload.viewerId, sender);
+      // Joined while the operator has the feed paused: don't send video until
+      // they resume (the pause effect swaps it back in for every peer).
+      if (ctx.paused) void sender.replaceTrack(null).catch(() => {});
+    }
   }
 
   peer.onicecandidate = (event) => {
@@ -157,6 +197,7 @@ async function onViewerJoin(payload: ViewerJoinPayload, ctx: SignalContext) {
       peer.connectionState === "disconnected"
     ) {
       ctx.peersRef.current.delete(payload.viewerId);
+      ctx.videoSendersRef.current.delete(payload.viewerId);
       ctx.setViewers((prev) => prev.filter((id) => id !== payload.viewerId));
     }
   };
@@ -180,6 +221,7 @@ function onViewerLeave(payload: ViewerLeavePayload, ctx: SignalContext) {
     peer.close();
     ctx.peersRef.current.delete(payload.viewerId);
   }
+  ctx.videoSendersRef.current.delete(payload.viewerId);
   ctx.setViewers((prev) => prev.filter((id) => id !== payload.viewerId));
 }
 

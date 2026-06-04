@@ -108,6 +108,20 @@ export function useLiveRequest(device: PairedDevice | null): UseLiveRequestResul
         fieldId: opts?.fieldId ?? null,
         cropTypeId: opts?.cropTypeId ?? null
       });
+      // Auto-live: the server granted on the spot and handed back the session.
+      // Adopt it now instead of falling into the poll — going live is instant.
+      if (res.status === "accepted" && res.sessionId && !adoptedRef.current) {
+        adoptedRef.current = true;
+        setStatus("idle");
+        setDebug(`auto-live — adopting session ${res.sessionId.slice(0, 8)}`);
+        void adoptActiveSession({
+          sessionId: res.sessionId,
+          orgId: res.orgId,
+          startedAt: new Date().toISOString(),
+          status: "live"
+        });
+        return;
+      }
       setRequestId(res.requestId);
       setStatus("pending");
       setDebug(`request ${res.requestId.slice(0, 8)} sent — polling…`);

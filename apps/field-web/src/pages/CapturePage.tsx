@@ -109,7 +109,10 @@ export function CapturePage() {
         sessionId: session?.sessionId ?? "",
         operatorId: user?.id ?? "",
         stream,
-        enabled: Boolean(session && stream && user) && !livePaused
+        enabled: Boolean(session && stream && user) && !livePaused,
+        // Operator pause stops the outbound feed (watchers see "paused") while
+        // keeping the peers connected; the camera + recording keep running.
+        paused: session?.status === "paused"
     });
 
     // Liveness heartbeat: while this phone holds the session, ping the server so

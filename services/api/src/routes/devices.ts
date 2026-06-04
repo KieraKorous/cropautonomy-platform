@@ -394,6 +394,34 @@ const devicesRoutes: FastifyPluginAsync = async (app) => {
     }
   );
 
+  // GET /v1/devices/:id/live-config — the PHONE reads its own go-live config so
+  // the field app knows whether to auto-connect on open. Scoped to the live-
+  // request permission the phone already holds (not devices.read, which is a
+  // portal-watcher grant). Returns the current auto-live flag, fresh — so a
+  // portal toggle takes effect on the next app open without re-pairing.
+  app.get<{ Params: { id: string } }>(
+    "/v1/devices/:id/live-config",
+    { preHandler: app.requireAuth("capture_sessions.create") },
+    async (request, _reply) => {
+      const { id } = request.params;
+      if (!UUID_RE.test(id)) throw badRequest("devices.invalid_id", "Invalid device id.");
+      const caller = request.auth!;
+      const supabase = getDb();
+
+      const { data, error } = await supabase
+        .from("devices")
+        .select("id, org_id, auto_live_enabled")
+        .eq("id", id)
+        .maybeSingle();
+      if (error) throw error;
+      const row = data as { id: string; org_id: string; auto_live_enabled: boolean } | null;
+      if (!row || row.org_id !== caller.orgId) {
+        throw notFound("devices.not_found", "Device not found.");
+      }
+      return { deviceId: row.id, autoLiveEnabled: row.auto_live_enabled };
+    }
+  );
+
   // ────────────────────────────────────────────────────────────────────────
   // Live requests: the phone asks to go live; any technician+ watcher decides.
   // ────────────────────────────────────────────────────────────────────────
