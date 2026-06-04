@@ -38,12 +38,36 @@ const createRequestSchema = z.object({
 // Device edits from the portal: rename (display_name + metadata.nickname),
 // status changes (retire / reactivate), and the auto-live switch. 'unregistered'
 // is intentionally not a settable status — it's only the pre-claim initial state.
+// Operator-chosen card visual, persisted in device metadata. Either one of the
+// portal's glyphs tinted with a palette color, or an uploaded square image kept
+// as a capped data URL (resized client-side before it reaches us).
+const appearanceSchema = z
+  .discriminatedUnion("type", [
+    z.object({
+      type: z.literal("icon"),
+      icon: z.string().min(1).max(40),
+      color: z.string().min(1).max(40)
+    }),
+    z.object({
+      type: z.literal("image"),
+      // ~400 KB ceiling on the data URL — the client downsizes to a small square.
+      image: z.string().min(1).max(400_000)
+    })
+  ])
+  .nullable();
+
 const updateDeviceSchema = z.object({
   displayName: z.string().min(1).max(80).optional(),
   nickname: z.string().max(80).nullable().optional(),
   status: z.enum(["active", "inactive", "maintenance", "retired"]).optional(),
-  autoLiveEnabled: z.boolean().optional()
+  autoLiveEnabled: z.boolean().optional(),
+  appearance: appearanceSchema.optional()
 });
+
+// Mirror of the discriminated union above, for typing the metadata round-trip.
+type DeviceAppearance =
+  | { type: "icon"; icon: string; color: string }
+  | { type: "image"; image: string };
 
 // Columns selected by the list/patch device queries.
 const DEVICE_SELECT =
@@ -69,12 +93,14 @@ interface DeviceRow {
 // registeredByName falls back through display_name → email → "Unknown".
 function toDeviceSummary(row: DeviceRow) {
   const nickname = (row.metadata?.nickname as string | undefined) ?? null;
+  const appearance = (row.metadata?.appearance as DeviceAppearance | undefined) ?? null;
   return {
     id: row.id,
     deviceFamily: row.device_family,
     serialNumber: row.serial_number,
     displayName: row.display_name,
     nickname,
+    appearance,
     firmwareVersion: row.firmware_version,
     status: row.status,
     autoLiveEnabled: row.auto_live_enabled,
@@ -321,7 +347,8 @@ const devicesRoutes: FastifyPluginAsync = async (app) => {
         body.displayName === undefined &&
         body.nickname === undefined &&
         body.status === undefined &&
-        body.autoLiveEnabled === undefined
+        body.autoLiveEnabled === undefined &&
+        body.appearance === undefined
       ) {
         throw badRequest("devices.empty_update", "No fields to update.");
       }
@@ -343,10 +370,18 @@ const devicesRoutes: FastifyPluginAsync = async (app) => {
       if (body.displayName !== undefined) patch.display_name = body.displayName;
       if (body.status !== undefined) patch.status = body.status;
       if (body.autoLiveEnabled !== undefined) patch.auto_live_enabled = body.autoLiveEnabled;
-      if (body.nickname !== undefined) {
+      if (body.nickname !== undefined || body.appearance !== undefined) {
         const current = ((existing as { metadata: Record<string, unknown> | null }).metadata) ?? {};
-        // null clears the nickname; a string sets it. Other metadata is preserved.
-        patch.metadata = { ...current, nickname: body.nickname };
+        // Merge into existing metadata so unrelated keys survive. For nickname,
+        // null clears and a string sets. For appearance, null clears the override
+        // (revert to family default) and an object sets it.
+        const merged: Record<string, unknown> = { ...current };
+        if (body.nickname !== undefined) merged.nickname = body.nickname;
+        if (body.appearance !== undefined) {
+          if (body.appearance === null) delete merged.appearance;
+          else merged.appearance = body.appearance;
+        }
+        patch.metadata = merged;
       }
 
       const { data: updated, error: updErr } = await supabase

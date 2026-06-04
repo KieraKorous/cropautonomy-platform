@@ -3,9 +3,20 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { StatusPill } from "@gaia/ui";
-import type { Device } from "../../../lib/api";
+import type { Device, DeviceAppearance } from "../../../lib/api";
 import { deleteDeviceAction, updateDeviceAction } from "./actions";
-import { deviceFamilyMeta, deviceName, deviceStatusDisplay } from "./deviceDisplay";
+import {
+  APPEARANCE_COLORS,
+  APPEARANCE_ICONS,
+  DeviceVisual,
+  colorVarName,
+  deviceFamilyMeta,
+  deviceName,
+  deviceStatusDisplay,
+  deviceVisual,
+  familyIconKey,
+  resolveVisual
+} from "./deviceDisplay";
 
 const dateFormat = new Intl.DateTimeFormat("en-US", {
   dateStyle: "medium",
@@ -15,6 +26,24 @@ const dateFormat = new Intl.DateTimeFormat("en-US", {
 function formatDate(value: string | null): string {
   if (!value) return "—";
   return dateFormat.format(new Date(value));
+}
+
+// Center-crop + downsize an uploaded image to a small square JPEG data URL, so a
+// custom device photo stays well under the API's metadata size cap.
+async function fileToSquareDataUrl(file: File, size = 384): Promise<string> {
+  const bitmap = await createImageBitmap(file);
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Canvas unavailable");
+    const min = Math.min(bitmap.width, bitmap.height);
+    ctx.drawImage(bitmap, (bitmap.width - min) / 2, (bitmap.height - min) / 2, min, min, 0, 0, size, size);
+    return canvas.toDataURL("image/jpeg", 0.82);
+  } finally {
+    bitmap.close();
+  }
 }
 
 // Device detail + management modal. Native <dialog> (Escape + backdrop close),
@@ -44,6 +73,12 @@ export function DeviceDetailModal({
   // doesn't snap back while the server action round-trips. `null` = defer to the
   // server prop; a boolean = pending local override until the prop catches up.
   const [autoLiveOverride, setAutoLiveOverride] = useState<boolean | null>(null);
+  // Appearance editor draft (icon/color/image). Persisted with the rest of the
+  // form via "Save changes". `apImage` holds the (resized) data URL in image mode.
+  const [apMode, setApMode] = useState<"icon" | "image">("icon");
+  const [apIcon, setApIcon] = useState("rover");
+  const [apColor, setApColor] = useState("primary");
+  const [apImage, setApImage] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,6 +96,11 @@ export function DeviceDetailModal({
     if (!device) return;
     setName(device.displayName ?? "");
     setNickname(device.nickname ?? "");
+    const a = device.appearance;
+    setApMode(a?.type === "image" ? "image" : "icon");
+    setApIcon(a?.type === "icon" ? a.icon : familyIconKey(device.deviceFamily));
+    setApColor(a?.type === "icon" ? a.color : "primary");
+    setApImage(a?.type === "image" ? a.image : null);
     setSaveState("idle");
     setConfirmingDelete(false);
     setAutoLiveOverride(null);
@@ -83,12 +123,56 @@ export function DeviceDetailModal({
     return <dialog ref={ref} onClose={onClose} className="hidden" />;
   }
 
-  const { label: familyLabel, Icon } = deviceFamilyMeta(device.deviceFamily);
+  const { label: familyLabel } = deviceFamilyMeta(device.deviceFamily);
   const status = deviceStatusDisplay(device.status);
   const isRetired = device.status === "retired";
-  const dirty = name !== (device.displayName ?? "") || nickname !== (device.nickname ?? "");
   // Optimistic override wins until the server prop confirms it (see effect above).
   const autoLiveChecked = autoLiveOverride ?? device.autoLiveEnabled;
+
+  // Draft appearance → the value we'd persist. Returns null when it matches the
+  // family default (icon family glyph in forest green) so unchanged devices stay
+  // "default" rather than pinning a redundant override.
+  function buildAppearance(): DeviceAppearance | null {
+    if (!device) return null;
+    if (apMode === "image") return apImage ? { type: "image", image: apImage } : null;
+    if (apIcon === familyIconKey(device.deviceFamily) && apColor === "primary") return null;
+    return { type: "icon", icon: apIcon, color: apColor };
+  }
+  const appearanceDirty =
+    JSON.stringify(buildAppearance()) !== JSON.stringify(device.appearance ?? null);
+  const dirty =
+    name !== (device.displayName ?? "") ||
+    nickname !== (device.nickname ?? "") ||
+    appearanceDirty;
+
+  const headerVisual = deviceVisual(device);
+  const draftVisual = resolveVisual(
+    apMode === "image"
+      ? apImage
+        ? { type: "image", image: apImage }
+        : null
+      : { type: "icon", icon: apIcon, color: apColor },
+    device.deviceFamily
+  );
+
+  function markEdited() {
+    if (saveState !== "idle") setSaveState("idle");
+  }
+
+  async function onPickImage(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setError(null);
+    try {
+      const url = await fileToSquareDataUrl(file);
+      setApImage(url);
+      setApMode("image");
+      markEdited();
+    } catch {
+      setError("Couldn't read that image. Try a PNG or JPG.");
+    }
+  }
 
   async function onSave() {
     if (!device) return;
@@ -97,9 +181,12 @@ export function DeviceDetailModal({
     try {
       await updateDeviceAction(device.id, {
         displayName: name.trim() || undefined,
-        nickname: nickname.trim() ? nickname.trim() : null
+        nickname: nickname.trim() ? nickname.trim() : null,
+        ...(appearanceDirty ? { appearance: buildAppearance() } : {})
       });
       setSaveState("saved");
+      // Push the new visual to the grid + this modal's header without a navigation.
+      router.refresh();
     } catch (err) {
       setSaveState("error");
       setError(err instanceof Error ? err.message : "Couldn't save changes.");
@@ -166,8 +253,8 @@ export function DeviceDetailModal({
         {/* Header */}
         <div className="flex items-start justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3">
-            <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-inset ring-primary/15">
-              <Icon size={22} />
+            <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl ring-1 ring-inset ring-base-content/10">
+              <DeviceVisual visual={headerVisual} alt={deviceName(device)} iconSize={22} />
             </span>
             <div className="flex min-w-0 flex-col">
               <h2 className="truncate text-lg font-semibold text-neutral" title={deviceName(device)}>
@@ -222,6 +309,105 @@ export function DeviceDetailModal({
 
         {canManage ? (
         <>
+        {/* Appearance — pick a glyph + color, or upload an image. Fills the card. */}
+        <div className="flex flex-col gap-3">
+          <span className="text-xs font-medium text-base-content/65">Appearance</span>
+          <div className="flex gap-4">
+            <div className="h-24 w-24 flex-shrink-0 overflow-hidden rounded-xl border border-base-content/10">
+              <DeviceVisual visual={draftVisual} alt="Appearance preview" iconSize={44} />
+            </div>
+            <div className="flex min-w-0 flex-1 flex-col gap-3">
+              {/* Mode toggle */}
+              <div className="inline-flex w-fit rounded-md border border-base-content/15 p-0.5">
+                {(["icon", "image"] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => {
+                      setApMode(m);
+                      markEdited();
+                    }}
+                    className={`rounded px-3 py-1 text-xs font-semibold capitalize transition-colors ${
+                      apMode === m
+                        ? "bg-primary text-primary-content"
+                        : "text-base-content/65 hover:text-neutral"
+                    }`}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+
+              {apMode === "icon" ? (
+                <>
+                  <div className="flex flex-wrap gap-1.5">
+                    {APPEARANCE_ICONS.map(({ key, label, Icon }) => (
+                      <button
+                        key={key}
+                        type="button"
+                        title={label}
+                        aria-label={label}
+                        aria-pressed={apIcon === key}
+                        onClick={() => {
+                          setApIcon(key);
+                          markEdited();
+                        }}
+                        className={`flex h-8 w-8 items-center justify-center rounded-md border transition-colors ${
+                          apIcon === key
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-base-content/15 text-base-content/65 hover:border-primary/40 hover:text-neutral"
+                        }`}
+                      >
+                        <Icon size={18} />
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {APPEARANCE_COLORS.map(({ key, label }) => (
+                      <button
+                        key={key}
+                        type="button"
+                        title={label}
+                        aria-label={label}
+                        aria-pressed={apColor === key}
+                        onClick={() => {
+                          setApColor(key);
+                          markEdited();
+                        }}
+                        style={{ backgroundColor: `var(${colorVarName(key)})` }}
+                        className={`h-7 w-7 rounded-full ring-offset-2 ring-offset-base-100 transition-shadow ${
+                          apColor === key ? "ring-2 ring-base-content/40" : "ring-1 ring-base-content/10"
+                        }`}
+                      />
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-base-content/15 px-3 py-2 text-sm font-medium text-base-content/80 transition-colors hover:border-primary/40 hover:text-neutral">
+                    {apImage ? "Replace image" : "Upload image"}
+                    <input type="file" accept="image/*" className="hidden" onChange={onPickImage} />
+                  </label>
+                  {apImage ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setApImage(null);
+                        markEdited();
+                      }}
+                      className="rounded-md px-2.5 py-1.5 text-sm font-medium text-base-content/65 transition-colors hover:text-error"
+                    >
+                      Remove
+                    </button>
+                  ) : (
+                    <span className="text-xs text-base-content/45">PNG or JPG — a square crop works best.</span>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
         {/* Edit form */}
         <div className="flex flex-col gap-3">
           <Field label="Device name">

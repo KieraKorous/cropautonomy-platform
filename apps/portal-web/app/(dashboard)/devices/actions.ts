@@ -8,6 +8,7 @@ import {
   updateDevice,
   type CreateDevicePairingResponse,
   type Device,
+  type DeviceAppearance,
   type DevicePairingStatus,
   type DeviceStatus
 } from "../../../lib/api";
@@ -34,6 +35,7 @@ export async function updateDeviceAction(
     nickname?: string | null;
     status?: DeviceStatus;
     autoLiveEnabled?: boolean;
+    appearance?: DeviceAppearance | null;
   }
 ): Promise<Device> {
   const device = await updateDevice(id, fields);

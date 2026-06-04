@@ -327,6 +327,12 @@ export type DeviceFamily =
   | "third_party"
   | "simulator";
 
+// Operator-chosen card visual, stored in device metadata. Either one of our
+// glyphs tinted with a palette color, or an uploaded image (square data URL).
+export type DeviceAppearance =
+  | { type: "icon"; icon: string; color: string }
+  | { type: "image"; image: string };
+
 export type DeviceStatus =
   | "unregistered"
   | "active"
@@ -344,6 +350,8 @@ export interface Device {
   nickname: string | null;
   firmwareVersion: string | null;
   status: DeviceStatus;
+  // Operator-chosen card visual; null = the family default glyph.
+  appearance: DeviceAppearance | null;
   // When true, the device streams live without watcher approval.
   autoLiveEnabled: boolean;
   registeredByName: string | null;
@@ -376,6 +384,8 @@ export function updateDevice(
     nickname?: string | null;
     status?: DeviceStatus;
     autoLiveEnabled?: boolean;
+    // null clears the override, reverting to the family default glyph.
+    appearance?: DeviceAppearance | null;
   }
 ): Promise<Device> {
   return apiFetch<Device>(`/v1/devices/${id}`, {

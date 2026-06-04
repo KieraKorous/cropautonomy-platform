@@ -6,7 +6,7 @@ import { PlusIcon, StatusPill } from "@gaia/ui";
 import type { Device } from "../../../lib/api";
 import { AddDeviceDialog } from "./AddDeviceDialog";
 import { DeviceDetailModal } from "./DeviceDetailModal";
-import { deviceFamilyMeta, deviceName, deviceStatusDisplay } from "./deviceDisplay";
+import { DeviceVisual, deviceFamilyMeta, deviceName, deviceStatusDisplay, deviceVisual } from "./deviceDisplay";
 
 // Devices grid: a card per registered device plus the dashed "add device" tile.
 // Clicking a card opens the detail modal (rename / retire / delete); the add
@@ -64,26 +64,37 @@ export function DevicesGrid({
 }
 
 function DeviceCard({ device, onOpen }: { device: Device; onOpen: () => void }) {
-  const { label, Icon } = deviceFamilyMeta(device.deviceFamily);
+  const { label } = deviceFamilyMeta(device.deviceFamily);
   const status = deviceStatusDisplay(device.status);
+  const visual = deviceVisual(device);
+  const name = deviceName(device);
 
   return (
     <button
       type="button"
       onClick={onOpen}
-      className="group flex aspect-square flex-col items-start justify-between gap-2 rounded-xl border border-base-content/10 bg-base-100 p-4 text-left transition-colors hover:border-primary/40 hover:bg-base-content/[0.02]"
+      className="group relative flex aspect-square overflow-hidden rounded-xl border border-base-content/10 bg-base-100 text-left transition-colors hover:border-primary/40"
     >
-      <div className="flex w-full items-start justify-between gap-2">
-        <span className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-inset ring-primary/15 transition-colors group-hover:bg-primary/15">
-          <Icon size={28} />
-        </span>
+      {/* Visual fills the whole card — uploaded photo or a large tinted glyph. */}
+      <div className="absolute inset-0">
+        <DeviceVisual
+          visual={visual}
+          alt={name}
+          iconSize={64}
+          className="transition-transform duration-300 ease-out group-hover:scale-[1.04]"
+        />
+      </div>
+
+      <div className="absolute right-2 top-2 z-10">
         <StatusPill label={status.label} tone={status.tone} />
       </div>
-      <div className="flex min-w-0 flex-col gap-0.5">
-        <span className="truncate text-sm font-semibold text-neutral" title={deviceName(device)}>
-          {deviceName(device)}
+
+      {/* Name sits on a scrim so it stays legible over any photo or tint. */}
+      <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-neutral/85 via-neutral/45 to-transparent px-3 pb-2.5 pt-9">
+        <span className="block truncate text-sm font-semibold text-neutral-content" title={name}>
+          {name}
         </span>
-        <span className="truncate text-xs text-base-content/55">{label}</span>
+        <span className="block truncate text-xs text-neutral-content/70">{label}</span>
       </div>
     </button>
   );
