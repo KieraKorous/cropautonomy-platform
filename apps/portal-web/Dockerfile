@@ -24,6 +24,7 @@ COPY apps/cropautonomy-web/package.json apps/cropautonomy-web/
 COPY apps/field-web/package.json apps/field-web/
 COPY apps/gaiabots-web/package.json apps/gaiabots-web/
 COPY apps/portal-web/package.json apps/portal-web/
+COPY packages/analytics/package.json packages/analytics/
 COPY packages/config/package.json packages/config/
 COPY packages/db/package.json packages/db/
 COPY packages/domain/package.json packages/domain/
@@ -57,13 +58,20 @@ ARG NEXT_PUBLIC_MAPBOX_TOKEN=""
 ARG NEXT_PUBLIC_SUPABASE_URL=""
 ARG NEXT_PUBLIC_SUPABASE_ANON_KEY=""
 ARG NEXT_PUBLIC_API_BASE_URL=""
+# PostHog (client analytics, @gaia/analytics). Inlined into the client bundle at
+# build time like the other NEXT_PUBLIC_* vars. Blank key = analytics disabled
+# (capture() no-ops), so the build still succeeds without the secret set.
+ARG NEXT_PUBLIC_POSTHOG_KEY=""
+ARG NEXT_PUBLIC_POSTHOG_HOST="https://us.i.posthog.com"
 
 ENV NEXT_TELEMETRY_DISABLED=1 \
     NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY \
     NEXT_PUBLIC_MAPBOX_TOKEN=$NEXT_PUBLIC_MAPBOX_TOKEN \
     NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL \
     NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY \
-    NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
+    NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL \
+    NEXT_PUBLIC_POSTHOG_KEY=$NEXT_PUBLIC_POSTHOG_KEY \
+    NEXT_PUBLIC_POSTHOG_HOST=$NEXT_PUBLIC_POSTHOG_HOST
 
 COPY --from=deps /repo /repo
 COPY . .

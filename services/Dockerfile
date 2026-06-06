@@ -27,6 +27,7 @@ COPY apps/cropautonomy-web/package.json apps/cropautonomy-web/
 COPY apps/field-web/package.json apps/field-web/
 COPY apps/gaiabots-web/package.json apps/gaiabots-web/
 COPY apps/portal-web/package.json apps/portal-web/
+COPY packages/analytics/package.json packages/analytics/
 COPY packages/config/package.json packages/config/
 COPY packages/db/package.json packages/db/
 COPY packages/domain/package.json packages/domain/

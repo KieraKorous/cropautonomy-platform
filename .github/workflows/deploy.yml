@@ -106,6 +106,8 @@ jobs:
                       NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
                       NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
                       NEXT_PUBLIC_API_BASE_URL=https://api.cropautonomy.com
+                      NEXT_PUBLIC_POSTHOG_KEY=${{ secrets.NEXT_PUBLIC_POSTHOG_KEY }}
+                      NEXT_PUBLIC_POSTHOG_HOST=https://us.i.posthog.com
                       VITE_CLERK_PUBLISHABLE_KEY=${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
                       VITE_CLERK_SIGN_IN_URL=https://app.cropautonomy.com/sign-in
                       VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL }}
