@@ -4,6 +4,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
+import { PortalAnalyticsProvider } from "./analytics-provider";
 import { MissingEnvScreen } from "./missing-env-screen";
 
 export const metadata: Metadata = {
@@ -45,7 +46,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <ClerkProvider>
       <html data-theme="gaia-field" lang="en">
-        <body className="antialiased">{children}</body>
+        <body className="antialiased">
+          <PortalAnalyticsProvider>{children}</PortalAnalyticsProvider>
+        </body>
       </html>
     </ClerkProvider>
   );

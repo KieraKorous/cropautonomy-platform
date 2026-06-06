@@ -1,5 +1,6 @@
 "use client";
 
+import { capture } from "@gaia/analytics";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { StatusPill } from "@gaia/ui";
@@ -94,6 +95,7 @@ export function DeviceDetailModal({
   const deviceId = device?.id;
   useEffect(() => {
     if (!device) return;
+    capture("device_viewed", { deviceId: device.id });
     setName(device.displayName ?? "");
     setNickname(device.nickname ?? "");
     const a = device.appearance;

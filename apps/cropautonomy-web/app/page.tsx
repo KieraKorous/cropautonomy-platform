@@ -4,6 +4,7 @@ import {
   CameraIcon,
   ChartIcon,
   CheckList,
+  CtaLink,
   CtaSection,
   FeatureCard,
   FeatureRow,
@@ -167,9 +168,15 @@ function Hero() {
             CropAutonomy is the platform farms, growers, and research teams will use to scan crops, analyze field conditions with AI, and coordinate the next generation of agricultural robotics — all in one workspace.
           </p>
           <div className="mb-8 flex flex-wrap items-center gap-3">
-            <a className="btn btn-primary rounded-md px-5" href="#early-access">
+            <CtaLink
+              className="btn btn-primary rounded-md px-5"
+              cta="request_early_access"
+              href="#early-access"
+              location="hero"
+              source="cropautonomy.com"
+            >
               Request early access
-            </a>
+            </CtaLink>
             <a
               className="btn btn-outline rounded-md border-base-content/20 px-5 text-neutral hover:bg-base-200 hover:text-neutral"
               href="#platform"
@@ -241,9 +248,15 @@ function Audiences() {
     <Section id="audiences" tone="warm">
       <SectionIntro
         accessory={
-          <a className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary" href="#early-access">
+          <CtaLink
+            className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary"
+            cta="joining_access_list"
+            href="#early-access"
+            location="audiences"
+            source="cropautonomy.com"
+          >
             Joining the access list →
-          </a>
+          </CtaLink>
         }
         eyebrow="Who it's for"
         title="Built for everyone responsible for the harvest."

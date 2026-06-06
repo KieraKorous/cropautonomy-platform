@@ -1,5 +1,6 @@
 import "./globals.css";
 
+import { AnalyticsProvider } from "@gaia/analytics/next";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { Footer, Header, type FooterProps, type HeaderProps } from "@gaia/ui";
@@ -12,6 +13,7 @@ export const metadata: Metadata = {
 
 const headerConfig: HeaderProps = {
   brand: "gaiabots",
+  source: "gaiabots.ai",
   navLinks: [
     { label: "Devices", href: "#devices" },
     { label: "GAIA-R", href: "#devices" },
@@ -74,9 +76,16 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html data-theme="gaia-field" lang="en">
       <body className="min-h-screen bg-base-100 text-neutral antialiased">
-        <Header {...headerConfig} />
-        <main>{children}</main>
-        <Footer {...footerConfig} />
+        <AnalyticsProvider
+          apiKey={process.env.NEXT_PUBLIC_POSTHOG_KEY}
+          apiHost={process.env.NEXT_PUBLIC_POSTHOG_HOST}
+          pageviewEvent="public_page_viewed"
+          pageviewProperties={{ source: "gaiabots.ai" }}
+        >
+          <Header {...headerConfig} />
+          <main>{children}</main>
+          <Footer {...footerConfig} />
+        </AnalyticsProvider>
       </body>
     </html>
   );

@@ -109,6 +109,20 @@ Initial portal events:
 - `live_stream_opened`
 - `live_stream_closed`
 
+## Analytics Implementation
+
+PostHog is wrapped by the `@gaia/analytics` package — the only place app code touches `posthog-js`. Application code imports typed helpers, never the SDK directly (mirroring how `@gaia/realtime` owns Supabase Realtime).
+
+- `@gaia/analytics/events` — typed event registry (`events.ts`). The single source of truth for event names; this list and the catalogue above must stay in sync.
+- `@gaia/analytics` (`client.ts`) — `initAnalytics`, `capture(event, props)`, `identify`, `setOrganization`, `reset`. Every function is a **safe no-op until `initAnalytics` runs with a key**, so a blank `NEXT_PUBLIC_POSTHOG_KEY` (the dev default) disables analytics without breaking callers.
+- `@gaia/analytics/next` — `AnalyticsProvider`, a client provider for the Next App Router. Initializes PostHog once and emits a semantic pageview on each soft navigation (posthog's automatic `$pageview` is disabled to avoid double-counting). Added to `transpilePackages` in `packages/config/next.config.mjs`.
+
+Wiring (v0):
+
+- **Marketing** (`cropautonomy-web`, `gaiabots-web`): `AnalyticsProvider` in the root layout emits `public_page_viewed`. `public_cta_clicked` fires from the shared `CtaLink` (`@gaia/ui`) used by the header + hero CTAs. `lead_form_*` fire from the shared `LeadForm`.
+- **Portal** (`portal-web`): `PortalAnalyticsProvider` initializes PostHog and `identify()`s the signed-in Clerk user (`portal_signed_in`). Wired events: `live_page_viewed`, `live_stream_opened`/`live_stream_closed` (per camera tile), `device_viewed`, `scan_analysis_viewed` (capture detail page), `scan_analysis_requested` (Retry/reanalyze).
+- **Not yet wired**: `organization_created`, `farm_created`, `field_created`, `scan_created` — those flows are ComingSoon stubs or happen in the field PWA, not the portal. They stay declared in `events.ts` so wiring later is type-safe. Org grouping (`setOrganization`) is also deferred: Clerk orgs are not the platform's tenancy source of truth and the platform orgId isn't surfaced to the portal client at the layout layer yet — attach `orgId` per-event where it's already known.
+
 ## Analytics Principles
 
 - Define event names intentionally.

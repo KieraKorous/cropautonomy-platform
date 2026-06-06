@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@clerk/nextjs": "6.36.2",
+    "@gaia/analytics": "workspace:*",
     "@gaia/config": "workspace:*",
     "@gaia/domain": "workspace:*",
     "@gaia/realtime": "workspace:*",

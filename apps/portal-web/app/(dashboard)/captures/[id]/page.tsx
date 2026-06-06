@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowRight, CameraIcon, StatusPill } from "@gaia/ui";
 import { ApiError, getCapture, type CaptureSummary } from "../../../../lib/api";
 import { dateFormat, mediaLabel, statusDisplay } from "../captureDisplay";
+import { AnalysisViewedTracker } from "./AnalysisViewedTracker";
 import { CaptureDetailsEditor } from "./CaptureDetailsEditor";
 import { CaptureImage } from "./CaptureImage";
 
@@ -43,6 +44,7 @@ export default async function CaptureDetailPage({
 
   return (
     <div className="flex flex-col gap-7">
+      <AnalysisViewedTracker captureId={capture.id} />
       {/* Back to the captures list */}
       <Link
         href="/captures"

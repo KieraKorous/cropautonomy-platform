@@ -1,5 +1,6 @@
 "use client";
 
+import { capture } from "@gaia/analytics";
 import { channels } from "@gaia/realtime/channels";
 import { useRealtimeChannel } from "@gaia/realtime/client";
 import { useEffect, useState } from "react";
@@ -24,6 +25,11 @@ export interface LiveWallProps {
 export function LiveWall({ orgId, viewerUserId, initialSessions }: LiveWallProps) {
   const [sessions, setSessions] = useState<LiveSessionSummary[]>(initialSessions);
   const [focusedId, setFocusedId] = useState<string | null>(null);
+
+  // One live_page_viewed per mount of the wall (the page's client entry point).
+  useEffect(() => {
+    capture("live_page_viewed");
+  }, []);
 
   const { latest } = useRealtimeChannel(channels.orgActiveSessions(orgId), {
     historyLimit: 1

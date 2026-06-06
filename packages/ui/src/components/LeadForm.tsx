@@ -1,7 +1,8 @@
 "use client";
 
+import { capture } from "@gaia/analytics/client";
 import type { LeadInterest, LeadSource, PublicLead } from "@gaia/domain";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useRef, useState, type FormEvent, type ReactNode } from "react";
 import { ArrowRight } from "./icons";
 
 const interestOptions: { value: LeadInterest; label: string }[] = [
@@ -66,6 +67,14 @@ export function LeadForm({
 
   const [state, setState] = useState<SubmitState>({ kind: "idle" });
 
+  // Fire lead_form_started once, on the first interaction with any field.
+  const startedRef = useRef(false);
+  function onFirstInteraction() {
+    if (startedRef.current) return;
+    startedRef.current = true;
+    capture("lead_form_started", { source });
+  }
+
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (state.kind === "submitting") return;
@@ -100,13 +109,19 @@ export function LeadForm({
           (response.status >= 500
             ? "Lead capture is temporarily unavailable. Please try again shortly."
             : "We couldn't submit your request. Please check the form and try again.");
+        capture("lead_form_failed", {
+          source,
+          reason: response.status >= 500 ? "server" : "validation"
+        });
         setState({ kind: "error", message });
         return;
       }
 
+      capture("lead_form_submitted", { source, interest: lead.interest });
       form.reset();
       setState({ kind: "success" });
     } catch {
+      capture("lead_form_failed", { source, reason: "network" });
       setState({
         kind: "error",
         message:
@@ -132,6 +147,7 @@ export function LeadForm({
     <form
       className={`flex flex-col gap-4 rounded-xl bg-base-100 p-7 text-neutral ${className}`}
       method="post"
+      onFocusCapture={onFirstInteraction}
       onSubmit={onSubmit}
     >
       <div className="grid gap-4 md:grid-cols-2">

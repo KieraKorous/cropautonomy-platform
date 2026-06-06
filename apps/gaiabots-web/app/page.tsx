@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import {
   ArrowRight,
   CheckList,
+  CtaLink,
   CtaSection,
   DeviceCard,
   DroneIcon,
@@ -136,13 +137,16 @@ function Hero() {
             GAIAbots is the robotics arm of the CropAutonomy ecosystem — building GAIA-R, a ground rover for crop intelligence at row level, and GAIA-D, an aerial platform for overhead field analysis.
           </p>
           <div className="flex flex-wrap items-center gap-3">
-            <a
+            <CtaLink
               className="btn whitespace-nowrap rounded-md border-0 bg-base-100 px-5 text-neutral hover:bg-base-200"
+              cta="follow_development"
               href="#updates"
+              location="hero"
+              source="gaiabots.ai"
             >
               Follow development
               <ArrowRight />
-            </a>
+            </CtaLink>
             <a
               className="btn btn-outline whitespace-nowrap rounded-md border-base-100/30 px-5 text-base-100 hover:bg-base-100/10 hover:text-base-100"
               href="https://cropautonomy.com"

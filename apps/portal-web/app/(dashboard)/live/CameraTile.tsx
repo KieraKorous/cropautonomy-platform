@@ -1,5 +1,6 @@
 "use client";
 
+import { capture } from "@gaia/analytics";
 import { channels } from "@gaia/realtime/channels";
 import { useRealtimeChannel } from "@gaia/realtime/client";
 import { StatusPill, type Tone } from "@gaia/ui";
@@ -69,6 +70,25 @@ export function CameraTile({
       recorderRef.current.stop();
     }
   }, [stream]);
+
+  // live_stream_opened the first time media actually arrives for this tile, and
+  // live_stream_closed when the tile unmounts (disconnect / session end / leaving
+  // the page) — but only if it had opened. openedRef gates both so we never emit
+  // a close without a matching open.
+  const openedRef = useRef(false);
+  useEffect(() => {
+    if (stream && !openedRef.current) {
+      openedRef.current = true;
+      capture("live_stream_opened", { sessionId: session.sessionId });
+    }
+  }, [stream, session.sessionId]);
+  useEffect(() => {
+    return () => {
+      if (openedRef.current) {
+        capture("live_stream_closed", { sessionId: session.sessionId });
+      }
+    };
+  }, [session.sessionId]);
 
   const toggleRecord = () => {
     if (recording) {

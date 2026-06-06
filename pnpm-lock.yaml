@@ -19,6 +19,9 @@ importers:
 
   apps/cropautonomy-web:
     dependencies:
+      '@gaia/analytics':
+        specifier: workspace:*
+        version: link:../../packages/analytics
       '@gaia/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -135,6 +138,9 @@ importers:
 
   apps/gaiabots-web:
     dependencies:
+      '@gaia/analytics':
+        specifier: workspace:*
+        version: link:../../packages/analytics
       '@gaia/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -184,6 +190,9 @@ importers:
       '@clerk/nextjs':
         specifier: 6.36.2
         version: 6.36.2(patch_hash=e5336c9f145b09f6786732b35bc4a80e74643c8a10c6cfed32a65258b944dd11)(next@16.2.6(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
+      '@gaia/analytics':
+        specifier: workspace:*
+        version: link:../../packages/analytics
       '@gaia/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -243,6 +252,31 @@ importers:
         specifier: 5.9.3
         version: 5.9.3
 
+  packages/analytics:
+    dependencies:
+      '@gaia/domain':
+        specifier: workspace:*
+        version: link:../domain
+      posthog-js:
+        specifier: 1.296.1
+        version: 1.296.1
+    devDependencies:
+      '@types/node':
+        specifier: 24.10.1
+        version: 24.10.1
+      '@types/react':
+        specifier: 19.2.7
+        version: 19.2.7
+      next:
+        specifier: 16.2.6
+        version: 16.2.6(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
+      react:
+        specifier: 19.2.0
+        version: 19.2.0
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+
   packages/config: {}
 
   packages/db:
@@ -293,6 +327,9 @@ importers:
 
   packages/ui:
     dependencies:
+      '@gaia/analytics':
+        specifier: workspace:*
+        version: link:../analytics
       '@gaia/domain':
         specifier: workspace:*
         version: link:../domain

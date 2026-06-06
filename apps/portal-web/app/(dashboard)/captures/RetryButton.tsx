@@ -1,5 +1,6 @@
 "use client";
 
+import { capture } from "@gaia/analytics";
 import { useTransition } from "react";
 import { reanalyzeCaptureAction } from "./actions";
 
@@ -13,7 +14,10 @@ export function RetryButton({ captureId }: { captureId: string }) {
     <button
       type="button"
       disabled={pending}
-      onClick={() => startTransition(() => reanalyzeCaptureAction(captureId))}
+      onClick={() => {
+        capture("scan_analysis_requested", { captureId });
+        startTransition(() => reanalyzeCaptureAction(captureId));
+      }}
       className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-base-content/55 transition-colors hover:bg-accent/10 hover:text-accent disabled:opacity-50"
       aria-label="Retry analysis"
     >

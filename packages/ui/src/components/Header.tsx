@@ -1,3 +1,5 @@
+import type { LeadSource } from "@gaia/domain";
+import { CtaLink } from "./CtaLink";
 import { Wordmark, type Brand } from "./Wordmark";
 
 export type HeaderNavLink = { label: string; href: string };
@@ -8,6 +10,8 @@ export type HeaderProps = {
   sisterBrand?: HeaderNavLink;
   cta: HeaderNavLink;
   ctaTone?: "primary" | "neutral";
+  /** Marketing site this header belongs to — stamped on public_cta_clicked. */
+  source: LeadSource;
 };
 
 export function Header({
@@ -15,7 +19,8 @@ export function Header({
   navLinks,
   sisterBrand,
   cta,
-  ctaTone = "primary"
+  ctaTone = "primary",
+  source
 }: HeaderProps) {
   const ctaClass =
     ctaTone === "neutral"
@@ -46,9 +51,9 @@ export function Header({
               {sisterBrand.label}
             </a>
           )}
-          <a className={ctaClass} href={cta.href}>
+          <CtaLink className={ctaClass} cta={cta.label} href={cta.href} location="header" source={source}>
             {cta.label}
-          </a>
+          </CtaLink>
         </div>
       </div>
     </header>
