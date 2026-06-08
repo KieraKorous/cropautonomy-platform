@@ -22,5 +22,8 @@
     "patchedDependencies": {
       "@clerk/nextjs@6.36.2": "patches/@clerk__nextjs@6.36.2.patch"
     }
+  },
+  "dependencies": {
+    "posthog-js": "1.296.1"
   }
 }

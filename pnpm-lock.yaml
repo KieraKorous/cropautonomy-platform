@@ -12,6 +12,10 @@ patchedDependencies:
 importers:
 
   .:
+    dependencies:
+      posthog-js:
+        specifier: 1.296.1
+        version: 1.296.1
     devDependencies:
       typescript:
         specifier: 5.9.3
