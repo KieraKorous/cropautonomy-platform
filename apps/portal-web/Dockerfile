@@ -77,6 +77,27 @@ ENV NEXT_TELEMETRY_DISABLED=1 \
 COPY --from=deps /repo /repo
 COPY . .
 
+# Self-heal + diagnostic. The cross-stage `COPY --from=deps` above is meant to
+# carry node_modules into this stage, but pnpm's deep symlinks (e.g. posthog-js,
+# which lives only under packages/analytics/node_modules) don't always survive the
+# copy. Re-running the install here — idempotent with --frozen-lockfile and the
+# warm store — guarantees node_modules is correct in the same stage `next build`
+# runs in. The echo line surfaces in CI logs to confirm which state we're in.
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
+    pnpm config set store-dir /pnpm/store \
+ && (test -e packages/analytics/node_modules/posthog-js \
+       && echo "POSTHOG_AFTER_COPY=present" \
+       || echo "POSTHOG_AFTER_COPY=missing -> reinstalling in build stage") \
+ && pnpm install --frozen-lockfile \
+      --filter @gaia/portal-web... \
+      --filter @gaia/ui \
+      --filter @gaia/analytics \
+      --filter @gaia/realtime \
+      --filter @gaia/domain \
+      --filter @gaia/config \
+ && test -e packages/analytics/node_modules/posthog-js \
+       && echo "POSTHOG_BEFORE_BUILD=present"
+
 RUN pnpm --filter @gaia/portal-web build
 
 # ─── runtime ─────────────────────────────────────────────────────────────────
