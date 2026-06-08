@@ -39,6 +39,7 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
  && pnpm install --frozen-lockfile \
       --filter @gaia/portal-web... \
       --filter @gaia/ui \
+      --filter @gaia/analytics \
       --filter @gaia/realtime \
       --filter @gaia/domain \
       --filter @gaia/config
