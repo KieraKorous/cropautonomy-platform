@@ -258,8 +258,11 @@ importers:
 
   packages/analytics:
     dependencies:
+      '@gaia/domain':
+        specifier: workspace:*
+        version: link:../domain
       posthog-js:
-        specifier: ^1.128.0
+        specifier: 1.296.1
         version: 1.296.1
     devDependencies:
       '@types/node':
