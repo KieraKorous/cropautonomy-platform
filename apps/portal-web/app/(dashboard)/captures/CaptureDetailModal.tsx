@@ -317,6 +317,20 @@ export function CaptureDetailModal({
               {capture.fieldId ? <DetailRow label="Field" value={capture.fieldId} /> : null}
             </dl>
 
+            {capture.details ? (
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs font-medium uppercase tracking-wide text-base-content/55">
+                  Details
+                </span>
+                <p className="whitespace-pre-line rounded-lg border border-accent/25 bg-accent/[0.06] px-3 py-2.5 text-sm leading-relaxed text-neutral">
+                  <span className="mr-1.5 rounded-full bg-accent/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-accent-content">
+                    AI
+                  </span>
+                  {capture.details}
+                </p>
+              </div>
+            ) : null}
+
             {/* Jump to the full detail page for this capture (description,
                 same-plant gallery). */}
             <Link

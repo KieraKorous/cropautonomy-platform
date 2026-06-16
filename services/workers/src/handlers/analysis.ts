@@ -295,6 +295,7 @@ async function runOne(
   const captureUpdate: {
     inferred_species?: string;
     inferred_summary?: string;
+    inferred_details?: string;
     observation_type?: string;
     severity?: string;
   } = {};
@@ -305,6 +306,7 @@ async function runOne(
     if (top.category) captureUpdate.inferred_species = top.category;
   }
   if (inference.summary) captureUpdate.inferred_summary = inference.summary;
+  if (inference.details) captureUpdate.inferred_details = inference.details;
   if (inference.observation_type) {
     captureUpdate.observation_type = inference.observation_type;
   }

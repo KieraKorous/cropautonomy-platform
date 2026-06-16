@@ -79,6 +79,7 @@ export interface VisionInferenceResponse {
   // Outputs of the optional summary stage; null when no summary stage ran or it
   // was skipped/unconfigured. observation_type/severity are best-effort tags.
   summary: string | null;
+  details: string | null;
   observation_type: string | null;
   severity: string | null;
 }

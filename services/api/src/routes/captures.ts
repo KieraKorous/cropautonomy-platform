@@ -79,6 +79,7 @@ const finalizeSchema = z.object({
 const updateSchema = z
   .object({
     summary: z.string().max(4000).optional(),
+    details: z.string().max(8000).optional(),
     observationType: OBSERVATION_TYPE.nullable().optional(),
     severity: SEVERITY.nullable().optional()
   })
@@ -113,6 +114,7 @@ interface CaptureListRow {
   uploaded_at: string | null;
   inferred_species: string | null;
   inferred_summary: string | null;
+  inferred_details: string | null;
   description: string | null;
   observation_type: string | null;
   severity: string | null;
@@ -130,7 +132,7 @@ interface CaptureListRow {
 // Columns selected for the summary shape returned by the list and single-capture
 // endpoints. Kept in one place so the row interface and selects stay in sync.
 const CAPTURE_SELECT =
-  "id, status, status_message, media_type, captured_at, uploaded_at, inferred_species, inferred_summary, description, observation_type, severity, kind, thumbnail_path, storage_path, size_bytes, video_duration_ms, field_id, session_id, analysis_job_id, discarded_at";
+  "id, status, status_message, media_type, captured_at, uploaded_at, inferred_species, inferred_summary, inferred_details, description, observation_type, severity, kind, thumbnail_path, storage_path, size_bytes, video_duration_ms, field_id, session_id, analysis_job_id, discarded_at";
 
 // Same columns plus org_id, for the single-capture handlers that tenant-check
 // before mapping. `as const` keeps it a literal so the typed client can parse it.
@@ -147,6 +149,7 @@ function toCaptureSummary(row: CaptureListRow, imageUrl: string | null) {
     uploadedAt: row.uploaded_at,
     plantType: row.inferred_species,
     summary: row.inferred_summary,
+    details: row.inferred_details,
     description: row.description,
     observationType: row.observation_type,
     severity: row.severity,
@@ -365,6 +368,9 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
       const patch: Record<string, string | null> = {};
       if (parsed.data.summary !== undefined) {
         patch.inferred_summary = parsed.data.summary.trim() || null;
+      }
+      if (parsed.data.details !== undefined) {
+        patch.inferred_details = parsed.data.details.trim() || null;
       }
       if (parsed.data.observationType !== undefined) {
         patch.observation_type = parsed.data.observationType ?? null;

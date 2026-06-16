@@ -1,12 +1,14 @@
-"""Agronomic summary stage — a short brief + structured tags via Claude.
+"""Agronomic summary stage — a short brief, in-depth details + tags via Claude.
 
 This is a `summary`-role stage: it runs after detection + classification and
 synthesizes the structured detections (RT-DETR objects + PlantNet species) into
-(1) a 1-2 sentence agronomic brief, (2) a best-effort observation type, and
-(3) a best-effort severity. It produces NO detections — it reads
-`ctx.detections` and writes `ctx.summary`, `ctx.observation_type`,
-`ctx.severity`, which the worker stamps onto the capture. This replaces operator
-hand-annotation: capture metadata is filled automatically.
+(1) a 1-2 sentence agronomic brief, (2) a longer in-depth analysis of what looks
+healthy vs. what looks wrong with the plant, (3) a best-effort observation type,
+and (4) a best-effort severity. It produces NO detections — it reads
+`ctx.detections` and writes `ctx.summary`, `ctx.details`,
+`ctx.observation_type`, `ctx.severity`, which the worker stamps onto the
+capture. This replaces operator hand-annotation: capture metadata is filled
+automatically.
 
 Optional by design: when ANTHROPIC_API_KEY is unset the stage reports
 unconfigured and the PipelineExecutor skips it (the pipeline still succeeds with
@@ -57,6 +59,13 @@ _SYSTEM_PROMPT = (
     "pest/disease symptoms, growth stage, stress). Ground every claim in the "
     "provided detections and confidence; never invent findings; if confidence is "
     "low or signals conflict, say so.\n"
+    '  "details": a deeper analysis (roughly 3-6 sentences) that expands on the '
+    "summary. Cover BOTH what looks healthy/right about the plant AND what looks "
+    "wrong or concerning, with any agronomic reasoning (likely cause, what a "
+    "scout should check, growth-stage context). Ground every claim in the "
+    "provided detections and confidence; never invent findings; call out low "
+    "confidence or conflicting signals explicitly. If nothing notable, say the "
+    "plant appears unremarkable and why.\n"
     '  "observation_type": the single most relevant category, one of '
     '["pest","disease","weed","nutrient","irrigation","damage","growth_stage",'
     '"other"], or null if nothing notable.\n'
@@ -133,6 +142,7 @@ class AgronomicSummaryStage(Stage):
 
         parsed = _parse_response(text)
         ctx.summary = parsed["summary"]
+        ctx.details = parsed["details"]
         ctx.observation_type = parsed["observation_type"]
         ctx.severity = parsed["severity"]
 
@@ -151,7 +161,7 @@ class AgronomicSummaryStage(Stage):
 
 
 def _parse_response(text: str) -> dict[str, Any]:
-    """Extract {summary, observation_type, severity} from the model text.
+    """Extract {summary, details, observation_type, severity} from the model text.
 
     Tolerant: pulls the first JSON object out of the text and validates the
     structured fields against the allowed enums (invalid → None). Falls back to
@@ -170,6 +180,7 @@ def _parse_response(text: str) -> dict[str, Any]:
     if obj is None:
         return {
             "summary": text or None,
+            "details": None,
             "observation_type": None,
             "severity": None,
             "ok": False,
@@ -177,6 +188,9 @@ def _parse_response(text: str) -> dict[str, Any]:
 
     summary = obj.get("summary")
     summary = summary.strip() if isinstance(summary, str) and summary.strip() else None
+
+    details = obj.get("details")
+    details = details.strip() if isinstance(details, str) and details.strip() else None
 
     obs = obj.get("observation_type")
     obs = obs if isinstance(obs, str) and obs in _OBSERVATION_TYPES else None
@@ -186,6 +200,7 @@ def _parse_response(text: str) -> dict[str, Any]:
 
     return {
         "summary": summary,
+        "details": details,
         "observation_type": obs,
         "severity": sev,
         "ok": True,

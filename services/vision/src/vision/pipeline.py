@@ -85,6 +85,7 @@ class PipelineExecutor:
             duration_ms=duration_ms,
             stage_reports=reports,
             summary=ctx.summary,
+            details=ctx.details,
             observation_type=ctx.observation_type,
             severity=ctx.severity,
         )

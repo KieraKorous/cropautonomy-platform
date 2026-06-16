@@ -49,9 +49,12 @@ class StageContext:
     detections: list[Detection] = field(default_factory=list)
     output_metadata: dict[str, dict[str, Any]] = field(default_factory=dict)
     # Set by a summary-role stage: a short natural-language brief surfaced on
-    # the capture as inferred_summary, plus best-effort structured tags
-    # (observation_type / severity). Left None when no summary stage runs.
+    # the capture as inferred_summary, a longer in-depth analysis surfaced as
+    # inferred_details (what looks healthy vs. what looks wrong), plus best-effort
+    # structured tags (observation_type / severity). Left None when no summary
+    # stage runs.
     summary: str | None = None
+    details: str | None = None
     observation_type: str | None = None
     severity: str | None = None
 

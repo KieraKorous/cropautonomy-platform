@@ -133,10 +133,11 @@ class InferenceResponse(BaseModel):
     detections: list[Detection]
     duration_ms: int
     stage_reports: list[StageReport]
-    # Outputs of the optional summary stage (agronomic blurb + best-effort
-    # structured tags). None when no summary stage ran or it was
-    # skipped/unconfigured.
+    # Outputs of the optional summary stage (short agronomic brief, longer
+    # in-depth details, + best-effort structured tags). None when no summary
+    # stage ran or it was skipped/unconfigured.
     summary: str | None = None
+    details: str | None = None
     observation_type: str | None = None
     severity: str | None = None
 

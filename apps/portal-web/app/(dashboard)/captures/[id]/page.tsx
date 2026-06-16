@@ -84,6 +84,7 @@ export default async function CaptureDetailPage({
             <CaptureDetailsEditor
               captureId={capture.id}
               initialSummary={capture.summary}
+              initialDetails={capture.details}
               initialObservationType={capture.observationType}
               initialSeverity={capture.severity}
               analyzed={capture.status === "analyzed"}

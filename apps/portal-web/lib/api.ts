@@ -92,8 +92,11 @@ export interface CaptureSummary {
   capturedAt: string;
   uploadedAt: string | null;
   plantType: string | null;
-  // Model-authored agronomic brief (read-only). Distinct from `description`.
+  // Model-authored agronomic brief (short). AI-filled, reviewer-editable.
   summary: string | null;
+  // Model-authored in-depth analysis (what's healthy vs. what's wrong).
+  // AI-filled, reviewer-editable. Longer than `summary`.
+  details: string | null;
   // Operator-authored free-form notes, edited on the detail page.
   description: string | null;
   observationType: ObservationType | null;
@@ -158,6 +161,7 @@ export function getCapture(
 // subset; empty-string summary clears it, null clears the structured fields.
 export interface CaptureDetailsPatch {
   summary?: string;
+  details?: string;
   observationType?: ObservationType | null;
   severity?: Severity | null;
 }
