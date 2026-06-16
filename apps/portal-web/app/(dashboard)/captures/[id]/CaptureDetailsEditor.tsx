@@ -24,9 +24,8 @@ const SEVERITIES: { value: Severity; label: string }[] = [
 // The capture's details — short brief + observation type + severity + an in-depth
 // analysis — are filled automatically by the analysis pipeline. This editor
 // pre-populates with those AI values and lets a reviewer correct them
-// (suggest-then-confirm). Rendered order is Observation → Severity → Details, with
-// the short Brief as the lead. Free-text fields save on their Save button;
-// chips/severity save immediately on click.
+// (suggest-then-confirm). All four fields are staged locally and committed
+// together by a single Save button.
 export function CaptureDetailsEditor({
   captureId,
   initialSummary,
@@ -42,63 +41,100 @@ export function CaptureDetailsEditor({
   initialSeverity: Severity | null;
   analyzed: boolean;
 }) {
+  const [summary, setSummary] = useState(initialSummary ?? "");
+  const [details, setDetails] = useState(initialDetails ?? "");
   const [obsType, setObsType] = useState<ObservationType | null>(initialObservationType);
   const [severity, setSeverity] = useState<Severity | null>(initialSeverity);
+
+  const [savedSummary, setSavedSummary] = useState(initialSummary ?? "");
+  const [savedDetails, setSavedDetails] = useState(initialDetails ?? "");
+  const [savedObsType, setSavedObsType] = useState<ObservationType | null>(initialObservationType);
+  const [savedSeverity, setSavedSeverity] = useState<Severity | null>(initialSeverity);
+
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  // Sync structured fields when a newly-analyzed value arrives.
-  useEffect(() => setObsType(initialObservationType), [initialObservationType]);
-  useEffect(() => setSeverity(initialSeverity), [initialSeverity]);
+  // Adopt a newly-analyzed value as the baseline unless the user has unsaved
+  // edits to that field.
+  useEffect(() => {
+    if (summary === savedSummary) {
+      setSummary(initialSummary ?? "");
+      setSavedSummary(initialSummary ?? "");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to incoming server value
+  }, [initialSummary]);
+  useEffect(() => {
+    if (details === savedDetails) {
+      setDetails(initialDetails ?? "");
+      setSavedDetails(initialDetails ?? "");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to incoming server value
+  }, [initialDetails]);
+  useEffect(() => {
+    if (obsType === savedObsType) {
+      setObsType(initialObservationType);
+      setSavedObsType(initialObservationType);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to incoming server value
+  }, [initialObservationType]);
+  useEffect(() => {
+    if (severity === savedSeverity) {
+      setSeverity(initialSeverity);
+      setSavedSeverity(initialSeverity);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to incoming server value
+  }, [initialSeverity]);
 
-  const saveField = (patch: CaptureDetailsPatch, after?: () => void) => {
+  const dirty =
+    summary.trim() !== savedSummary.trim() ||
+    details.trim() !== savedDetails.trim() ||
+    obsType !== savedObsType ||
+    severity !== savedSeverity;
+
+  const saveAll = () => {
     setError(null);
+    const patch: CaptureDetailsPatch = {};
+    if (summary.trim() !== savedSummary.trim()) patch.summary = summary;
+    if (details.trim() !== savedDetails.trim()) patch.details = details;
+    if (obsType !== savedObsType) patch.observationType = obsType;
+    if (severity !== savedSeverity) patch.severity = severity;
     startTransition(async () => {
       try {
         await updateCaptureDetailsAction(captureId, patch);
-        after?.();
+        setSavedSummary(summary);
+        setSavedDetails(details);
+        setSavedObsType(obsType);
+        setSavedSeverity(severity);
       } catch {
         setError("Couldn't save. Try again.");
       }
     });
   };
 
-  const saveType = (next: ObservationType | null) => {
-    setObsType(next);
-    saveField({ observationType: next });
-  };
-
-  const saveSeverity = (next: Severity | null) => {
-    setSeverity(next);
-    saveField({ severity: next });
-  };
-
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex items-center gap-2">
-        <h2 className="text-xs font-medium uppercase tracking-wide text-base-content/55">
-          Details
-        </h2>
-        <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-semibold text-accent">
-          Auto-filled · editable
-        </span>
-      </div>
-
       {/* Brief — short one-line summary */}
-      <EditableText
-        id="capture-summary"
-        label="Brief"
-        initialValue={initialSummary}
-        rows={2}
-        maxLength={4000}
-        pending={pending}
-        placeholder={
-          analyzed
-            ? "No notable findings — add a brief if needed."
-            : "Filled automatically once analysis completes. You can also write your own."
-        }
-        onSave={(value, done) => saveField({ summary: value }, done)}
-      />
+      <div className="flex flex-col gap-2">
+        <label
+          htmlFor="capture-summary"
+          className="text-xs font-medium uppercase tracking-wide text-base-content/55"
+        >
+          Brief
+        </label>
+        <textarea
+          id="capture-summary"
+          value={summary}
+          onChange={(event) => setSummary(event.target.value)}
+          rows={2}
+          maxLength={4000}
+          placeholder={
+            analyzed
+              ? "No notable findings — add a brief if needed."
+              : "Filled automatically once analysis completes. You can also write your own."
+          }
+          className="w-full resize-y rounded-lg border border-base-content/15 bg-base-100 px-3 py-2.5 text-sm leading-relaxed text-neutral outline-none transition-colors placeholder:text-base-content/35 focus:border-accent focus:ring-1 focus:ring-accent"
+        />
+      </div>
 
       {/* Observation type */}
       <div className="flex flex-col gap-2">
@@ -113,7 +149,7 @@ export function CaptureDetailsEditor({
                 key={opt.value}
                 type="button"
                 disabled={pending}
-                onClick={() => saveType(active ? null : opt.value)}
+                onClick={() => setObsType(active ? null : opt.value)}
                 className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
                   active
                     ? "bg-neutral text-base-100"
@@ -146,7 +182,7 @@ export function CaptureDetailsEditor({
                 key={opt.value}
                 type="button"
                 disabled={pending}
-                onClick={() => saveSeverity(active ? null : opt.value)}
+                onClick={() => setSeverity(active ? null : opt.value)}
                 className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
                   active ? tone : "bg-base-content/[0.06] text-base-content/65 hover:bg-base-content/[0.1]"
                 }`}
@@ -159,91 +195,42 @@ export function CaptureDetailsEditor({
       </div>
 
       {/* Details — in-depth analysis of what's healthy vs. what's wrong */}
-      <EditableText
-        id="capture-details"
-        label="Details"
-        initialValue={initialDetails}
-        rows={6}
-        maxLength={8000}
-        pending={pending}
-        placeholder={
-          analyzed
-            ? "No in-depth findings — add detail if needed."
-            : "Filled automatically once analysis completes — an in-depth look at what's healthy and what needs attention."
-        }
-        onSave={(value, done) => saveField({ details: value }, done)}
-      />
-
-      {error ? <span className="text-xs text-error">{error}</span> : null}
-    </div>
-  );
-}
-
-// A labelled textarea with a Save button (suggest-then-confirm). Owns its own
-// draft state; adopts an incoming server value as the new baseline unless the
-// user has unsaved edits. Used for both the short Brief and the in-depth Details.
-function EditableText({
-  id,
-  label,
-  initialValue,
-  rows,
-  maxLength,
-  placeholder,
-  pending,
-  onSave
-}: {
-  id: string;
-  label: string;
-  initialValue: string | null;
-  rows: number;
-  maxLength: number;
-  placeholder: string;
-  pending: boolean;
-  onSave: (value: string, onSaved: () => void) => void;
-}) {
-  const [value, setValue] = useState(initialValue ?? "");
-  const [saved, setSaved] = useState(initialValue ?? "");
-
-  // Adopt a newly-analyzed value as the baseline unless the user has unsaved edits.
-  useEffect(() => {
-    if (value === saved) {
-      setValue(initialValue ?? "");
-      setSaved(initialValue ?? "");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to incoming server value
-  }, [initialValue]);
-
-  const dirty = value.trim() !== saved.trim();
-
-  return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-2">
         <label
-          htmlFor={id}
+          htmlFor="capture-details"
           className="text-xs font-medium uppercase tracking-wide text-base-content/55"
         >
-          {label}
+          Details
         </label>
-        {dirty ? <span className="text-xs text-base-content/45">Unsaved changes</span> : null}
+        <textarea
+          id="capture-details"
+          value={details}
+          onChange={(event) => setDetails(event.target.value)}
+          rows={6}
+          maxLength={8000}
+          placeholder={
+            analyzed
+              ? "No in-depth findings — add detail if needed."
+              : "Filled automatically once analysis completes — an in-depth look at what's healthy and what needs attention."
+          }
+          className="w-full resize-y rounded-lg border border-base-content/15 bg-base-100 px-3 py-2.5 text-sm leading-relaxed text-neutral outline-none transition-colors placeholder:text-base-content/35 focus:border-accent focus:ring-1 focus:ring-accent"
+        />
       </div>
-      <textarea
-        id={id}
-        value={value}
-        onChange={(event) => setValue(event.target.value)}
-        rows={rows}
-        maxLength={maxLength}
-        placeholder={placeholder}
-        className="w-full resize-y rounded-lg border border-base-content/15 bg-base-100 px-3 py-2.5 text-sm leading-relaxed text-neutral outline-none transition-colors placeholder:text-base-content/35 focus:border-accent focus:ring-1 focus:ring-accent"
-      />
-      <div className="flex items-center justify-end">
-        <button
-          type="button"
-          onClick={() => onSave(value, () => setSaved(value))}
-          disabled={!dirty || pending}
-          className="inline-flex items-center justify-center rounded-lg bg-neutral px-4 py-2 text-sm font-semibold text-base-100 transition-colors hover:bg-neutral/90 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {pending ? "Saving…" : "Save"}
-        </button>
+
+      {/* Single save for the whole panel */}
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-xs text-error">{error}</span>
+        <div className="flex items-center gap-3">
+          {dirty ? <span className="text-xs text-base-content/45">Unsaved changes</span> : null}
+          <button
+            type="button"
+            onClick={saveAll}
+            disabled={!dirty || pending}
+            className="inline-flex items-center justify-center rounded-lg bg-neutral px-4 py-2 text-sm font-semibold text-base-100 transition-colors hover:bg-neutral/90 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {pending ? "Saving…" : "Save"}
+          </button>
+        </div>
       </div>
     </div>
   );
