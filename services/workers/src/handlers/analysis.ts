@@ -198,6 +198,8 @@ async function runOne(
       startedAt: nowIso
     }
   });
+  // Org-wide capture feed: flip the list row to "analyzing" live.
+  await safePublishCaptureChanged(capture.org_id, capture.id, "analysis_running", "analyzing");
 
   // 4. Download the original from Storage.
   let imageBytes: Uint8Array;
@@ -217,7 +219,7 @@ async function runOne(
       "storage_download_failed",
       false
     );
-    await safePublishFailure(capture.org_id, analysisJob.id, reason, false);
+    await safePublishFailure(capture.org_id, analysisJob.id, reason, false, capture.id);
     return;
   }
 
@@ -245,7 +247,7 @@ async function runOne(
             ? "vision_bad_request"
             : "vision_unknown_error";
     await failJob(supabase, analysisJob.id, capture.id, reason, code, retryable);
-    await safePublishFailure(capture.org_id, analysisJob.id, reason, retryable);
+    await safePublishFailure(capture.org_id, analysisJob.id, reason, retryable, capture.id);
     if (retryable) throw err; // let pg-boss retry
     return;
   }
@@ -350,6 +352,8 @@ async function runOne(
       durationMs: inference.duration_ms
     }
   });
+  // Org-wide capture feed: the row now has a plant name + status; refresh it live.
+  await safePublishCaptureChanged(capture.org_id, capture.id, "analyzed", "analyzed");
 }
 
 async function resolvePipeline(
@@ -503,7 +507,8 @@ async function safePublishFailure(
   orgId: string,
   scanId: string,
   reason: string,
-  retryable: boolean
+  retryable: boolean,
+  captureId?: string
 ): Promise<void> {
   await safePublish(channels.scanProgress(orgId, scanId), {
     type: "scan.failed",
@@ -514,5 +519,25 @@ async function safePublishFailure(
       error: reason,
       retryable
     }
+  });
+  // Org-wide capture feed: flip the list row to "failed" live. Skipped for the
+  // rare failures that happen before the capture row is known.
+  if (captureId) {
+    await safePublishCaptureChanged(orgId, captureId, "failed", "failed");
+  }
+}
+
+// Org-wide per-capture fanout (channel: orgCaptures) so list views refresh live.
+// Best-effort like safePublish — the DB row is the source of truth.
+async function safePublishCaptureChanged(
+  orgId: string,
+  captureId: string,
+  status: string,
+  changeType: "created" | "analyzing" | "analyzed" | "failed"
+): Promise<void> {
+  await safePublish(channels.orgCaptures(orgId), {
+    type: "capture.changed",
+    version: 1,
+    payload: { captureId, orgId, status, changeType }
   });
 }

@@ -1,4 +1,4 @@
-import { ApiError, listCaptures, type CaptureSummary } from "../../../lib/api";
+import { ApiError, getMe, listCaptures, type CaptureSummary } from "../../../lib/api";
 import { CapturesView } from "./CapturesView";
 
 // Captures table — every observation the platform has ingested, newest first.
@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 
 export default async function CapturesPage() {
   let captures: CaptureSummary[] = [];
+  let orgId = "";
   let loadError: string | null = null;
 
   try {
@@ -19,6 +20,14 @@ export default async function CapturesPage() {
       err instanceof ApiError
         ? err.message
         : "Could not reach the captures service.";
+  }
+
+  // orgId scopes the live capture feed. Non-fatal if it fails — the list still
+  // renders, just without live updates.
+  try {
+    orgId = (await getMe()).orgId;
+  } catch {
+    orgId = "";
   }
 
   return (
@@ -41,7 +50,7 @@ export default async function CapturesPage() {
       {loadError ? (
         <ErrorState message={loadError} />
       ) : (
-        <CapturesView captures={captures} />
+        <CapturesView captures={captures} orgId={orgId} />
       )}
     </div>
   );

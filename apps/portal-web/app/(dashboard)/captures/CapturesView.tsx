@@ -1,6 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { channels } from "@gaia/realtime/channels";
+import { useRealtimeChannel } from "@gaia/realtime/client";
 import { GridIcon, RowsIcon } from "@gaia/ui";
 import type { CaptureStatus, CaptureSummary } from "../../../lib/api";
 import { CaptureRow } from "./CaptureRow";
@@ -52,8 +55,29 @@ function compareCaptures(a: CaptureSummary, b: CaptureSummary, key: SortKey): nu
 
 // Owns the table/grid toggle and remembers the choice in localStorage. The
 // captures themselves are fetched on the server and passed in, so switching
-// views never re-hits the API.
-export function CapturesView({ captures }: { captures: CaptureSummary[] }) {
+// views never re-hits the API. Subscribes to the org-wide capture feed and
+// re-runs the server fetch (router.refresh) when captures appear or change
+// status, so the list stays live without a manual refresh.
+export function CapturesView({ captures, orgId }: { captures: CaptureSummary[]; orgId: string }) {
+  const router = useRouter();
+
+  // Live capture feed: a new photo finalizing, or a capture finishing analysis,
+  // publishes capture.changed on this channel. We debounce so a burst (a session
+  // uploading many photos at once) coalesces into a single refresh.
+  const { latest } = useRealtimeChannel(channels.orgCaptures(orgId), {
+    historyLimit: 1,
+    enabled: Boolean(orgId)
+  });
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!latest || latest.type !== "capture.changed") return;
+    if (refreshTimer.current) clearTimeout(refreshTimer.current);
+    refreshTimer.current = setTimeout(() => router.refresh(), 400);
+    return () => {
+      if (refreshTimer.current) clearTimeout(refreshTimer.current);
+    };
+  }, [latest, router]);
+
   // Start on table for a stable first paint, then hydrate from localStorage so
   // SSR and the first client render agree (avoids a hydration mismatch).
   const [view, setView] = useState<ViewMode>("table");

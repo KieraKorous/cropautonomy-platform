@@ -370,6 +370,26 @@ export const scanFailedV1 = envelopeBaseSchema.extend({
 });
 
 // =============================================================================
+// Capture feed (channel: orgCaptures) — org-wide per-capture fanout so list
+// views (the captures page) refresh live. Deliberately thin: it carries the
+// capture's identity + status, not the full row. Consumers re-fetch the
+// authoritative capture(s) rather than reconstruct from the event.
+// =============================================================================
+
+export const captureChangedV1 = envelopeBaseSchema.extend({
+  type: z.literal("capture.changed"),
+  version: z.literal(1),
+  payload: z.object({
+    captureId: z.string().uuid(),
+    orgId: z.string().uuid(),
+    status: z.string(),
+    // Why it changed, so consumers can react selectively: "created" = a new row
+    // entered the list; "analyzing"/"analyzed"/"failed" = lifecycle transitions.
+    changeType: z.enum(["created", "analyzing", "analyzed", "failed"])
+  })
+});
+
+// =============================================================================
 // Registry — every event the platform knows about. Adding a new schema is the
 // one place that wires it into both publish-time and receive-time validation.
 // =============================================================================
@@ -402,7 +422,8 @@ const allSchemas = [
   scanProgressV1,
   scanDetectionV1,
   scanCompletedV1,
-  scanFailedV1
+  scanFailedV1,
+  captureChangedV1
 ] as const;
 
 type AnyEventSchema = (typeof allSchemas)[number];
@@ -451,7 +472,8 @@ export type RealtimeEventInput =
   | Omit<z.infer<typeof scanProgressV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string }
   | Omit<z.infer<typeof scanDetectionV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string }
   | Omit<z.infer<typeof scanCompletedV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string }
-  | Omit<z.infer<typeof scanFailedV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string };
+  | Omit<z.infer<typeof scanFailedV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string }
+  | Omit<z.infer<typeof captureChangedV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string };
 
 export function stampEnvelope(input: RealtimeEventInput): RealtimeEvent {
   return {

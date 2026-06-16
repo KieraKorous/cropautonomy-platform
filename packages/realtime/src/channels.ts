@@ -34,6 +34,9 @@ export const channels = {
   // Org-wide fanout channels
   orgNotifications: (orgId: string) => `org.${orgId}.notifications`,
   orgActiveSessions: (orgId: string) => `org.${orgId}.capture.active`,
+  // Org-wide capture feed — every capture create/transition, so list views (the
+  // captures page) refresh live without subscribing per-scan.
+  orgCaptures: (orgId: string) => `org.${orgId}.captures`,
   // Pending go-live requests — the Live screen's request panel watches this.
   liveRequests: (orgId: string) => `org.${orgId}.live.requests`
 } as const;

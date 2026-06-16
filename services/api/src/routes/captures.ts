@@ -10,6 +10,8 @@ import {
 import { getBoss } from "../lib/queue.js";
 import { loadConfig } from "../config.js";
 import { CAPTURES_BUCKET, capturePath } from "../lib/storage.js";
+import { publishBestEffort } from "../lib/live.js";
+import { channels } from "@gaia/realtime/channels";
 import { QUEUE_NAMES } from "@gaia/workers/queues";
 
 // Operator observation taxonomy — kept in sync with the captures.observation_type
@@ -609,6 +611,19 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
         .eq("id", id);
       if (linkErr) throw linkErr;
 
+      // Announce the new capture on the org-wide feed so open list views (the
+      // captures page) pick it up live, without waiting for a refresh.
+      await publishBestEffort(request.log, channels.orgCaptures(caller.orgId), {
+        type: "capture.changed",
+        version: 1,
+        payload: {
+          captureId: id,
+          orgId: caller.orgId,
+          status: "analysis_queued",
+          changeType: "created"
+        }
+      });
+
       // Enqueue the analysis job. The DB row is already 'queued'; this hands
       // off to the worker, which transitions to 'running' when picked up.
       // pg-boss send is idempotent on its own job id; the DB analysis_jobs row
@@ -738,6 +753,19 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
         );
         throw queueErr;
       }
+
+      // Reflect the re-queue on the org-wide feed so list views update the row's
+      // status back to analyzing without a refresh.
+      await publishBestEffort(request.log, channels.orgCaptures(caller.orgId), {
+        type: "capture.changed",
+        version: 1,
+        payload: {
+          captureId: id,
+          orgId: caller.orgId,
+          status: "analysis_queued",
+          changeType: "analyzing"
+        }
+      });
 
       return { captureId: id, analysisJobId: jobId, status: "analysis_queued" };
     }
