@@ -443,3 +443,52 @@ export function rejectLiveRequest(
 ): Promise<{ requestId: string; status: string }> {
   return apiFetch(`/v1/live-requests/${requestId}/reject`, { method: "POST" });
 }
+
+// --- Identity -------------------------------------------------------------
+
+// The signed-in caller's platform identity. The portal reads name/email/avatar
+// from Clerk directly; this supplies what Clerk can't — the active org name and
+// the caller's role. See services/api/src/routes/me.ts.
+export interface MeResponse {
+  userId: string;
+  orgId: string;
+  org: { id: string; name: string };
+  role: { key: string; name: string };
+  user: { displayName: string | null; email: string | null; avatarUrl: string | null };
+}
+
+export function getMe(): Promise<MeResponse> {
+  return apiFetch<MeResponse>("/v1/me");
+}
+
+// --- Fields ---------------------------------------------------------------
+
+interface GeoJsonPolygon {
+  type: "Polygon";
+  coordinates: number[][][];
+}
+interface GeoJsonPoint {
+  type: "Point";
+  coordinates: [number, number];
+}
+
+// One org field with PostGIS geometry serialized as GeoJSON. Mirrors the
+// /v1/fields response (services/api/src/routes/fields.ts). `boundary`/`centroid`
+// are null when the field has no geometry recorded yet.
+export interface FieldSummary {
+  id: string;
+  farmId: string;
+  name: string;
+  areaAcres: number | null;
+  boundary: GeoJsonPolygon | null;
+  centroid: GeoJsonPoint | null;
+}
+
+interface ListFieldsResponse {
+  fields: FieldSummary[];
+}
+
+// The operator's org-scoped fields for the Overview map + acreage stats.
+export function listFields(): Promise<ListFieldsResponse> {
+  return apiFetch<ListFieldsResponse>("/v1/fields");
+}

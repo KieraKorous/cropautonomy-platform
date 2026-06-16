@@ -1,3 +1,4 @@
+import { currentUser } from "@clerk/nextjs/server";
 import type { ReactNode } from "react";
 import {
   AppShell,
@@ -16,6 +17,8 @@ import {
   type AppShellProps
 } from "@gaia/ui";
 
+import { getMe } from "../../lib/api";
+import { initialsFrom } from "../../lib/initials";
 import { RealtimeProvider } from "../realtime-provider";
 
 const navConfig: AppShellProps["navGroups"] = [
@@ -51,13 +54,29 @@ const navConfig: AppShellProps["navGroups"] = [
   }
 ];
 
-export default function DashboardLayout({ children }: { children: ReactNode }) {
+export default async function DashboardLayout({ children }: { children: ReactNode }) {
+  // Name/email/avatar come straight from Clerk; the org name lives in the
+  // platform DB, so /v1/me supplies it. Tolerate the API being down — fall back
+  // to Clerk-only identity rather than blanking the whole shell.
+  const [clerkUser, me] = await Promise.all([
+    currentUser(),
+    getMe().catch(() => null)
+  ]);
+
+  const email = clerkUser?.primaryEmailAddress?.emailAddress ?? me?.user.email ?? null;
+  const fullName =
+    [clerkUser?.firstName, clerkUser?.lastName].filter(Boolean).join(" ") ||
+    me?.user.displayName ||
+    "";
+  const userName = clerkUser?.firstName ?? me?.user.displayName ?? "Account";
+  const orgName = me?.org.name ?? "Your organization";
+
   return (
     <AppShell
       brand="cropautonomy"
       hasNotifications
       navGroups={navConfig}
-      org={{ initials: "KF", name: "Korous Family Operations" }}
+      org={{ initials: initialsFrom(orgName), name: orgName }}
       search={{ placeholder: "Search captures, fields, devices…", shortcut: "⌘K" }}
       sidebarFooter={
         <SidebarPulseCard
@@ -66,7 +85,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           tone="success"
         />
       }
-      user={{ initials: "BK", name: "Brandon" }}
+      user={{ initials: initialsFrom(fullName, email), name: userName }}
     >
       <RealtimeProvider>{children}</RealtimeProvider>
     </AppShell>

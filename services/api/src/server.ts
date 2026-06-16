@@ -13,6 +13,7 @@ import devicesRoutes from "./routes/devices.js";
 import fieldsRoutes from "./routes/fields.js";
 import healthRoutes from "./routes/health.js";
 import leadsRoutes from "./routes/leads.js";
+import meRoutes from "./routes/me.js";
 import metaRoutes from "./routes/meta.js";
 import realtimeRoutes from "./routes/realtime.js";
 
@@ -45,6 +46,7 @@ export async function buildServer(config: Config): Promise<FastifyInstance> {
 
   await app.register(healthRoutes);
   await app.register(metaRoutes, { config });
+  await app.register(meRoutes);
   await app.register(leadsRoutes);
   await app.register(captureSessionsRoutes);
   await app.register(capturesRoutes);
