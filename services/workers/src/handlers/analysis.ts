@@ -294,6 +294,7 @@ async function runOne(
   //    them). All model-authored — captures are not hand-annotated.
   const captureUpdate: {
     inferred_species?: string;
+    inferred_common_name?: string;
     inferred_summary?: string;
     inferred_details?: string;
     observation_type?: string;
@@ -304,6 +305,14 @@ async function runOne(
       current.confidence > best.confidence ? current : best
     );
     if (top.category) captureUpdate.inferred_species = top.category;
+    // Common name rides in the detection payload (PlantNet's commonNames). Take
+    // the first from the SAME top detection so scientific + common always
+    // describe the same organism; null when the top isn't a species detection.
+    const commonNames = top.payload?.common_names;
+    if (Array.isArray(commonNames) && typeof commonNames[0] === "string") {
+      const first = commonNames[0].trim();
+      if (first) captureUpdate.inferred_common_name = first;
+    }
   }
   if (inference.summary) captureUpdate.inferred_summary = inference.summary;
   if (inference.details) captureUpdate.inferred_details = inference.details;

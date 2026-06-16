@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowRight, CameraIcon, StatusPill } from "@gaia/ui";
 import type { CaptureSummary } from "../../../lib/api";
 import { dateFormat, mediaLabel, statusDisplay } from "./captureDisplay";
+import { PlantName } from "./PlantName";
 import { RetryButton } from "./RetryButton";
 
 const MIN_SCALE = 1;
@@ -266,7 +267,11 @@ export function CaptureDetailModal({
                     display.muted ? "text-base-content/70" : "text-neutral"
                   }`}
                 >
-                  {display.label}
+                  <PlantName
+                    scientific={capture.plantType}
+                    common={capture.commonName}
+                    fallback={display.label}
+                  />
                 </h2>
               </div>
               <button
@@ -295,7 +300,20 @@ export function CaptureDetailModal({
             ) : null}
 
             <dl className="flex flex-col gap-3 text-sm">
-              <DetailRow label="Plant type" value={capture.plantType ?? "—"} />
+              <div className="flex items-baseline justify-between gap-4">
+                <dt className="flex-shrink-0 text-base-content/55">Plant type</dt>
+                <dd className="min-w-0 truncate text-right font-medium text-neutral">
+                  {capture.plantType ? (
+                    <PlantName
+                      scientific={capture.plantType}
+                      common={capture.commonName}
+                      variant="inline"
+                    />
+                  ) : (
+                    "—"
+                  )}
+                </dd>
+              </div>
               {capture.observationType ? (
                 <DetailRow label="Observation" value={titleCase(capture.observationType.replace(/_/g, " "))} />
               ) : null}

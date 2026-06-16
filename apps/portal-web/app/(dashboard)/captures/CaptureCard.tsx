@@ -1,6 +1,7 @@
 import { CameraIcon, StatusPill } from "@gaia/ui";
 import type { CaptureSummary } from "../../../lib/api";
 import { DiscardButton } from "./DiscardButton";
+import { PlantName } from "./PlantName";
 import { RetryButton } from "./RetryButton";
 import { dateFormat, statusDisplay } from "./captureDisplay";
 
@@ -76,7 +77,11 @@ export function CaptureCard({
             }`}
             title={display.label}
           >
-            {display.label}
+            <PlantName
+              scientific={capture.plantType}
+              common={capture.commonName}
+              fallback={display.label}
+            />
           </span>
           <span className="text-xs text-base-content/55">{dateFormat.format(new Date(when))}</span>
         </div>

@@ -113,6 +113,7 @@ interface CaptureListRow {
   captured_at: string;
   uploaded_at: string | null;
   inferred_species: string | null;
+  inferred_common_name: string | null;
   inferred_summary: string | null;
   inferred_details: string | null;
   description: string | null;
@@ -132,7 +133,7 @@ interface CaptureListRow {
 // Columns selected for the summary shape returned by the list and single-capture
 // endpoints. Kept in one place so the row interface and selects stay in sync.
 const CAPTURE_SELECT =
-  "id, status, status_message, media_type, captured_at, uploaded_at, inferred_species, inferred_summary, inferred_details, description, observation_type, severity, kind, thumbnail_path, storage_path, size_bytes, video_duration_ms, field_id, session_id, analysis_job_id, discarded_at";
+  "id, status, status_message, media_type, captured_at, uploaded_at, inferred_species, inferred_common_name, inferred_summary, inferred_details, description, observation_type, severity, kind, thumbnail_path, storage_path, size_bytes, video_duration_ms, field_id, session_id, analysis_job_id, discarded_at";
 
 // Same columns plus org_id, for the single-capture handlers that tenant-check
 // before mapping. `as const` keeps it a literal so the typed client can parse it.
@@ -148,6 +149,7 @@ function toCaptureSummary(row: CaptureListRow, imageUrl: string | null) {
     capturedAt: row.captured_at,
     uploadedAt: row.uploaded_at,
     plantType: row.inferred_species,
+    commonName: row.inferred_common_name,
     summary: row.inferred_summary,
     details: row.inferred_details,
     description: row.description,

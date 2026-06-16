@@ -1,5 +1,6 @@
 import { ApiError, listDiscardedCaptures, type CaptureSummary } from "../../../lib/api";
 import { DiscardedCaptures } from "./DiscardedCaptures";
+import { PlantNameSetting } from "./PlantNameSetting";
 
 // First real settings surface. Organized as stacked sections so more settings
 // (org, members, integrations) can be added later without restructuring.
@@ -25,6 +26,18 @@ export default async function SettingsPage() {
           Manage your organization&apos;s data and preferences.
         </p>
       </header>
+
+      <section className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1">
+          <h2 className="text-base font-semibold text-neutral">Display</h2>
+          <p className="max-w-2xl text-sm text-base-content/65">
+            Choose which plant name to show as the primary label across the captures list and
+            detail views. Both names are always shown on a capture&apos;s detail page; this picks
+            which one leads.
+          </p>
+        </div>
+        <PlantNameSetting />
+      </section>
 
       <section className="flex flex-col gap-4">
         <div className="flex flex-col gap-1">

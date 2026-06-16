@@ -1,6 +1,7 @@
 import { CameraIcon, StatusPill } from "@gaia/ui";
 import type { CaptureSummary } from "../../../lib/api";
 import { DiscardButton } from "./DiscardButton";
+import { PlantName } from "./PlantName";
 import { RetryButton } from "./RetryButton";
 import { dateFormat, mediaLabel, statusDisplay } from "./captureDisplay";
 
@@ -53,7 +54,11 @@ export function CaptureRow({
           }`}
           title={display.label}
         >
-          {display.label}
+          <PlantName
+            scientific={capture.plantType}
+            common={capture.commonName}
+            fallback={display.label}
+          />
         </span>
       </td>
       <td className="px-3 py-2.5">

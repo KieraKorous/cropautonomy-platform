@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowRight, CameraIcon, StatusPill } from "@gaia/ui";
 import { ApiError, getCapture, type CaptureSummary } from "../../../../lib/api";
 import { dateFormat, mediaLabel, statusDisplay } from "../captureDisplay";
+import { PlantName } from "../PlantName";
 import { AnalysisViewedTracker } from "./AnalysisViewedTracker";
 import { CaptureDetailsEditor } from "./CaptureDetailsEditor";
 import { CaptureImage } from "./CaptureImage";
@@ -67,7 +68,12 @@ export default async function CaptureDetailPage({
             display.muted ? "text-base-content/70" : "text-neutral"
           }`}
         >
-          {display.label}
+          <PlantName
+            scientific={capture.plantType}
+            common={capture.commonName}
+            fallback={display.label}
+            variant="stacked"
+          />
         </h1>
       </header>
 
@@ -96,7 +102,20 @@ export default async function CaptureDetailPage({
               Metadata
             </h2>
             <dl className="flex flex-col gap-3 text-sm">
-              <DetailRow label="Plant type" value={capture.plantType ?? "—"} />
+              <div className="flex items-baseline justify-between gap-4">
+                <dt className="flex-shrink-0 text-base-content/55">Plant type</dt>
+                <dd className="min-w-0 truncate text-right font-medium text-neutral">
+                  {capture.plantType ? (
+                    <PlantName
+                      scientific={capture.plantType}
+                      common={capture.commonName}
+                      variant="inline"
+                    />
+                  ) : (
+                    "—"
+                  )}
+                </dd>
+              </div>
               <DetailRow label="Captured" value={dateFormat.format(new Date(capture.capturedAt))} />
               {capture.uploadedAt ? (
                 <DetailRow

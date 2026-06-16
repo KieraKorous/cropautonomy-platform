@@ -91,7 +91,10 @@ export interface CaptureSummary {
   kind: CaptureKind;
   capturedAt: string;
   uploadedAt: string | null;
+  // Scientific name (PlantNet species, e.g. "Citrus sinensis"), from the top
+  // detection. The common name for the same organism, when known.
   plantType: string | null;
+  commonName: string | null;
   // Model-authored agronomic brief (short). AI-filled, reviewer-editable.
   summary: string | null;
   // Model-authored in-depth analysis (what's healthy vs. what's wrong).
