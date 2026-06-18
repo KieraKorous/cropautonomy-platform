@@ -22,10 +22,12 @@ import {
   getMe,
   listCaptures,
   listDevices,
+  listFarms,
   listFields,
   listLiveSessions,
   type CaptureSummary,
   type Device,
+  type FarmSummary,
   type FieldSummary
 } from "../../lib/api";
 import { LiveCountBadge } from "./overview/LiveCountBadge";
@@ -50,12 +52,13 @@ const mapLayers: MapLayerToggle[] = [
 ];
 
 export default async function Overview() {
-  const [clerkUser, me, capturesResult, devicesResult, fieldsResult, liveResult] =
+  const [clerkUser, me, capturesResult, devicesResult, farmsResult, fieldsResult, liveResult] =
     await Promise.all([
       currentUser(),
       getMe().catch(() => null),
       listCaptures({ limit: 12 }).catch(() => ({ captures: [] as CaptureSummary[] })),
       listDevices().catch(() => ({ devices: [] as Device[] })),
+      listFarms().catch(() => ({ farms: [] as FarmSummary[] })),
       listFields().catch(() => ({ fields: [] as FieldSummary[] })),
       listLiveSessions().catch(() => ({ sessions: [], orgId: "" }))
     ]);
@@ -78,7 +81,8 @@ export default async function Overview() {
   const totalAcres = Math.round(
     fields.reduce((sum, f) => sum + (f.areaAcres ?? 0), 0)
   );
-  const farmCount = new Set(fields.map((f) => f.farmId)).size;
+  // Count managed farms directly — a farm with no fields yet still counts.
+  const farmCount = farmsResult.farms.length;
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
   const capturesToday = captures.filter(

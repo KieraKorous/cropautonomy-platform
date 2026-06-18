@@ -1,8 +1,10 @@
 import {
   listDevices,
+  listFarms,
   listFields,
   listLiveSessions,
   type Device,
+  type FarmSummary,
   type LiveSessionSummary
 } from "./api";
 
@@ -28,8 +30,9 @@ export const EMPTY_NAV_COUNTS: NavCounts = {
 };
 
 export async function loadNavCounts(): Promise<NavCounts> {
-  const [live, fieldsResult, devicesResult] = await Promise.all([
+  const [live, farmsResult, fieldsResult, devicesResult] = await Promise.all([
     listLiveSessions().catch(() => ({ sessions: [] as LiveSessionSummary[], orgId: "" })),
+    listFarms().catch(() => ({ farms: [] as FarmSummary[] })),
     listFields().catch(() => ({ fields: [] })),
     listDevices().catch(() => ({ devices: [] as Device[] }))
   ]);
@@ -37,7 +40,9 @@ export async function loadNavCounts(): Promise<NavCounts> {
   const devices = devicesResult.devices;
   return {
     liveSessions: live.sessions.length,
-    farms: new Set(fieldsResult.fields.map((f) => f.farmId)).size,
+    // Count farms directly now that they're a managed entity — a farm with no
+    // fields yet would be invisible if we still derived this from field.farmId.
+    farms: farmsResult.farms.length,
     fields: fieldsResult.fields.length,
     devicesActive: devices.filter((d) => d.status === "active").length,
     devicesTotal: devices.length,

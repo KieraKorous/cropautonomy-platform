@@ -495,3 +495,80 @@ interface ListFieldsResponse {
 export function listFields(): Promise<ListFieldsResponse> {
   return apiFetch<ListFieldsResponse>("/v1/fields");
 }
+
+// --- Farms ----------------------------------------------------------------
+
+// One org farm with its location (PostGIS point → GeoJSON), plus the field
+// count + total acreage aggregated server-side for the list cards. Mirrors the
+// /v1/farms response (services/api/src/routes/farms.ts). `location` is null when
+// no centroid has been set.
+export interface FarmSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  addressLocality: string | null;
+  addressRegion: string | null;
+  addressPostalCode: string | null;
+  addressCountry: string | null;
+  timezone: string | null;
+  location: GeoJsonPoint | null;
+  fieldCount: number;
+  areaAcres: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface ListFarmsResponse {
+  orgId: string;
+  // Whether the current user may create/edit/delete farms (farms.update).
+  canManage: boolean;
+  farms: FarmSummary[];
+}
+
+// The fields a farm create/edit form writes. `location` is the centroid set via
+// the map pin: null clears it, { lat, lng } sets it. Every field optional on
+// update; `name` is required on create (enforced by createFarm's typing).
+export interface FarmWrite {
+  name?: string;
+  description?: string | null;
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  addressLocality?: string | null;
+  addressRegion?: string | null;
+  addressPostalCode?: string | null;
+  addressCountry?: string | null;
+  timezone?: string | null;
+  location?: { lat: number; lng: number } | null;
+}
+
+// The org's farms for the /farms grid.
+export function listFarms(): Promise<ListFarmsResponse> {
+  return apiFetch<ListFarmsResponse>("/v1/farms");
+}
+
+// Create a farm. Requires farms.create (manager+).
+export function createFarm(body: FarmWrite & { name: string }): Promise<FarmSummary> {
+  return apiFetch<FarmSummary>("/v1/farms", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body)
+  });
+}
+
+// Edit any subset of a farm's fields. location:null clears the centroid;
+// { lat, lng } rewrites it. Requires farms.update (manager+).
+export function updateFarm(id: string, patch: FarmWrite): Promise<FarmSummary> {
+  return apiFetch<FarmSummary>(`/v1/farms/${id}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(patch)
+  });
+}
+
+// Permanent delete. 409s if the farm still has fields. Requires farms.delete
+// (owner only, per the current role grants).
+export function deleteFarm(id: string): Promise<{ farmId: string; deleted: boolean }> {
+  return apiFetch(`/v1/farms/${id}`, { method: "DELETE" });
+}

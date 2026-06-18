@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, type ReactNode } from "react";
-import Map, { Layer, Marker, Source } from "react-map-gl/mapbox";
+import Map, { Layer, Marker, Source, type MapMouseEvent } from "react-map-gl/mapbox";
 import type { StyleSpecification } from "mapbox-gl";
 
 export type MapStyle = string | StyleSpecification;
@@ -70,6 +70,12 @@ export type MapPanelProps = {
   height?: number;
   /** Source/Layer/Marker children rendered inside the Map. */
   children?: ReactNode;
+  /**
+   * Called with the clicked coordinate when the user clicks the map body. Lets a
+   * caller place/move a point (e.g. a farm centroid picker). When set, the map
+   * cursor becomes a crosshair to signal it's clickable.
+   */
+  onMapClick?: (coords: { lng: number; lat: number }) => void;
   /** Bottom-right corner content (defaults to coordinates + zoom — pass null to suppress). */
   footerRight?: ReactNode;
   /** Bottom-left corner content (defaults to a 1mi scale bar — pass null to suppress). */
@@ -85,6 +91,7 @@ export function MapPanel({
   initialViewState,
   height = 460,
   children,
+  onMapClick,
   footerLeft,
   footerRight
 }: MapPanelProps) {
@@ -112,6 +119,12 @@ export function MapPanel({
           mapboxAccessToken={mapboxAccessToken}
           mapStyle={mapStyle}
           style={{ width: "100%", height: "100%" }}
+          cursor={onMapClick ? "crosshair" : undefined}
+          onClick={
+            onMapClick
+              ? (e: MapMouseEvent) => onMapClick({ lng: e.lngLat.lng, lat: e.lngLat.lat })
+              : undefined
+          }
         >
           {children}
         </Map>
