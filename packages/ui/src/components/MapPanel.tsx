@@ -89,6 +89,11 @@ export type MapPanelProps = {
    * uncontrolled, so this is the supported way to move it imperatively.
    */
   recenterTo?: { lng: number; lat: number; zoom?: number } | null;
+  /**
+   * Where the floating "recenter" button flies to. Defaults to initialViewState.
+   * Pass the live pin so recenter tracks it after the user moves it.
+   */
+  recenterTarget?: { lng: number; lat: number; zoom?: number } | null;
   /** Show a fullscreen toggle in the header (Fullscreen API on the panel box). */
   enableFullscreen?: boolean;
   /** Bottom-right corner content (defaults to coordinates + zoom — pass null to suppress). */
@@ -108,6 +113,7 @@ export function MapPanel({
   children,
   onMapClick,
   recenterTo,
+  recenterTarget,
   enableFullscreen,
   footerLeft,
   footerRight
@@ -125,11 +131,19 @@ export function MapPanel({
   // The floating zoom / recenter controls drive the live map via its ref.
   const zoomIn = () => mapRef.current?.zoomIn();
   const zoomOut = () => mapRef.current?.zoomOut();
-  const recenter = () =>
-    mapRef.current?.flyTo({
-      center: [initialViewState.longitude, initialViewState.latitude],
+  const recenter = () => {
+    const target = recenterTarget ?? {
+      lng: initialViewState.longitude,
+      lat: initialViewState.latitude,
       zoom: initialViewState.zoom
+    };
+    mapRef.current?.flyTo({
+      center: [target.lng, target.lat],
+      zoom: target.zoom ?? initialViewState.zoom
     });
+  };
+  // Rotate the map back to north-up (and flatten any pitch). No-op if already there.
+  const resetNorth = () => mapRef.current?.resetNorthPitch();
 
   // Fullscreen the whole panel box (header + map). Uses the Fullscreen API on the
   // <section>; works inside the farm-picker <dialog>. Mapbox needs an explicit
@@ -206,7 +220,12 @@ export function MapPanel({
         >
           {children}
         </Map>
-        <MapFloatingControls onZoomIn={zoomIn} onZoomOut={zoomOut} onRecenter={recenter} />
+        <MapFloatingControls
+          onZoomIn={zoomIn}
+          onZoomOut={zoomOut}
+          onRecenter={recenter}
+          onResetNorth={resetNorth}
+        />
         {(computedFooterLeft || computedFooterRight) && (
           <div className="pointer-events-none absolute inset-x-4 bottom-3.5 flex items-center justify-between">
             <div className="pointer-events-auto">{computedFooterLeft}</div>
@@ -406,11 +425,13 @@ function LivenessIndicator({ liveness }: { liveness: MapLivenessIndicator }) {
 function MapFloatingControls({
   onZoomIn,
   onZoomOut,
-  onRecenter
+  onRecenter,
+  onResetNorth
 }: {
   onZoomIn: () => void;
   onZoomOut: () => void;
   onRecenter: () => void;
+  onResetNorth: () => void;
 }) {
   return (
     <div className="absolute right-4 top-4 flex flex-col gap-2">
@@ -432,8 +453,11 @@ function MapFloatingControls({
           <MinusGlyph />
         </button>
       </div>
-      <ControlButton ariaLabel="Recenter" onClick={onRecenter}>
+      <ControlButton ariaLabel="Recenter on pin" onClick={onRecenter}>
         <RecenterGlyph />
+      </ControlButton>
+      <ControlButton ariaLabel="Face north" onClick={onResetNorth}>
+        <NorthGlyph />
       </ControlButton>
     </div>
   );
@@ -485,6 +509,16 @@ function RecenterGlyph() {
       <path d="M12 19v3" />
       <path d="M2 12h3" />
       <path d="M19 12h3" />
+    </svg>
+  );
+}
+
+function NorthGlyph() {
+  // A compass needle: filled north half + outlined south half, with an "N" tick.
+  return (
+    <svg height="15" viewBox="0 0 24 24" width="15" aria-hidden>
+      <path d="M12 3 8 13h8z" fill="#18211c" />
+      <path d="M12 21 8 13h8z" fill="none" stroke="#18211c" strokeWidth="1.6" strokeLinejoin="round" />
     </svg>
   );
 }

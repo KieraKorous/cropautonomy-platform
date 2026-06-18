@@ -417,6 +417,9 @@ export function FarmFormModal({
                   height={240}
                   enableFullscreen
                   recenterTo={recenter}
+                  recenterTarget={
+                    location ? { lng: location.lng, lat: location.lat, zoom: 13 } : null
+                  }
                   footerLeft={null}
                   footerRight={null}
                   onMapClick={(c) => setLocationFromUser({ lat: c.lat, lng: c.lng })}
