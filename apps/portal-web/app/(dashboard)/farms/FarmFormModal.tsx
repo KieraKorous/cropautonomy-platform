@@ -4,9 +4,20 @@ import { useEffect, useRef, useState } from "react";
 import type { MarkerDragEvent } from "react-map-gl/mapbox";
 import { MapPanel, Marker, MapPinIcon } from "@gaia/ui";
 import type { FarmSummary, FarmWrite } from "../../../lib/api";
-import { createFarmAction, deleteFarmAction, updateFarmAction } from "./actions";
+import {
+  createFarmAction,
+  deleteFarmAction,
+  timezoneForCoordsAction,
+  updateFarmAction
+} from "./actions";
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
+
+// Full IANA timezone list for the dropdown, straight from the runtime. Falls
+// back to empty if the engine lacks supportedValuesOf (very old browsers) — the
+// current value is always rendered as an option regardless.
+const intlTz = Intl as unknown as { supportedValuesOf?: (key: string) => string[] };
+const TIMEZONES: string[] = intlTz.supportedValuesOf ? intlTz.supportedValuesOf("timeZone") : [];
 // Continental-US framing for a farm that has no pin yet — zoomed out enough that
 // the operator can find their ground with a click or two.
 const DEFAULT_VIEW = { longitude: -95.57, latitude: 39.835, zoom: 3.4 };
@@ -39,6 +50,14 @@ export function FarmFormModal({
   const [addressCountry, setAddressCountry] = useState("");
   const [timezone, setTimezone] = useState("");
   const [location, setLocation] = useState<Coords | null>(null);
+  // Fed to MapPanel.recenterTo to fly the map after geocoding a typed address.
+  const [recenter, setRecenter] = useState<{ lng: number; lat: number; zoom?: number } | null>(
+    null
+  );
+  const [geocoding, setGeocoding] = useState(false);
+  // Flips true once the user edits an address field, so we geocode their input
+  // and not the address we seed when an existing farm opens.
+  const addressDirtyRef = useRef(false);
 
   const [saving, setSaving] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -76,8 +95,57 @@ export function FarmFormModal({
     setConfirmingDelete(false);
     setDeleting(false);
     setError(null);
+    setRecenter(null);
+    setGeocoding(false);
+    addressDirtyRef.current = false;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, farmId]);
+
+  // Geocode the typed address (debounced) and fly the map + drop the pin there.
+  // Only runs after the user actually edits an address field — never on the seed.
+  useEffect(() => {
+    if (!open || !MAPBOX_TOKEN || !addressDirtyRef.current) return;
+    const query = [addressLine1, addressLocality, addressRegion, addressPostalCode, addressCountry]
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .join(", ");
+    if (query.length < 4) return;
+    const handle = setTimeout(() => void geocodeAddress(query), 700);
+    return () => clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, addressLine1, addressLocality, addressRegion, addressPostalCode, addressCountry]);
+
+  async function geocodeAddress(query: string) {
+    setGeocoding(true);
+    try {
+      const url = `https://api.mapbox.com/search/geocode/v6/forward?q=${encodeURIComponent(
+        query
+      )}&limit=1&access_token=${MAPBOX_TOKEN}`;
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const data = (await res.json()) as {
+        features?: Array<{ geometry?: { coordinates?: [number, number] } }>;
+      };
+      const coords = data.features?.[0]?.geometry?.coordinates;
+      if (!coords) return;
+      const [lng, lat] = coords;
+      setLocation({ lat, lng });
+      setRecenter({ lng, lat, zoom: 13 });
+      // Auto-fill the timezone from the resolved location.
+      const tz = await timezoneForCoordsAction(lat, lng);
+      if (tz) setTimezone(tz);
+    } catch {
+      // Network/geocode failures are non-fatal — the manual pin still works.
+    } finally {
+      setGeocoding(false);
+    }
+  }
+
+  // Wrap an address setter so editing it marks the address dirty (enables geocode).
+  function editAddress(setter: (v: string) => void, value: string) {
+    addressDirtyRef.current = true;
+    setter(value);
+  }
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -190,7 +258,7 @@ export function FarmFormModal({
                 type="text"
                 value={addressLine1}
                 maxLength={200}
-                onChange={(e) => setAddressLine1(e.target.value)}
+                onChange={(e) => editAddress(setAddressLine1, e.target.value)}
                 placeholder="Line 1"
                 className={inputClass}
               />
@@ -210,7 +278,7 @@ export function FarmFormModal({
                   type="text"
                   value={addressLocality}
                   maxLength={120}
-                  onChange={(e) => setAddressLocality(e.target.value)}
+                  onChange={(e) => editAddress(setAddressLocality, e.target.value)}
                   className={inputClass}
                 />
               </Field>
@@ -219,7 +287,7 @@ export function FarmFormModal({
                   type="text"
                   value={addressRegion}
                   maxLength={120}
-                  onChange={(e) => setAddressRegion(e.target.value)}
+                  onChange={(e) => editAddress(setAddressRegion, e.target.value)}
                   className={inputClass}
                 />
               </Field>
@@ -228,7 +296,7 @@ export function FarmFormModal({
                   type="text"
                   value={addressPostalCode}
                   maxLength={40}
-                  onChange={(e) => setAddressPostalCode(e.target.value)}
+                  onChange={(e) => editAddress(setAddressPostalCode, e.target.value)}
                   className={inputClass}
                 />
               </Field>
@@ -237,20 +305,29 @@ export function FarmFormModal({
                   type="text"
                   value={addressCountry}
                   maxLength={120}
-                  onChange={(e) => setAddressCountry(e.target.value)}
+                  onChange={(e) => editAddress(setAddressCountry, e.target.value)}
                   className={inputClass}
                 />
               </Field>
             </div>
             <Field label="Timezone">
-              <input
-                type="text"
+              <select
                 value={timezone}
-                maxLength={80}
                 onChange={(e) => setTimezone(e.target.value)}
-                placeholder="IANA, e.g. America/Chicago"
                 className={inputClass}
-              />
+              >
+                <option value="">Select timezone…</option>
+                {/* Keep a seeded/auto-filled value selectable even if the runtime
+                    list doesn't contain it. */}
+                {timezone && !TIMEZONES.includes(timezone) ? (
+                  <option value={timezone}>{timezone}</option>
+                ) : null}
+                {TIMEZONES.map((tz) => (
+                  <option key={tz} value={tz}>
+                    {tz}
+                  </option>
+                ))}
+              </select>
             </Field>
           </fieldset>
 
@@ -276,9 +353,11 @@ export function FarmFormModal({
                   key={farmId ?? "new"}
                   header={{
                     title: "Centroid",
-                    meta: location
-                      ? `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`
-                      : "Click the map to drop a pin"
+                    meta: geocoding
+                      ? "Finding address…"
+                      : location
+                        ? `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`
+                        : "Click the map or type an address"
                   }}
                   initialViewState={
                     location
@@ -287,6 +366,8 @@ export function FarmFormModal({
                   }
                   mapboxAccessToken={MAPBOX_TOKEN}
                   height={240}
+                  enableFullscreen
+                  recenterTo={recenter}
                   footerLeft={null}
                   footerRight={null}
                   onMapClick={(c) => setLocation({ lat: c.lat, lng: c.lng })}

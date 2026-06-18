@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import tzlookup from "tz-lookup";
 import {
   createFarm,
   deleteFarm,
@@ -8,6 +9,20 @@ import {
   type FarmSummary,
   type FarmWrite
 } from "../../../lib/api";
+
+// Resolve the IANA timezone for a coordinate (e.g. a geocoded farm address), so
+// the form can auto-fill the timezone dropdown. Runs server-side to keep the
+// tz-lookup boundary data out of the client bundle. Returns null on bad input.
+export async function timezoneForCoordsAction(
+  lat: number,
+  lng: number
+): Promise<string | null> {
+  try {
+    return tzlookup(lat, lng);
+  } catch {
+    return null;
+  }
+}
 
 // Create a farm, then refresh the grid (+ the overview/sidebar counts, which
 // read the farm list on the dashboard layout) so the new card appears.

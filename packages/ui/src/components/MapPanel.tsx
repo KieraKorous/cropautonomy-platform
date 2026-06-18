@@ -1,7 +1,13 @@
 "use client";
 
-import { useMemo, type ReactNode } from "react";
-import Map, { Layer, Marker, Source, type MapMouseEvent } from "react-map-gl/mapbox";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import Map, {
+  Layer,
+  Marker,
+  Source,
+  type MapMouseEvent,
+  type MapRef
+} from "react-map-gl/mapbox";
 import type { StyleSpecification } from "mapbox-gl";
 
 export type MapStyle = string | StyleSpecification;
@@ -76,6 +82,15 @@ export type MapPanelProps = {
    * cursor becomes a crosshair to signal it's clickable.
    */
   onMapClick?: (coords: { lng: number; lat: number }) => void;
+  /**
+   * When set to a new coordinate, the map animates (flyTo) to it. Use for
+   * external recentering — e.g. after geocoding a typed address. Pass a fresh
+   * object to trigger each move; null/undefined is a no-op. The map is otherwise
+   * uncontrolled, so this is the supported way to move it imperatively.
+   */
+  recenterTo?: { lng: number; lat: number; zoom?: number } | null;
+  /** Show a fullscreen toggle in the header (Fullscreen API on the panel box). */
+  enableFullscreen?: boolean;
   /** Bottom-right corner content (defaults to coordinates + zoom — pass null to suppress). */
   footerRight?: ReactNode;
   /** Bottom-left corner content (defaults to a 1mi scale bar — pass null to suppress). */
@@ -92,6 +107,8 @@ export function MapPanel({
   height = 460,
   children,
   onMapClick,
+  recenterTo,
+  enableFullscreen,
   footerLeft,
   footerRight
 }: MapPanelProps) {
@@ -100,6 +117,55 @@ export function MapPanel({
       "MapPanel requires a Mapbox access token. Set NEXT_PUBLIC_MAPBOX_TOKEN in your env and pass it in."
     );
   }
+
+  const mapRef = useRef<MapRef>(null);
+  const sectionRef = useRef<HTMLElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // The floating zoom / recenter controls drive the live map via its ref.
+  const zoomIn = () => mapRef.current?.zoomIn();
+  const zoomOut = () => mapRef.current?.zoomOut();
+  const recenter = () =>
+    mapRef.current?.flyTo({
+      center: [initialViewState.longitude, initialViewState.latitude],
+      zoom: initialViewState.zoom
+    });
+
+  // Fullscreen the whole panel box (header + map). Uses the Fullscreen API on the
+  // <section>; works inside the farm-picker <dialog>. Mapbox needs an explicit
+  // resize() once the container changes size, which the fullscreenchange handler
+  // below triggers.
+  const toggleFullscreen = () => {
+    const el = sectionRef.current;
+    if (!el) return;
+    if (document.fullscreenElement) {
+      void document.exitFullscreen();
+    } else {
+      void el.requestFullscreen?.().catch(() => {});
+    }
+  };
+
+  useEffect(() => {
+    const onChange = () => {
+      const active = document.fullscreenElement === sectionRef.current;
+      setIsFullscreen(active);
+      // Recompute the canvas size after the container grows/shrinks.
+      requestAnimationFrame(() => mapRef.current?.resize());
+    };
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+
+  // Animate to an externally-supplied coordinate (e.g. a geocoded address). Keyed
+  // on the object identity, so the caller drives each move by passing a new object.
+  useEffect(() => {
+    if (!recenterTo) return;
+    mapRef.current?.flyTo({
+      center: [recenterTo.lng, recenterTo.lat],
+      zoom: recenterTo.zoom ?? initialViewState.zoom
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recenterTo]);
 
   const computedFooterLeft = footerLeft === undefined ? <DefaultScaleBar /> : footerLeft;
   const computedFooterRight =
@@ -110,11 +176,23 @@ export function MapPanel({
     );
 
   return (
-    <section className="flex flex-col overflow-hidden rounded-xl border border-base-content/10 bg-base-100">
-      <MapPanelHeaderBar header={header} />
+    <section
+      ref={sectionRef}
+      className="flex flex-col overflow-hidden rounded-xl border border-base-content/10 bg-base-100"
+    >
+      <MapPanelHeaderBar
+        header={header}
+        enableFullscreen={enableFullscreen}
+        isFullscreen={isFullscreen}
+        onToggleFullscreen={toggleFullscreen}
+      />
       {layers && layers.length > 0 && <MapLayerStrip layers={layers} liveness={liveness} />}
-      <div className="relative w-full overflow-hidden" style={{ height }}>
+      <div
+        className={`relative w-full overflow-hidden ${isFullscreen ? "flex-1" : ""}`}
+        style={isFullscreen ? undefined : { height }}
+      >
         <Map
+          ref={mapRef}
           initialViewState={initialViewState}
           mapboxAccessToken={mapboxAccessToken}
           mapStyle={mapStyle}
@@ -128,7 +206,7 @@ export function MapPanel({
         >
           {children}
         </Map>
-        <MapFloatingControls />
+        <MapFloatingControls onZoomIn={zoomIn} onZoomOut={zoomOut} onRecenter={recenter} />
         {(computedFooterLeft || computedFooterRight) && (
           <div className="pointer-events-none absolute inset-x-4 bottom-3.5 flex items-center justify-between">
             <div className="pointer-events-auto">{computedFooterLeft}</div>
@@ -140,7 +218,17 @@ export function MapPanel({
   );
 }
 
-function MapPanelHeaderBar({ header }: { header: MapPanelHeader }) {
+function MapPanelHeaderBar({
+  header,
+  enableFullscreen,
+  isFullscreen,
+  onToggleFullscreen
+}: {
+  header: MapPanelHeader;
+  enableFullscreen?: boolean;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
+}) {
   return (
     <header className="flex items-center justify-between border-b border-base-content/10 px-5 py-4">
       <div className="flex items-center gap-4">
@@ -160,6 +248,17 @@ function MapPanelHeaderBar({ header }: { header: MapPanelHeader }) {
           >
             Open full map →
           </a>
+        )}
+        {enableFullscreen && (
+          <button
+            type="button"
+            onClick={onToggleFullscreen}
+            aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+            title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+            className="flex h-8 w-8 items-center justify-center rounded-md border border-base-content/12 text-base-content/65 transition-colors hover:bg-base-content/[0.04] hover:text-neutral"
+          >
+            {isFullscreen ? <ExitFullscreenGlyph /> : <FullscreenGlyph />}
+          </button>
         )}
       </div>
     </header>
@@ -304,12 +403,21 @@ function LivenessIndicator({ liveness }: { liveness: MapLivenessIndicator }) {
   );
 }
 
-function MapFloatingControls() {
+function MapFloatingControls({
+  onZoomIn,
+  onZoomOut,
+  onRecenter
+}: {
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  onRecenter: () => void;
+}) {
   return (
     <div className="absolute right-4 top-4 flex flex-col gap-2">
       <div className="flex flex-col overflow-hidden rounded-md border border-base-content/12 bg-base-100/95 shadow-sm">
         <button
           aria-label="Zoom in"
+          onClick={onZoomIn}
           className="flex h-8 w-8 items-center justify-center border-b border-base-content/10 hover:bg-base-content/[0.05]"
           type="button"
         >
@@ -317,29 +425,33 @@ function MapFloatingControls() {
         </button>
         <button
           aria-label="Zoom out"
+          onClick={onZoomOut}
           className="flex h-8 w-8 items-center justify-center hover:bg-base-content/[0.05]"
           type="button"
         >
           <MinusGlyph />
         </button>
       </div>
-      <ControlButton ariaLabel="Recenter">
+      <ControlButton ariaLabel="Recenter" onClick={onRecenter}>
         <RecenterGlyph />
-      </ControlButton>
-      <ControlButton ariaLabel="Layers">
-        <LayersGlyph />
-      </ControlButton>
-      <ControlButton ariaLabel="Draw">
-        <DrawGlyph />
       </ControlButton>
     </div>
   );
 }
 
-function ControlButton({ ariaLabel, children }: { ariaLabel: string; children: ReactNode }) {
+function ControlButton({
+  ariaLabel,
+  onClick,
+  children
+}: {
+  ariaLabel: string;
+  onClick: () => void;
+  children: ReactNode;
+}) {
   return (
     <button
       aria-label={ariaLabel}
+      onClick={onClick}
       className="flex h-8 w-8 items-center justify-center rounded-md border border-base-content/12 bg-base-100/95 shadow-sm hover:bg-base-content/[0.05]"
       type="button"
     >
@@ -377,21 +489,24 @@ function RecenterGlyph() {
   );
 }
 
-function LayersGlyph() {
+function FullscreenGlyph() {
   return (
-    <svg fill="none" height="14" stroke="#18211c" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="14">
-      <path d="M12 2 2 7l10 5 10-5z" />
-      <path d="m2 17 10 5 10-5" />
-      <path d="m2 12 10 5 10-5" />
+    <svg fill="none" height="15" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="15">
+      <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+      <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
+      <path d="M3 16v3a2 2 0 0 0 2 2h3" />
+      <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
     </svg>
   );
 }
 
-function DrawGlyph() {
+function ExitFullscreenGlyph() {
   return (
-    <svg fill="none" height="14" stroke="#18211c" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="14">
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4z" />
+    <svg fill="none" height="15" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" viewBox="0 0 24 24" width="15">
+      <path d="M8 3v3a2 2 0 0 1-2 2H3" />
+      <path d="M21 8h-3a2 2 0 0 1-2-2V3" />
+      <path d="M3 16h3a2 2 0 0 1 2 2v3" />
+      <path d="M16 21v-3a2 2 0 0 1 2-2h3" />
     </svg>
   );
 }
