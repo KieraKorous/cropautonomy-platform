@@ -13,11 +13,33 @@ import {
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
-// Full IANA timezone list for the dropdown, straight from the runtime. Falls
-// back to empty if the engine lacks supportedValuesOf (very old browsers) — the
-// current value is always rendered as an option regardless.
-const intlTz = Intl as unknown as { supportedValuesOf?: (key: string) => string[] };
-const TIMEZONES: string[] = intlTz.supportedValuesOf ? intlTz.supportedValuesOf("timeZone") : [];
+// Quick-pick timezones, labeled by abbreviation (PST, EST, …). The stored value
+// is always the IANA name (what the DB column holds + what tz-lookup returns);
+// the abbreviation is just the label. An auto-filled zone outside this list is
+// rendered as its own option at render time.
+const COMMON_ZONES: { tz: string; region: string }[] = [
+  { tz: "America/New_York", region: "Eastern" },
+  { tz: "America/Chicago", region: "Central" },
+  { tz: "America/Denver", region: "Mountain" },
+  { tz: "America/Phoenix", region: "Arizona" },
+  { tz: "America/Los_Angeles", region: "Pacific" },
+  { tz: "America/Anchorage", region: "Alaska" },
+  { tz: "Pacific/Honolulu", region: "Hawaii" }
+];
+
+// Current short abbreviation for an IANA zone (DST-aware), e.g. "PST" / "PDT".
+// Falls back to the raw name / GMT offset when no abbreviation exists.
+function tzAbbrev(tz: string): string {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      timeZoneName: "short"
+    }).formatToParts(new Date());
+    return parts.find((p) => p.type === "timeZoneName")?.value ?? tz;
+  } catch {
+    return tz;
+  }
+}
 // Continental-US framing for a farm that has no pin yet — zoomed out enough that
 // the operator can find their ground with a click or two.
 const DEFAULT_VIEW = { longitude: -95.57, latitude: 39.835, zoom: 3.4 };
@@ -58,6 +80,9 @@ export function FarmFormModal({
   // Flips true once the user edits an address field, so we geocode their input
   // and not the address we seed when an existing farm opens.
   const addressDirtyRef = useRef(false);
+  // Flips true on any user-driven location change (map click, drag, geocode), so
+  // we re-derive the timezone — but not when we seed an existing farm's pin.
+  const locationDirtyRef = useRef(false);
 
   const [saving, setSaving] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -98,8 +123,32 @@ export function FarmFormModal({
     setRecenter(null);
     setGeocoding(false);
     addressDirtyRef.current = false;
+    locationDirtyRef.current = false;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, farmId]);
+
+  // Move the pin from a user action (map click / drag / geocode) and flag it so
+  // the timezone re-derives. Seeding an existing farm's pin uses setLocation
+  // directly, so it never trips this.
+  function setLocationFromUser(coords: Coords) {
+    locationDirtyRef.current = true;
+    setLocation(coords);
+  }
+
+  // Re-derive the timezone whenever the user fixes the location. Debounced so a
+  // flurry of map clicks coalesces into one lookup; skipped on the seeded pin.
+  useEffect(() => {
+    if (!location || !locationDirtyRef.current) return;
+    let cancelled = false;
+    const handle = setTimeout(async () => {
+      const tz = await timezoneForCoordsAction(location.lat, location.lng);
+      if (!cancelled && tz) setTimezone(tz);
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [location]);
 
   // Geocode the typed address (debounced) and fly the map + drop the pin there.
   // Only runs after the user actually edits an address field — never on the seed.
@@ -129,11 +178,9 @@ export function FarmFormModal({
       const coords = data.features?.[0]?.geometry?.coordinates;
       if (!coords) return;
       const [lng, lat] = coords;
-      setLocation({ lat, lng });
+      setLocationFromUser({ lat, lng });
       setRecenter({ lng, lat, zoom: 13 });
-      // Auto-fill the timezone from the resolved location.
-      const tz = await timezoneForCoordsAction(lat, lng);
-      if (tz) setTimezone(tz);
+      // Timezone is re-derived by the location effect.
     } catch {
       // Network/geocode failures are non-fatal — the manual pin still works.
     } finally {
@@ -317,14 +364,16 @@ export function FarmFormModal({
                 className={inputClass}
               >
                 <option value="">Select timezone…</option>
-                {/* Keep a seeded/auto-filled value selectable even if the runtime
-                    list doesn't contain it. */}
-                {timezone && !TIMEZONES.includes(timezone) ? (
-                  <option value={timezone}>{timezone}</option>
+                {/* An auto-filled / seeded zone outside the quick-pick list stays
+                    selectable, labeled by its own abbreviation. */}
+                {timezone && !COMMON_ZONES.some((z) => z.tz === timezone) ? (
+                  <option value={timezone}>
+                    {tzAbbrev(timezone)} · {timezone}
+                  </option>
                 ) : null}
-                {TIMEZONES.map((tz) => (
-                  <option key={tz} value={tz}>
-                    {tz}
+                {COMMON_ZONES.map((z) => (
+                  <option key={z.tz} value={z.tz}>
+                    {tzAbbrev(z.tz)} · {z.region}
                   </option>
                 ))}
               </select>
@@ -370,7 +419,7 @@ export function FarmFormModal({
                   recenterTo={recenter}
                   footerLeft={null}
                   footerRight={null}
-                  onMapClick={(c) => setLocation({ lat: c.lat, lng: c.lng })}
+                  onMapClick={(c) => setLocationFromUser({ lat: c.lat, lng: c.lng })}
                 >
                   {location ? (
                     <Marker
@@ -379,7 +428,7 @@ export function FarmFormModal({
                       anchor="bottom"
                       draggable
                       onDragEnd={(e: MarkerDragEvent) =>
-                        setLocation({ lat: e.lngLat.lat, lng: e.lngLat.lng })
+                        setLocationFromUser({ lat: e.lngLat.lat, lng: e.lngLat.lng })
                       }
                     >
                       <span className="text-primary drop-shadow">
