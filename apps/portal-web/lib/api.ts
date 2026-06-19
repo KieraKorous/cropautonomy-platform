@@ -482,18 +482,62 @@ export interface FieldSummary {
   id: string;
   farmId: string;
   name: string;
+  description: string | null;
   areaAcres: number | null;
   boundary: GeoJsonPolygon | null;
   centroid: GeoJsonPoint | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface ListFieldsResponse {
+  orgId: string;
+  // Whether the current user may create/edit/delete fields (fields.update).
+  canManage: boolean;
   fields: FieldSummary[];
 }
 
-// The operator's org-scoped fields for the Overview map + acreage stats.
+// The fields a field create/edit form writes. `centroid` is the pin set via the
+// map: null clears it, { lat, lng } sets it. `boundary` isn't editable here yet.
+// Every field optional on update; `name` + `farmId` are required on create
+// (enforced by createField's typing).
+export interface FieldWrite {
+  name?: string;
+  farmId?: string;
+  description?: string | null;
+  areaAcres?: number | null;
+  centroid?: { lat: number; lng: number } | null;
+}
+
+// The operator's org-scoped fields for the Overview map + acreage stats + the
+// /fields management page.
 export function listFields(): Promise<ListFieldsResponse> {
   return apiFetch<ListFieldsResponse>("/v1/fields");
+}
+
+// Create a field under a farm. Requires fields.create (manager+).
+export function createField(body: FieldWrite & { name: string; farmId: string }): Promise<FieldSummary> {
+  return apiFetch<FieldSummary>("/v1/fields", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body)
+  });
+}
+
+// Edit any subset of a field's columns. centroid:null clears the pin;
+// { lat, lng } rewrites it. Requires fields.update (manager+).
+export function updateField(id: string, patch: FieldWrite): Promise<FieldSummary> {
+  return apiFetch<FieldSummary>(`/v1/fields/${id}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(patch)
+  });
+}
+
+// Permanent delete. 409s if the field still has captures. Requires
+// fields.delete (owner only, per the current role grants).
+export function deleteField(id: string): Promise<{ fieldId: string; deleted: boolean }> {
+  return apiFetch(`/v1/fields/${id}`, { method: "DELETE" });
 }
 
 // --- Farms ----------------------------------------------------------------

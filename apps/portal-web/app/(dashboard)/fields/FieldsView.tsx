@@ -1,0 +1,194 @@
+"use client";
+
+import { useState } from "react";
+import { FarmIcon, GridIcon, MapPinIcon, PlusIcon } from "@gaia/ui";
+import type { FarmSummary, FieldSummary } from "../../../lib/api";
+import { FieldFormModal } from "./FieldFormModal";
+
+// Fields grouped by farm: a section per farm (heading + field/acre rollup) with
+// its fields as cards beneath and a per-section "New field" tile that pre-selects
+// that farm. Fields + farms are fetched on the server and passed in, so opening a
+// modal never re-hits the API. After a create/edit/delete the server action
+// revalidates /fields, so this list (and the open modal's field) reflect changes.
+type ModalState =
+  | { kind: "new"; farmId: string }
+  | { kind: "edit"; fieldId: string }
+  | null;
+
+export function FieldsView({
+  fields,
+  farms,
+  canManage
+}: {
+  fields: FieldSummary[];
+  farms: FarmSummary[];
+  canManage: boolean;
+}) {
+  const [modal, setModal] = useState<ModalState>(null);
+
+  // Resolve the edited field from the current list so a post-edit refresh reflows
+  // the modal (or closes it if the field was deleted out from under it).
+  const selected =
+    modal?.kind === "edit" ? fields.find((f) => f.id === modal.fieldId) ?? null : null;
+  // The farm a "new field" is seeded into; used to default the form's selector.
+  const seededFarmId = modal?.kind === "new" ? modal.farmId : null;
+
+  // Fields need a farm to hang off — there's nothing to manage until one exists.
+  if (farms.length === 0) {
+    return <NoFarmsState canManage={canManage} />;
+  }
+
+  return (
+    <>
+      <div className="flex flex-col gap-8">
+        {farms.map((farm) => {
+          const farmFields = fields.filter((f) => f.farmId === farm.id);
+          const acres = farmFields.reduce((sum, f) => sum + (f.areaAcres ?? 0), 0);
+          return (
+            <section key={farm.id} className="flex flex-col gap-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-base-content/10 pb-2.5">
+                <div className="flex items-center gap-2.5">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10 text-primary">
+                    <FarmIcon size={15} />
+                  </span>
+                  <h2 className="text-base font-semibold text-neutral">{farm.name}</h2>
+                </div>
+                <span className="text-xs text-base-content/55">
+                  <span className="font-semibold text-neutral">{farmFields.length}</span>{" "}
+                  {farmFields.length === 1 ? "field" : "fields"}
+                  {acres > 0 ? (
+                    <>
+                      {" · "}
+                      <span className="font-semibold text-neutral">
+                        {acres.toLocaleString("en-US", { maximumFractionDigits: 1 })}
+                      </span>{" "}
+                      acres
+                    </>
+                  ) : null}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {farmFields.map((field) => (
+                  <FieldCard
+                    key={field.id}
+                    field={field}
+                    onOpen={canManage ? () => setModal({ kind: "edit", fieldId: field.id }) : undefined}
+                  />
+                ))}
+
+                {canManage ? (
+                  <button
+                    type="button"
+                    onClick={() => setModal({ kind: "new", farmId: farm.id })}
+                    className="group flex min-h-[8.5rem] flex-col items-center justify-center gap-2.5 rounded-xl border-2 border-dashed border-base-content/20 bg-base-100 text-base-content/55 transition-colors hover:border-primary/40 hover:bg-base-content/[0.02] hover:text-primary"
+                  >
+                    <span className="flex h-11 w-11 items-center justify-center rounded-full bg-base-content/[0.04] text-base-content/45 transition-colors group-hover:bg-primary/10 group-hover:text-primary">
+                      <PlusIcon size={22} />
+                    </span>
+                    <span className="text-sm font-medium">New field</span>
+                  </button>
+                ) : farmFields.length === 0 ? (
+                  <p className="col-span-full rounded-xl border border-dashed border-base-content/15 bg-base-100 px-4 py-5 text-sm text-base-content/55">
+                    No fields on this farm yet.
+                  </p>
+                ) : null}
+              </div>
+            </section>
+          );
+        })}
+      </div>
+
+      <FieldFormModal
+        open={modal !== null}
+        field={selected}
+        farms={farms}
+        seededFarmId={seededFarmId}
+        onClose={() => setModal(null)}
+      />
+    </>
+  );
+}
+
+// One field card: name, acreage, and whether it has a map pin. Becomes a
+// clickable button (opens the edit modal) when the viewer can manage fields;
+// otherwise it's a static panel.
+function FieldCard({ field, onOpen }: { field: FieldSummary; onOpen?: () => void }) {
+  const acres = field.areaAcres ?? 0;
+
+  const body = (
+    <>
+      <div className="flex items-center gap-3">
+        <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <GridIcon size={18} />
+        </span>
+        <div className="flex min-w-0 flex-col">
+          <span className="truncate text-sm font-semibold text-neutral" title={field.name}>
+            {field.name}
+          </span>
+          <span className="flex items-center gap-1 truncate text-xs text-base-content/55">
+            <MapPinIcon size={12} />
+            <span className="truncate">{field.centroid ? "Pinned" : "No pin set"}</span>
+          </span>
+        </div>
+      </div>
+
+      {field.description ? (
+        <p className="line-clamp-2 text-sm text-base-content/65">{field.description}</p>
+      ) : null}
+
+      <div className="mt-auto flex items-center gap-4 border-t border-base-content/10 pt-3 text-xs text-base-content/55">
+        <span>
+          <span className="font-semibold text-neutral">
+            {acres > 0 ? acres.toLocaleString("en-US", { maximumFractionDigits: 1 }) : "—"}
+          </span>{" "}
+          acres
+        </span>
+      </div>
+    </>
+  );
+
+  const className =
+    "flex min-h-[8.5rem] flex-col gap-3 rounded-xl border border-base-content/10 bg-base-100 p-4 text-left";
+
+  if (!onOpen) {
+    return <div className={className}>{body}</div>;
+  }
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className={`${className} transition-colors hover:border-primary/40`}
+    >
+      {body}
+    </button>
+  );
+}
+
+// Shown when the org has no farms yet — fields need a farm to belong to.
+function NoFarmsState({ canManage }: { canManage: boolean }) {
+  return (
+    <section className="flex flex-col items-start gap-4 rounded-xl border border-dashed border-base-content/20 bg-base-100 px-6 py-10">
+      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+        <GridIcon size={24} />
+      </span>
+      <div className="flex flex-col gap-1.5">
+        <h2 className="text-base font-semibold text-neutral">No farms yet</h2>
+        <p className="max-w-xl text-sm text-base-content/65">
+          {canManage
+            ? "Fields belong to a farm. Add a farm first, then come back to map its fields."
+            : "No farms have been set up for this organization yet. An admin or manager can add one before fields can be created."}
+        </p>
+      </div>
+      {canManage ? (
+        <a
+          href="/farms"
+          className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3.5 py-2 text-sm font-semibold text-primary-content transition-colors hover:bg-primary/90"
+        >
+          <FarmIcon size={16} />
+          Go to Farms
+        </a>
+      ) : null}
+    </section>
+  );
+}
