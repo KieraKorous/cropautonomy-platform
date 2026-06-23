@@ -128,7 +128,7 @@ function FieldCard({ field, onOpen }: { field: FieldSummary; onOpen?: () => void
           </span>
           <span className="flex items-center gap-1 truncate text-xs text-base-content/55">
             <MapPinIcon size={12} />
-            <span className="truncate">{field.centroid ? "Pinned" : "No pin set"}</span>
+            <span className="truncate">{field.boundary ? "Mapped" : "No boundary"}</span>
           </span>
         </div>
       </div>

@@ -2,23 +2,41 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { MarkerDragEvent } from "react-map-gl/mapbox";
-import { MapPanel, Marker, MapPinIcon } from "@gaia/ui";
+import { Layer, MapPanel, Marker, Source } from "@gaia/ui";
 import type { FarmSummary, FieldSummary, FieldWrite } from "../../../lib/api";
 import { createFieldAction, deleteFieldAction, updateFieldAction } from "./actions";
+import {
+  acresFromDimensions,
+  boxCorners,
+  boxPolygon,
+  dimensionsFromBoundary,
+  resizeFromCorner,
+  type Coords
+} from "./fieldGeometry";
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
-// Continental-US framing for a field that has no pin yet — zoomed out enough that
+// Continental-US framing for a field that has no box yet — zoomed out enough that
 // the operator can find their ground with a click or two.
 const DEFAULT_VIEW = { longitude: -95.57, latitude: 39.835, zoom: 3.4 };
+// Starter box dropped when the operator clicks the map before typing dimensions
+// (≈10 acres). They resize from there by dragging or retyping.
+const DEFAULT_DIM_FT = 660;
 
-type Coords = { lat: number; lng: number };
+const fillPaint = { "fill-color": "#7c9e54", "fill-opacity": 0.22 } as const;
+const strokePaint = { "line-color": "#5a7d3a", "line-width": 2, "line-opacity": 0.9 } as const;
+
+// A positive number from a dimension input, or null when blank/invalid.
+function parseDim(value: string): number | null {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
 
 // Create / edit a field. Native <dialog> (Escape + backdrop close), driven by the
 // `open` flag from FieldsView. `field === null` while open = create mode; a field
-// = edit mode. Submitting goes through a server action that revalidates /fields,
-// so the grid reflects the change after onClose. Fields capture a manual acreage
-// + an optional centroid pin; the boundary polygon isn't editable here yet.
+// = edit mode. The size is entered as length × width (feet), which draws an
+// axis-aligned box on the map; the operator can drag the box to move it or drag a
+// corner to resize. Acreage, centroid, and boundary all derive from the box.
 export function FieldFormModal({
   open,
   field,
@@ -38,10 +56,16 @@ export function FieldFormModal({
   const [name, setName] = useState("");
   const [farmId, setFarmId] = useState("");
   const [description, setDescription] = useState("");
-  // Acreage is a free-text input so an empty field stays empty (not 0); parsed on
-  // submit. null when blank.
-  const [acres, setAcres] = useState("");
-  const [location, setLocation] = useState<Coords | null>(null);
+  // Length (N–S) and width (E–W) in feet, as free text so a blank stays blank.
+  const [lengthFt, setLengthFt] = useState("");
+  const [widthFt, setWidthFt] = useState("");
+  // Box center; null = no box placed yet (acreage can still save from L × W).
+  const [center, setCenter] = useState<Coords | null>(null);
+  // Fed to MapPanel.recenterTo to fly in when the box is first dropped from the
+  // zoomed-out continental view (a small box would otherwise be sub-pixel).
+  const [recenterTo, setRecenterTo] = useState<{ lng: number; lat: number; zoom?: number } | null>(
+    null
+  );
 
   const [saving, setSaving] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -55,27 +79,63 @@ export function FieldFormModal({
     if (!open && dialog.open) dialog.close();
   }, [open]);
 
-  // Seed the form when the dialog opens (or switches to a different field). Keyed
-  // on the field id + seeded farm + open so an in-place refresh of the field prop
-  // doesn't clobber edits the user is mid-way through.
+  // Seed the form when the dialog opens (or switches to a different field).
+  // Dimensions + center are reconstructed from the stored boundary box.
   const fieldId = field?.id;
   useEffect(() => {
     if (!open) return;
     setName(field?.name ?? "");
     setFarmId(field?.farmId ?? seededFarmId ?? farms[0]?.id ?? "");
     setDescription(field?.description ?? "");
-    setAcres(field?.areaAcres != null ? String(field.areaAcres) : "");
-    setLocation(
-      field?.centroid
-        ? { lng: field.centroid.coordinates[0], lat: field.centroid.coordinates[1] }
-        : null
-    );
+    const dims = dimensionsFromBoundary(field?.boundary ?? null);
+    if (dims) {
+      setLengthFt(String(Math.round(dims.lengthFt)));
+      setWidthFt(String(Math.round(dims.widthFt)));
+      setCenter(dims.center);
+    } else {
+      setLengthFt("");
+      setWidthFt("");
+      setCenter(null);
+    }
     setSaving(false);
     setConfirmingDelete(false);
     setDeleting(false);
     setError(null);
+    setRecenterTo(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, fieldId, seededFarmId]);
+
+  const length = parseDim(lengthFt);
+  const width = parseDim(widthFt);
+  // The box exists once it's placed and both dimensions are valid.
+  const hasBox = center != null && length != null && width != null;
+  const corners = hasBox ? boxCorners(center, length, width) : null;
+  const acres = length != null && width != null ? acresFromDimensions(length, width) : null;
+
+  // Click the map to place / move the box. Seeds default dimensions if the
+  // operator hasn't typed any yet, so a box appears immediately.
+  function placeBox(at: Coords) {
+    if (length == null) setLengthFt(String(DEFAULT_DIM_FT));
+    if (width == null) setWidthFt(String(DEFAULT_DIM_FT));
+    // Fly in only on the first drop (from the far-out view); later clicks just
+    // move the box without yanking the user's zoom.
+    if (center == null) setRecenterTo({ lng: at.lng, lat: at.lat, zoom: 14 });
+    setCenter(at);
+  }
+
+  // Drag a corner → resize against the diagonally opposite corner (kept fixed),
+  // updating both the center and the dimension inputs live.
+  function onCornerDrag(index: number, lngLat: { lng: number; lat: number }) {
+    if (!corners) return;
+    const opp = corners[(index + 2) % 4];
+    const next = resizeFromCorner(
+      { lat: lngLat.lat, lng: lngLat.lng },
+      { lat: opp[1], lng: opp[0] }
+    );
+    setCenter(next.center);
+    setLengthFt(String(Math.round(next.lengthFt)));
+    setWidthFt(String(Math.round(next.widthFt)));
+  }
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -88,24 +148,15 @@ export function FieldFormModal({
       setError("Pick a farm for this field.");
       return;
     }
-    // Acreage is optional; reject only a non-empty value that isn't a number.
-    let areaAcres: number | null = null;
-    if (acres.trim()) {
-      const parsed = Number(acres);
-      if (!Number.isFinite(parsed) || parsed < 0) {
-        setError("Acreage must be a positive number.");
-        return;
-      }
-      areaAcres = parsed;
-    }
     setSaving(true);
     setError(null);
     const body: FieldWrite & { name: string; farmId: string } = {
       name: trimmedName,
       farmId,
       description: description.trim() || null,
-      areaAcres,
-      centroid: location
+      areaAcres: acres,
+      centroid: hasBox ? center : null,
+      boundary: hasBox ? boxPolygon(center, length, width) : null
     };
     try {
       if (isEdit && field) {
@@ -176,37 +227,68 @@ export function FieldFormModal({
             />
           </Field>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Farm" required>
-              <select
-                value={farmId}
-                onChange={(e) => setFarmId(e.target.value)}
-                className={inputClass}
-              >
-                <option value="" disabled>
-                  Select a farm…
+          <Field label="Farm" required>
+            <select
+              value={farmId}
+              onChange={(e) => setFarmId(e.target.value)}
+              className={inputClass}
+            >
+              <option value="" disabled>
+                Select a farm…
+              </option>
+              {farms.map((farm) => (
+                <option key={farm.id} value={farm.id}>
+                  {farm.name}
                 </option>
-                {farms.map((farm) => (
-                  <option key={farm.id} value={farm.id}>
-                    {farm.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
+              ))}
+            </select>
+          </Field>
 
-            <Field label="Size (acres)">
-              <input
-                type="number"
-                inputMode="decimal"
-                min={0}
-                step="any"
-                value={acres}
-                onChange={(e) => setAcres(e.target.value)}
-                placeholder="e.g. 41.3"
-                className={inputClass}
-              />
-            </Field>
-          </div>
+          {/* Dimensions → acreage */}
+          <fieldset className="flex flex-col gap-3">
+            <legend className="text-xs font-semibold uppercase tracking-wider text-base-content/45">
+              Size
+            </legend>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Length (ft)">
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  step="any"
+                  value={lengthFt}
+                  onChange={(e) => setLengthFt(e.target.value)}
+                  placeholder="e.g. 1320"
+                  className={inputClass}
+                />
+              </Field>
+              <Field label="Width (ft)">
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  step="any"
+                  value={widthFt}
+                  onChange={(e) => setWidthFt(e.target.value)}
+                  placeholder="e.g. 1320"
+                  className={inputClass}
+                />
+              </Field>
+            </div>
+            <p className="text-xs text-base-content/55">
+              {acres != null ? (
+                <>
+                  ≈{" "}
+                  <span className="font-semibold text-neutral">
+                    {acres.toLocaleString("en-US", { maximumFractionDigits: 2 })}
+                  </span>{" "}
+                  acres
+                </>
+              ) : (
+                "Enter length and width to size the field."
+              )}
+            </p>
+          </fieldset>
 
           <Field label="Description">
             <textarea
@@ -219,19 +301,19 @@ export function FieldFormModal({
             />
           </Field>
 
-          {/* Location pin */}
+          {/* Boundary box */}
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold uppercase tracking-wider text-base-content/45">
-                Location pin
+                Boundary
               </span>
-              {location ? (
+              {hasBox ? (
                 <button
                   type="button"
-                  onClick={() => setLocation(null)}
+                  onClick={() => setCenter(null)}
                   className="text-xs font-medium text-base-content/55 transition-colors hover:text-error"
                 >
-                  Clear pin
+                  Clear box
                 </button>
               ) : null}
             </div>
@@ -240,47 +322,76 @@ export function FieldFormModal({
                 <MapPanel
                   key={fieldId ?? "new"}
                   header={{
-                    title: "Centroid",
-                    meta: location
-                      ? `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`
-                      : "Click the map to drop a pin"
+                    title: "Field box",
+                    meta: hasBox
+                      ? "Drag the box to move · drag a corner to resize"
+                      : "Click the map to place the field"
                   }}
                   initialViewState={
-                    location
-                      ? { longitude: location.lng, latitude: location.lat, zoom: 12 }
+                    center
+                      ? { longitude: center.lng, latitude: center.lat, zoom: 13 }
                       : DEFAULT_VIEW
                   }
                   mapboxAccessToken={MAPBOX_TOKEN}
-                  height={240}
+                  height={260}
                   enableFullscreen
+                  recenterTo={recenterTo}
                   recenterTarget={
-                    location ? { lng: location.lng, lat: location.lat, zoom: 13 } : null
+                    center ? { lng: center.lng, lat: center.lat, zoom: 14 } : null
                   }
                   footerLeft={null}
                   footerRight={null}
-                  onMapClick={(c) => setLocation({ lat: c.lat, lng: c.lng })}
+                  onMapClick={(c) => placeBox({ lat: c.lat, lng: c.lng })}
                 >
-                  {location ? (
-                    <Marker
-                      latitude={location.lat}
-                      longitude={location.lng}
-                      anchor="bottom"
-                      draggable
-                      onDragEnd={(e: MarkerDragEvent) =>
-                        setLocation({ lat: e.lngLat.lat, lng: e.lngLat.lng })
-                      }
-                    >
-                      <span className="text-primary drop-shadow">
-                        <MapPinIcon size={28} />
-                      </span>
-                    </Marker>
+                  {hasBox && corners ? (
+                    <>
+                      <Source
+                        id="field-box"
+                        type="geojson"
+                        data={{
+                          type: "Feature",
+                          properties: {},
+                          geometry: boxPolygon(center, length, width)
+                        }}
+                      >
+                        <Layer id="field-box-fill" type="fill" paint={fillPaint} />
+                        <Layer id="field-box-stroke" type="line" paint={strokePaint} />
+                      </Source>
+
+                      {/* Center handle — drag to move the whole box. */}
+                      <Marker
+                        latitude={center.lat}
+                        longitude={center.lng}
+                        anchor="center"
+                        draggable
+                        onDrag={(e: MarkerDragEvent) =>
+                          setCenter({ lat: e.lngLat.lat, lng: e.lngLat.lng })
+                        }
+                      >
+                        <span className="block h-3.5 w-3.5 cursor-move rounded-full border-2 border-base-100 bg-primary shadow" />
+                      </Marker>
+
+                      {/* Corner handles — drag to resize. */}
+                      {corners.map((c, i) => (
+                        <Marker
+                          key={i}
+                          latitude={c[1]}
+                          longitude={c[0]}
+                          anchor="center"
+                          draggable
+                          onDrag={(e: MarkerDragEvent) => onCornerDrag(i, e.lngLat)}
+                        >
+                          <span className="block h-3 w-3 cursor-pointer rounded-sm border-2 border-primary bg-base-100 shadow" />
+                        </Marker>
+                      ))}
+                    </>
                   ) : null}
                 </MapPanel>
               ) : null
             ) : (
               <p className="rounded-lg border border-dashed border-base-content/20 bg-base-content/[0.02] px-4 py-3 text-xs text-base-content/55">
-                Set <code className="rounded bg-base-content/[0.06] px-1 py-0.5">NEXT_PUBLIC_MAPBOX_TOKEN</code> to drop a
-                location pin. The field still saves without it.
+                Set <code className="rounded bg-base-content/[0.06] px-1 py-0.5">NEXT_PUBLIC_MAPBOX_TOKEN</code> to draw a
+                boundary. The field still saves without it.
               </p>
             )}
           </div>

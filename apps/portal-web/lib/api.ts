@@ -497,16 +497,18 @@ interface ListFieldsResponse {
   fields: FieldSummary[];
 }
 
-// The fields a field create/edit form writes. `centroid` is the pin set via the
-// map: null clears it, { lat, lng } sets it. `boundary` isn't editable here yet.
-// Every field optional on update; `name` + `farmId` are required on create
-// (enforced by createField's typing).
+// The fields a field create/edit form writes. The boundary is an axis-aligned
+// rectangle the operator draws from length × width; `centroid` is its center and
+// `areaAcres` its derived size. All three are written together (or cleared
+// together with null). Every field optional on update; `name` + `farmId` are
+// required on create (enforced by createField's typing).
 export interface FieldWrite {
   name?: string;
   farmId?: string;
   description?: string | null;
   areaAcres?: number | null;
   centroid?: { lat: number; lng: number } | null;
+  boundary?: GeoJsonPolygon | null;
 }
 
 // The operator's org-scoped fields for the Overview map + acreage stats + the

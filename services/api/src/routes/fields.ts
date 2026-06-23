@@ -30,11 +30,20 @@ interface FieldListRow {
   updated_at: string;
 }
 
-// A lat/lng centroid for the field. null clears it; an object (re)writes the
-// PostGIS point. boundary (the field polygon) is left untouched this iteration —
-// fields capture a manual acreage + an optional centroid pin, not a drawn shape.
+// A lat/lng centroid for the field — the center of its boundary box. null clears
+// it; an object (re)writes the PostGIS point.
 const centroidSchema = z
   .object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180) })
+  .nullable();
+
+// The field's boundary, an axis-aligned rectangle the operator draws/resizes in
+// the portal. A GeoJSON Polygon; the client derives it from length × width +
+// center. null clears it. Validated loosely — the editor is the contract.
+const boundarySchema = z
+  .object({
+    type: z.literal("Polygon"),
+    coordinates: z.array(z.array(z.tuple([z.number(), z.number()])).min(4)).min(1)
+  })
   .nullable();
 
 // area_acres is numeric(10,3) in the DB; cap well under its 9,999,999.999 max.
@@ -45,7 +54,8 @@ const createFieldSchema = z.object({
   farmId: z.string().uuid(),
   description: z.string().max(2000).nullable().optional(),
   areaAcres: acresSchema.optional(),
-  centroid: centroidSchema.optional()
+  centroid: centroidSchema.optional(),
+  boundary: boundarySchema.optional()
 });
 
 const updateFieldSchema = z
@@ -54,7 +64,8 @@ const updateFieldSchema = z
     farmId: z.string().uuid().optional(),
     description: z.string().max(2000).nullable().optional(),
     areaAcres: acresSchema.optional(),
-    centroid: centroidSchema.optional()
+    centroid: centroidSchema.optional(),
+    boundary: boundarySchema.optional()
   })
   .refine((v) => Object.keys(v).length > 0, {
     message: "At least one field must be provided."
@@ -68,6 +79,18 @@ function centroidToEwkt(centroid: FieldWrite["centroid"]): string | null {
   return centroid ? `SRID=4326;POINT(${centroid.lng} ${centroid.lat})` : null;
 }
 
+// EWKT for the boundary polygon's exterior ring. Defensively closes the ring
+// (PostGIS rejects an open ring). null when the field has no boundary.
+function boundaryToEwkt(boundary: FieldWrite["boundary"]): string | null {
+  if (!boundary) return null;
+  const ring = [...boundary.coordinates[0]];
+  const [fx, fy] = ring[0];
+  const [lx, ly] = ring[ring.length - 1];
+  if (fx !== lx || fy !== ly) ring.push(ring[0]);
+  const pts = ring.map(([lng, lat]) => `${lng} ${lat}`).join(", ");
+  return `SRID=4326;POLYGON((${pts}))`;
+}
+
 // Map the supplied (camelCase) write keys onto the snake_case field columns,
 // writing ONLY the keys the caller provided so a PATCH leaves the rest intact.
 function buildFieldPatch(body: Partial<FieldWrite>): Record<string, unknown> {
@@ -77,6 +100,7 @@ function buildFieldPatch(body: Partial<FieldWrite>): Record<string, unknown> {
   if (body.description !== undefined) patch.description = body.description;
   if (body.areaAcres !== undefined) patch.area_acres = body.areaAcres;
   if (body.centroid !== undefined) patch.centroid = centroidToEwkt(body.centroid);
+  if (body.boundary !== undefined) patch.boundary = boundaryToEwkt(body.boundary);
   return patch;
 }
 
@@ -170,7 +194,8 @@ const fieldsRoutes: FastifyPluginAsync = async (app) => {
         name: body.name,
         description: body.description ?? null,
         area_acres: body.areaAcres ?? null,
-        centroid: centroidToEwkt(body.centroid)
+        centroid: centroidToEwkt(body.centroid),
+        boundary: boundaryToEwkt(body.boundary)
       })
       .select("id")
       .single();
