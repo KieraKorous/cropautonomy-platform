@@ -111,14 +111,70 @@ export function FieldsView({
   );
 }
 
-// One field card: name, acreage, and whether it has a map pin. Becomes a
-// clickable button (opens the edit modal) when the viewer can manage fields;
+const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
+
+// A lightweight Mapbox Static Images URL for a field preview: the boundary box
+// overlaid on satellite imagery, auto-fit to the box (or a pin at the centroid
+// when there's no box). Returns null when there's no token or no geometry — far
+// cheaper than mounting a live MapPanel per card.
+function fieldPreviewUrl(field: FieldSummary): string | null {
+  if (!MAPBOX_TOKEN) return null;
+  const size = "320x140@2x";
+  const style = "mapbox/satellite-streets-v12";
+  if (field.boundary) {
+    const feature = {
+      type: "Feature" as const,
+      properties: {
+        stroke: "#a3e635",
+        "stroke-width": 2,
+        "stroke-opacity": 0.95,
+        fill: "#84cc16",
+        "fill-opacity": 0.3
+      },
+      geometry: field.boundary
+    };
+    const overlay = `geojson(${encodeURIComponent(JSON.stringify(feature))})`;
+    return `https://api.mapbox.com/styles/v1/${style}/static/${overlay}/auto/${size}?padding=22&access_token=${MAPBOX_TOKEN}`;
+  }
+  if (field.centroid) {
+    const [lng, lat] = field.centroid.coordinates;
+    return `https://api.mapbox.com/styles/v1/${style}/static/pin-s+84cc16(${lng},${lat})/${lng},${lat},13/${size}?access_token=${MAPBOX_TOKEN}`;
+  }
+  return null;
+}
+
+// Per-card map preview. Satellite thumbnail when the field has geometry; a muted
+// placeholder otherwise. Lazy-loaded so off-screen cards defer their requests.
+function FieldThumbnail({ field }: { field: FieldSummary }) {
+  const url = fieldPreviewUrl(field);
+  if (!url) {
+    return (
+      <div className="flex h-28 w-full items-center justify-center rounded-lg border border-base-content/10 bg-base-content/[0.03] text-base-content/35">
+        <MapPinIcon size={18} />
+      </div>
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={url}
+      alt={`Map preview of ${field.name}`}
+      loading="lazy"
+      className="h-28 w-full rounded-lg border border-base-content/10 object-cover"
+    />
+  );
+}
+
+// One field card: a map preview, name, acreage, and whether it's mapped. Becomes
+// a clickable button (opens the edit modal) when the viewer can manage fields;
 // otherwise it's a static panel.
 function FieldCard({ field, onOpen }: { field: FieldSummary; onOpen?: () => void }) {
   const acres = field.areaAcres ?? 0;
 
   const body = (
     <>
+      <FieldThumbnail field={field} />
+
       <div className="flex items-center gap-3">
         <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
           <GridIcon size={18} />
