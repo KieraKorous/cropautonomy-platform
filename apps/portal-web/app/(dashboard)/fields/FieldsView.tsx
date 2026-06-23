@@ -103,6 +103,7 @@ export function FieldsView({
         open={modal !== null}
         field={selected}
         farms={farms}
+        fields={fields}
         seededFarmId={seededFarmId}
         onClose={() => setModal(null)}
       />

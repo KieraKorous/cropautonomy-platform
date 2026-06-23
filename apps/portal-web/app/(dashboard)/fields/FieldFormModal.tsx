@@ -2,6 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { MarkerDragEvent } from "react-map-gl/mapbox";
+import type {
+  FillLayerSpecification,
+  LineLayerSpecification,
+  SymbolLayerSpecification
+} from "mapbox-gl";
 import { Layer, MapPanel, Marker, Source } from "@gaia/ui";
 import type { FarmSummary, FieldSummary, FieldWrite } from "../../../lib/api";
 import { createFieldAction, deleteFieldAction, updateFieldAction } from "./actions";
@@ -26,6 +31,30 @@ const DEFAULT_DIM_FT = 660;
 const fillPaint = { "fill-color": "#7c9e54", "fill-opacity": 0.22 } as const;
 const strokePaint = { "line-color": "#5a7d3a", "line-width": 2, "line-opacity": 0.9 } as const;
 
+// Muted styling for the farm's other fields, shown as context so the operator
+// can place/resize without overlapping them. Typed against the layer specs so
+// the expression / dash-array literals are contextually typed (not `as const`).
+const contextFillPaint: FillLayerSpecification["paint"] = {
+  "fill-color": "#6b7280",
+  "fill-opacity": 0.1
+};
+const contextStrokePaint: LineLayerSpecification["paint"] = {
+  "line-color": "#6b7280",
+  "line-width": 1.5,
+  "line-opacity": 0.65,
+  "line-dasharray": [2, 1]
+};
+const contextLabelLayout: SymbolLayerSpecification["layout"] = {
+  "text-field": ["get", "name"],
+  "text-size": 11,
+  "text-anchor": "center"
+};
+const contextLabelPaint: SymbolLayerSpecification["paint"] = {
+  "text-color": "#4b5563",
+  "text-halo-color": "#ffffff",
+  "text-halo-width": 1.2
+};
+
 // A positive number from a dimension input, or null when blank/invalid.
 function parseDim(value: string): number | null {
   const n = Number(value);
@@ -41,12 +70,14 @@ export function FieldFormModal({
   open,
   field,
   farms,
+  fields,
   seededFarmId,
   onClose
 }: {
   open: boolean;
   field: FieldSummary | null;
   farms: FarmSummary[];
+  fields: FieldSummary[];
   seededFarmId: string | null;
   onClose: () => void;
 }) {
@@ -134,6 +165,16 @@ export function FieldFormModal({
   const hasBox = center != null && length != null && width != null;
   const corners = hasBox ? boxCorners(center, length, width) : null;
   const acres = length != null && width != null ? acresFromDimensions(length, width) : null;
+
+  // The selected farm's other mapped fields, drawn muted as placement context
+  // (excludes the field being edited).
+  const contextFeatures = fields
+    .filter((f) => f.farmId === farmId && f.id !== field?.id && f.boundary)
+    .map((f) => ({
+      type: "Feature" as const,
+      properties: { name: f.name },
+      geometry: f.boundary as NonNullable<FieldSummary["boundary"]>
+    }));
 
   // Where the map frames on open (before effects run): the field's existing box,
   // else the seeded farm's location, else the continental view. Keyed below so a
@@ -382,6 +423,23 @@ export function FieldFormModal({
                   footerRight={null}
                   onMapClick={(c) => placeBox({ lat: c.lat, lng: c.lng })}
                 >
+                  {contextFeatures.length > 0 ? (
+                    <Source
+                      id="field-context"
+                      type="geojson"
+                      data={{ type: "FeatureCollection", features: contextFeatures }}
+                    >
+                      <Layer id="field-context-fill" type="fill" paint={contextFillPaint} />
+                      <Layer id="field-context-stroke" type="line" paint={contextStrokePaint} />
+                      <Layer
+                        id="field-context-label"
+                        type="symbol"
+                        layout={contextLabelLayout}
+                        paint={contextLabelPaint}
+                      />
+                    </Source>
+                  ) : null}
+
                   {hasBox && corners ? (
                     <>
                       <Source
