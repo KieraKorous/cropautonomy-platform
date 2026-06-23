@@ -67,6 +67,10 @@ export function FieldFormModal({
     null
   );
 
+  // Flips true once the operator positions the box themselves (click / drag), so
+  // the box stops auto-following the farm selector. Dimension edits don't trip it.
+  const positionTouchedRef = useRef(false);
+
   const [saving, setSaving] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -89,13 +93,17 @@ export function FieldFormModal({
     setDescription(field?.description ?? "");
     const dims = dimensionsFromBoundary(field?.boundary ?? null);
     if (dims) {
+      // Editing a field that already has a box — seed from it and leave it put.
       setLengthFt(String(Math.round(dims.lengthFt)));
       setWidthFt(String(Math.round(dims.widthFt)));
       setCenter(dims.center);
+      positionTouchedRef.current = true;
     } else {
+      // New (or boxless) field — the box auto-drops at the selected farm below.
       setLengthFt("");
       setWidthFt("");
       setCenter(null);
+      positionTouchedRef.current = isEdit;
     }
     setSaving(false);
     setConfirmingDelete(false);
@@ -105,6 +113,21 @@ export function FieldFormModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, fieldId, seededFarmId]);
 
+  // Auto-place the box at the selected farm's location for a new field, and keep
+  // it following the farm selector until the operator moves it themselves. Farms
+  // without a location fall back to the continental view (click to place).
+  const selectedFarm = farms.find((f) => f.id === farmId);
+  const farmLngLat = selectedFarm?.location?.coordinates;
+  useEffect(() => {
+    if (!open || isEdit || positionTouchedRef.current || !farmLngLat) return;
+    const at = { lat: farmLngLat[1], lng: farmLngLat[0] };
+    setLengthFt((prev) => prev || String(DEFAULT_DIM_FT));
+    setWidthFt((prev) => prev || String(DEFAULT_DIM_FT));
+    setCenter(at);
+    setRecenterTo({ lng: at.lng, lat: at.lat, zoom: 14 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, farmId]);
+
   const length = parseDim(lengthFt);
   const width = parseDim(widthFt);
   // The box exists once it's placed and both dimensions are valid.
@@ -112,9 +135,22 @@ export function FieldFormModal({
   const corners = hasBox ? boxCorners(center, length, width) : null;
   const acres = length != null && width != null ? acresFromDimensions(length, width) : null;
 
+  // Where the map frames on open (before effects run): the field's existing box,
+  // else the seeded farm's location, else the continental view. Keyed below so a
+  // new-field modal opened for a given farm mounts already looking at it.
+  const openFarm = farms.find((f) => f.id === (field?.farmId ?? seededFarmId ?? farms[0]?.id));
+  const initialView = (() => {
+    const editDims = dimensionsFromBoundary(field?.boundary ?? null);
+    if (editDims) return { longitude: editDims.center.lng, latitude: editDims.center.lat, zoom: 13 };
+    const loc = openFarm?.location?.coordinates;
+    if (loc) return { longitude: loc[0], latitude: loc[1], zoom: 13 };
+    return DEFAULT_VIEW;
+  })();
+
   // Click the map to place / move the box. Seeds default dimensions if the
   // operator hasn't typed any yet, so a box appears immediately.
   function placeBox(at: Coords) {
+    positionTouchedRef.current = true;
     if (length == null) setLengthFt(String(DEFAULT_DIM_FT));
     if (width == null) setWidthFt(String(DEFAULT_DIM_FT));
     // Fly in only on the first drop (from the far-out view); later clicks just
@@ -123,10 +159,17 @@ export function FieldFormModal({
     setCenter(at);
   }
 
+  // Drag the whole box (center handle) to move it.
+  function moveBox(at: Coords) {
+    positionTouchedRef.current = true;
+    setCenter(at);
+  }
+
   // Drag a corner → resize against the diagonally opposite corner (kept fixed),
   // updating both the center and the dimension inputs live.
   function onCornerDrag(index: number, lngLat: { lng: number; lat: number }) {
     if (!corners) return;
+    positionTouchedRef.current = true;
     const opp = corners[(index + 2) % 4];
     const next = resizeFromCorner(
       { lat: lngLat.lat, lng: lngLat.lng },
@@ -320,18 +363,14 @@ export function FieldFormModal({
             {MAPBOX_TOKEN ? (
               open ? (
                 <MapPanel
-                  key={fieldId ?? "new"}
+                  key={fieldId ?? `new-${seededFarmId ?? "none"}`}
                   header={{
                     title: "Field box",
                     meta: hasBox
                       ? "Drag the box to move · drag a corner to resize"
                       : "Click the map to place the field"
                   }}
-                  initialViewState={
-                    center
-                      ? { longitude: center.lng, latitude: center.lat, zoom: 13 }
-                      : DEFAULT_VIEW
-                  }
+                  initialViewState={initialView}
                   mapboxAccessToken={MAPBOX_TOKEN}
                   height={260}
                   enableFullscreen
@@ -365,7 +404,7 @@ export function FieldFormModal({
                         anchor="center"
                         draggable
                         onDrag={(e: MarkerDragEvent) =>
-                          setCenter({ lat: e.lngLat.lat, lng: e.lngLat.lng })
+                          moveBox({ lat: e.lngLat.lat, lng: e.lngLat.lng })
                         }
                       >
                         <span className="block h-3.5 w-3.5 cursor-move rounded-full border-2 border-base-100 bg-primary shadow" />
