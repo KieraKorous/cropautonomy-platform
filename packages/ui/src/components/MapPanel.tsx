@@ -43,8 +43,20 @@ export type MapLayerToggle = {
 export type MapPanelHeader = {
   title: string;
   meta?: string;
-  orgSelector?: { label: string; icon?: ReactNode };
+  /**
+   * The org/scope selector. With `options` + `onSelect` it becomes a dropdown
+   * (e.g. All farms / per-farm); without them it's a static pill.
+   */
+  orgSelector?: {
+    label: string;
+    icon?: ReactNode;
+    options?: { id: string; label: string }[];
+    activeId?: string;
+    onSelect?: (id: string) => void;
+  };
   viewModes?: MapViewMode[];
+  /** Called when a view-mode segment is clicked. */
+  onViewModeSelect?: (id: string) => void;
   timeRange?: { label: string; icon?: ReactNode };
   openFullMapHref?: string;
 };
@@ -106,6 +118,10 @@ export type MapPanelProps = {
   recenterTarget?: { lng: number; lat: number; zoom?: number } | null;
   /** Show a fullscreen toggle in the header (Fullscreen API on the panel box). */
   enableFullscreen?: boolean;
+  /** Called when a layer chip is clicked (toggle visibility). */
+  onLayerToggle?: (id: string) => void;
+  /** Fill the parent's height (flex-1) instead of the fixed `height` — for full-page maps. */
+  fill?: boolean;
   /** Bottom-right corner content (defaults to coordinates + zoom — pass null to suppress). */
   footerRight?: ReactNode;
   /** Bottom-left corner content (defaults to a 1mi scale bar — pass null to suppress). */
@@ -125,6 +141,8 @@ export function MapPanel({
   recenterTo,
   recenterTarget,
   enableFullscreen,
+  onLayerToggle,
+  fill,
   footerLeft,
   footerRight
 }: MapPanelProps) {
@@ -202,7 +220,9 @@ export function MapPanel({
   return (
     <section
       ref={sectionRef}
-      className="flex flex-col overflow-hidden rounded-xl border border-base-content/10 bg-base-100"
+      className={`flex flex-col overflow-hidden rounded-xl border border-base-content/10 bg-base-100 ${
+        fill ? "h-full flex-1" : ""
+      }`}
     >
       <MapPanelHeaderBar
         header={header}
@@ -210,10 +230,12 @@ export function MapPanel({
         isFullscreen={isFullscreen}
         onToggleFullscreen={toggleFullscreen}
       />
-      {layers && layers.length > 0 && <MapLayerStrip layers={layers} liveness={liveness} />}
+      {layers && layers.length > 0 && (
+        <MapLayerStrip layers={layers} liveness={liveness} onLayerToggle={onLayerToggle} />
+      )}
       <div
-        className={`relative w-full overflow-hidden ${isFullscreen ? "flex-1" : ""}`}
-        style={isFullscreen ? undefined : { height }}
+        className={`relative w-full overflow-hidden ${isFullscreen || fill ? "flex-1" : ""}`}
+        style={isFullscreen || fill ? undefined : { height }}
       >
         <Map
           ref={mapRef}
@@ -265,10 +287,12 @@ function MapPanelHeaderBar({
           <h2 className="text-base font-semibold text-neutral">{header.title}</h2>
           {header.meta && <p className="text-xs text-base-content/60">{header.meta}</p>}
         </div>
-        {header.orgSelector && <OrgPill label={header.orgSelector.label} icon={header.orgSelector.icon} />}
+        {header.orgSelector && <OrgPill selector={header.orgSelector} />}
       </div>
       <div className="flex items-center gap-2.5">
-        {header.viewModes && <ViewModeToggle modes={header.viewModes} />}
+        {header.viewModes && (
+          <ViewModeToggle modes={header.viewModes} onSelect={header.onViewModeSelect} />
+        )}
         {header.timeRange && <TimePill label={header.timeRange.label} icon={header.timeRange.icon} />}
         {header.openFullMapHref && (
           <a
@@ -294,32 +318,88 @@ function MapPanelHeaderBar({
   );
 }
 
-function OrgPill({ label, icon }: { label: string; icon?: ReactNode }) {
+function OrgPill({ selector }: { selector: NonNullable<MapPanelHeader["orgSelector"]> }) {
+  const { label, icon, options, activeId, onSelect } = selector;
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Close on outside click / Escape when the dropdown is open.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const interactive = Boolean(options && onSelect);
+
   return (
-    <button
-      className="flex items-center gap-2 rounded-md bg-base-content/[0.04] px-2.5 py-1.5 hover:bg-base-content/[0.08]"
-      type="button"
-    >
-      {icon && <span className="text-base-content/65">{icon}</span>}
-      <span className="whitespace-nowrap text-sm font-medium text-neutral">{label}</span>
-      <svg
-        fill="none"
-        height="13"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="2"
-        viewBox="0 0 24 24"
-        width="13"
-        className="text-base-content/55"
+    <div ref={ref} className="relative">
+      <button
+        className="flex items-center gap-2 rounded-md bg-base-content/[0.04] px-2.5 py-1.5 hover:bg-base-content/[0.08]"
+        type="button"
+        onClick={interactive ? () => setOpen((v) => !v) : undefined}
       >
-        <path d="m6 9 6 6 6-6" />
-      </svg>
-    </button>
+        {icon && <span className="text-base-content/65">{icon}</span>}
+        <span className="whitespace-nowrap text-sm font-medium text-neutral">{label}</span>
+        <svg
+          fill="none"
+          height="13"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="2"
+          viewBox="0 0 24 24"
+          width="13"
+          className="text-base-content/55"
+        >
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
+      {interactive && open ? (
+        <div className="absolute left-0 top-full z-20 mt-1 max-h-72 w-56 overflow-y-auto rounded-md border border-base-content/10 bg-base-100 py-1 shadow-lg">
+          {options!.map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => {
+                onSelect!(opt.id);
+                setOpen(false);
+              }}
+              className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-sm transition-colors hover:bg-base-content/[0.05] ${
+                opt.id === activeId ? "font-semibold text-neutral" : "text-base-content/70"
+              }`}
+            >
+              <span className="truncate">{opt.label}</span>
+              {opt.id === activeId ? (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-primary">
+                  <path d="M20 6 9 17l-5-5" />
+                </svg>
+              ) : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
-function ViewModeToggle({ modes }: { modes: MapViewMode[] }) {
+function ViewModeToggle({
+  modes,
+  onSelect
+}: {
+  modes: MapViewMode[];
+  onSelect?: (id: string) => void;
+}) {
   return (
     <div className="flex items-stretch overflow-hidden rounded-md border border-base-content/12">
       {modes.map((mode, idx) => {
@@ -333,6 +413,7 @@ function ViewModeToggle({ modes }: { modes: MapViewMode[] }) {
             className={`px-3 py-1.5 text-xs ${activeClass} ${borderClass}`}
             key={mode.id}
             type="button"
+            onClick={onSelect ? () => onSelect(mode.id) : undefined}
           >
             {mode.label}
           </button>
@@ -372,17 +453,19 @@ function TimePill({ label, icon }: { label: string; icon?: ReactNode }) {
 
 function MapLayerStrip({
   layers,
-  liveness
+  liveness,
+  onLayerToggle
 }: {
   layers: MapLayerToggle[];
   liveness?: MapLivenessIndicator;
+  onLayerToggle?: (id: string) => void;
 }) {
   return (
     <div className="flex items-center justify-between border-b border-base-content/8 bg-base-content/[0.03] px-5 py-2.5">
       <div className="flex items-center gap-1.5">
         <span className="pr-1 text-xs font-semibold uppercase tracking-wider text-base-content/55">Layers</span>
         {layers.map((layer) => (
-          <LayerChip layer={layer} key={layer.id} />
+          <LayerChip layer={layer} key={layer.id} onToggle={onLayerToggle} />
         ))}
       </div>
       {liveness && <LivenessIndicator liveness={liveness} />}
@@ -390,12 +473,20 @@ function MapLayerStrip({
   );
 }
 
-function LayerChip({ layer }: { layer: MapLayerToggle }) {
+function LayerChip({
+  layer,
+  onToggle
+}: {
+  layer: MapLayerToggle;
+  onToggle?: (id: string) => void;
+}) {
+  const handleClick = onToggle ? () => onToggle(layer.id) : undefined;
   if (!layer.active) {
     return (
       <button
         className="flex items-center gap-1.5 rounded-full border border-dashed border-base-content/20 px-2.5 py-1 text-xs text-base-content/65 hover:text-neutral"
         type="button"
+        onClick={handleClick}
       >
         {layer.icon && <span>{layer.icon}</span>}
         {layer.label}
@@ -407,6 +498,7 @@ function LayerChip({ layer }: { layer: MapLayerToggle }) {
     <button
       className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${tone.bg} ${tone.text}`}
       type="button"
+      onClick={handleClick}
     >
       {layer.icon ? <span>{layer.icon}</span> : <span className={`h-2 w-2 rounded-full ${tone.dot}`} />}
       {layer.count !== undefined ? `${layer.label} · ${layer.count}` : layer.label}

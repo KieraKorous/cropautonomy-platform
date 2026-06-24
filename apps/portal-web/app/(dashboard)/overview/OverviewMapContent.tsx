@@ -22,9 +22,19 @@ export type FieldFeatureCollection = {
   type: "FeatureCollection";
   features: Array<{
     type: "Feature";
-    properties: { id: string; name: string; color: string };
+    properties: { id: string; name: string; farmId: string; color: string };
     geometry: { type: "Polygon"; coordinates: number[][][] };
   }>;
+};
+
+// One recent-capture cluster, placed at a field's centroid (Activity view).
+export type ActivityPin = {
+  id: string;
+  farmId: string;
+  name: string;
+  longitude: number;
+  latitude: number;
+  count: number;
 };
 
 // Field polygons are colored per farm via a data-driven `color` property; the
@@ -51,26 +61,23 @@ const labelPaint: SymbolLayerSpecification["paint"] = {
   "text-halo-width": 1.3
 };
 
-// The Overview field map's contents: farm-colored field boxes with name labels,
-// plus a marker per farm (in its farm color) that reveals the farm name on hover.
-// Rendered as children of MapPanel, so Source/Layer/Marker share its map context.
-export function OverviewMapContent({
-  fields,
-  farms
-}: {
-  fields: FieldFeatureCollection;
-  farms: FarmMarker[];
-}) {
-  const [hovered, setHovered] = useState<string | null>(null);
+// Farm-colored field boxes with name labels. Rendered as a child of MapPanel so
+// Source/Layer share its map context.
+export function FieldPolygons({ fields }: { fields: FieldFeatureCollection }) {
+  return (
+    <Source id="overview-fields" type="geojson" data={fields}>
+      <Layer id="overview-fields-fill" type="fill" paint={fillPaint} />
+      <Layer id="overview-fields-line" type="line" paint={linePaint} />
+      <Layer id="overview-fields-label" type="symbol" layout={labelLayout} paint={labelPaint} />
+    </Source>
+  );
+}
 
+// A marker per farm (in its farm color) that reveals the farm name on hover.
+export function FarmMarkers({ farms }: { farms: FarmMarker[] }) {
+  const [hovered, setHovered] = useState<string | null>(null);
   return (
     <>
-      <Source id="overview-fields" type="geojson" data={fields}>
-        <Layer id="overview-fields-fill" type="fill" paint={fillPaint} />
-        <Layer id="overview-fields-line" type="line" paint={linePaint} />
-        <Layer id="overview-fields-label" type="symbol" layout={labelLayout} paint={labelPaint} />
-      </Source>
-
       {farms.map((farm) => (
         <Marker key={farm.id} longitude={farm.longitude} latitude={farm.latitude} anchor="bottom">
           <div
@@ -86,6 +93,25 @@ export function OverviewMapContent({
             <span style={{ color: farm.color }} className="drop-shadow">
               <MapPinIcon size={26} />
             </span>
+          </div>
+        </Marker>
+      ))}
+    </>
+  );
+}
+
+// Recent-capture clusters for the Activity view: an amber dot with the count,
+// placed at each field's centroid.
+export function ActivityMarkers({ pins }: { pins: ActivityPin[] }) {
+  return (
+    <>
+      {pins.map((pin) => (
+        <Marker key={pin.id} longitude={pin.longitude} latitude={pin.latitude} anchor="center">
+          <div
+            className="flex min-h-[20px] min-w-[20px] items-center justify-center rounded-full border-2 border-base-100 bg-accent px-1 text-[11px] font-semibold text-accent-content shadow"
+            title={`${pin.name}: ${pin.count} ${pin.count === 1 ? "capture" : "captures"}`}
+          >
+            {pin.count}
           </div>
         </Marker>
       ))}
