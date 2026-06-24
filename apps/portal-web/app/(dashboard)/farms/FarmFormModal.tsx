@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { MarkerDragEvent } from "react-map-gl/mapbox";
 import { MapPanel, Marker, MapPinIcon } from "@gaia/ui";
 import type { FarmSummary, FarmWrite } from "../../../lib/api";
+import { UnsavedChangesPrompt } from "../_components/UnsavedChangesPrompt";
 import {
   createFarmAction,
   deleteFarmAction,
@@ -89,6 +90,14 @@ export function FarmFormModal({
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Tracks real user edits (not programmatic seeding) so closing with unsaved
+  // changes can prompt to save.
+  const dirtyRef = useRef(false);
+  const [closePrompt, setClosePrompt] = useState(false);
+  const markDirty = () => {
+    dirtyRef.current = true;
+  };
+
   useEffect(() => {
     const dialog = ref.current;
     if (!dialog) return;
@@ -124,6 +133,8 @@ export function FarmFormModal({
     setGeocoding(false);
     addressDirtyRef.current = false;
     locationDirtyRef.current = false;
+    dirtyRef.current = false;
+    setClosePrompt(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, farmId]);
 
@@ -132,6 +143,7 @@ export function FarmFormModal({
   // directly, so it never trips this.
   function setLocationFromUser(coords: Coords) {
     locationDirtyRef.current = true;
+    markDirty();
     setLocation(coords);
   }
 
@@ -191,16 +203,18 @@ export function FarmFormModal({
   // Wrap an address setter so editing it marks the address dirty (enables geocode).
   function editAddress(setter: (v: string) => void, value: string) {
     addressDirtyRef.current = true;
+    markDirty();
     setter(value);
   }
 
-  async function onSubmit(event: React.FormEvent) {
-    event.preventDefault();
+  async function save() {
     const trimmedName = name.trim();
     if (!trimmedName) {
+      setClosePrompt(false);
       setError("Farm name is required.");
       return;
     }
+    setClosePrompt(false);
     setSaving(true);
     setError(null);
     const body: FarmWrite & { name: string } = {
@@ -228,6 +242,18 @@ export function FarmFormModal({
     }
   }
 
+  function onSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    void save();
+  }
+
+  // Guarded close: prompt to save when there are unsaved edits, otherwise close.
+  function requestClose() {
+    if (saving || deleting) return;
+    if (dirtyRef.current) setClosePrompt(true);
+    else onClose();
+  }
+
   async function onDelete() {
     if (!farm) return;
     setDeleting(true);
@@ -248,12 +274,17 @@ export function FarmFormModal({
     <dialog
       ref={ref}
       onClose={onClose}
+      onCancel={(event) => {
+        // Escape — intercept so we can prompt before closing.
+        event.preventDefault();
+        requestClose();
+      }}
       onClick={(event) => {
-        if (event.target === ref.current) onClose();
+        if (event.target === ref.current) requestClose();
       }}
       className="m-auto w-full max-w-2xl rounded-xl border border-base-content/10 bg-base-100 p-0 text-base-content shadow-lg backdrop:bg-neutral/40"
     >
-      <form onSubmit={onSubmit} className="flex max-h-[85vh] flex-col">
+      <form onSubmit={onSubmit} className="relative flex max-h-[85vh] flex-col">
         {/* Header */}
         <div className="flex items-start justify-between gap-4 border-b border-base-content/10 px-6 py-4">
           <h2 className="text-lg font-semibold text-neutral">
@@ -261,7 +292,7 @@ export function FarmFormModal({
           </h2>
           <button
             type="button"
-            onClick={onClose}
+            onClick={requestClose}
             aria-label="Close"
             className="-mr-1 rounded-md p-1 text-base-content/55 transition-colors hover:bg-base-content/[0.06] hover:text-neutral"
           >
@@ -277,7 +308,10 @@ export function FarmFormModal({
               type="text"
               value={name}
               maxLength={200}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                setName(e.target.value);
+                markDirty();
+              }}
               placeholder="e.g. Home Quarter"
               className={inputClass}
               autoFocus
@@ -289,7 +323,10 @@ export function FarmFormModal({
               value={description}
               maxLength={2000}
               rows={2}
-              onChange={(e) => setDescription(e.target.value)}
+              onChange={(e) => {
+                setDescription(e.target.value);
+                markDirty();
+              }}
               placeholder="Optional notes about this operation"
               className={`${inputClass} resize-none`}
             />
@@ -314,7 +351,10 @@ export function FarmFormModal({
               type="text"
               value={addressLine2}
               maxLength={200}
-              onChange={(e) => setAddressLine2(e.target.value)}
+              onChange={(e) => {
+                setAddressLine2(e.target.value);
+                markDirty();
+              }}
               placeholder="Line 2 (optional)"
               className={inputClass}
               aria-label="Address line 2"
@@ -360,7 +400,10 @@ export function FarmFormModal({
             <Field label="Timezone">
               <select
                 value={timezone}
-                onChange={(e) => setTimezone(e.target.value)}
+                onChange={(e) => {
+                  setTimezone(e.target.value);
+                  markDirty();
+                }}
                 className={inputClass}
               >
                 <option value="">Select timezone…</option>
@@ -389,7 +432,10 @@ export function FarmFormModal({
               {location ? (
                 <button
                   type="button"
-                  onClick={() => setLocation(null)}
+                  onClick={() => {
+                    setLocation(null);
+                    markDirty();
+                  }}
                   className="text-xs font-medium text-base-content/55 transition-colors hover:text-error"
                 >
                   Clear pin
@@ -491,7 +537,7 @@ export function FarmFormModal({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={onClose}
+              onClick={requestClose}
               className="rounded-md px-3.5 py-2 text-sm font-medium text-base-content/65 transition-colors hover:text-neutral"
             >
               Cancel
@@ -505,6 +551,14 @@ export function FarmFormModal({
             </button>
           </div>
         </div>
+
+        <UnsavedChangesPrompt
+          open={closePrompt}
+          saving={saving}
+          onSave={() => void save()}
+          onDiscard={onClose}
+          onKeepEditing={() => setClosePrompt(false)}
+        />
       </form>
     </dialog>
   );

@@ -9,6 +9,7 @@ import type {
 } from "mapbox-gl";
 import { Layer, MapPanel, Marker, Source } from "@gaia/ui";
 import type { FarmSummary, FieldSummary, FieldWrite } from "../../../lib/api";
+import { UnsavedChangesPrompt } from "../_components/UnsavedChangesPrompt";
 import { createFieldAction, deleteFieldAction, updateFieldAction } from "./actions";
 import {
   acresFromDimensions,
@@ -107,6 +108,14 @@ export function FieldFormModal({
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Tracks real user edits (not programmatic seeding/auto-placement) so closing
+  // with unsaved changes can prompt to save.
+  const dirtyRef = useRef(false);
+  const [closePrompt, setClosePrompt] = useState(false);
+  const markDirty = () => {
+    dirtyRef.current = true;
+  };
+
   useEffect(() => {
     const dialog = ref.current;
     if (!dialog) return;
@@ -141,6 +150,8 @@ export function FieldFormModal({
     setDeleting(false);
     setError(null);
     setRecenterTo(null);
+    dirtyRef.current = false;
+    setClosePrompt(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, fieldId, seededFarmId]);
 
@@ -192,6 +203,7 @@ export function FieldFormModal({
   // operator hasn't typed any yet, so a box appears immediately.
   function placeBox(at: Coords) {
     positionTouchedRef.current = true;
+    markDirty();
     if (length == null) setLengthFt(String(DEFAULT_DIM_FT));
     if (width == null) setWidthFt(String(DEFAULT_DIM_FT));
     // Fly in only on the first drop (from the far-out view); later clicks just
@@ -203,6 +215,7 @@ export function FieldFormModal({
   // Drag the whole box (center handle) to move it.
   function moveBox(at: Coords) {
     positionTouchedRef.current = true;
+    markDirty();
     setCenter(at);
   }
 
@@ -211,6 +224,7 @@ export function FieldFormModal({
   function onCornerDrag(index: number, lngLat: { lng: number; lat: number }) {
     if (!corners) return;
     positionTouchedRef.current = true;
+    markDirty();
     const opp = corners[(index + 2) % 4];
     const next = resizeFromCorner(
       { lat: lngLat.lat, lng: lngLat.lng },
@@ -221,17 +235,19 @@ export function FieldFormModal({
     setWidthFt(String(Math.round(next.widthFt)));
   }
 
-  async function onSubmit(event: React.FormEvent) {
-    event.preventDefault();
+  async function save() {
     const trimmedName = name.trim();
     if (!trimmedName) {
+      setClosePrompt(false);
       setError("Field name is required.");
       return;
     }
     if (!farmId) {
+      setClosePrompt(false);
       setError("Pick a farm for this field.");
       return;
     }
+    setClosePrompt(false);
     setSaving(true);
     setError(null);
     const body: FieldWrite & { name: string; farmId: string } = {
@@ -255,6 +271,18 @@ export function FieldFormModal({
     }
   }
 
+  function onSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    void save();
+  }
+
+  // Guarded close: prompt to save when there are unsaved edits, otherwise close.
+  function requestClose() {
+    if (saving || deleting) return;
+    if (dirtyRef.current) setClosePrompt(true);
+    else onClose();
+  }
+
   async function onDelete() {
     if (!field) return;
     setDeleting(true);
@@ -275,12 +303,17 @@ export function FieldFormModal({
     <dialog
       ref={ref}
       onClose={onClose}
+      onCancel={(event) => {
+        // Escape — intercept so we can prompt before closing.
+        event.preventDefault();
+        requestClose();
+      }}
       onClick={(event) => {
-        if (event.target === ref.current) onClose();
+        if (event.target === ref.current) requestClose();
       }}
       className="m-auto w-full max-w-2xl rounded-xl border border-base-content/10 bg-base-100 p-0 text-base-content shadow-lg backdrop:bg-neutral/40"
     >
-      <form onSubmit={onSubmit} className="flex max-h-[85vh] flex-col">
+      <form onSubmit={onSubmit} className="relative flex max-h-[85vh] flex-col">
         {/* Header */}
         <div className="flex items-start justify-between gap-4 border-b border-base-content/10 px-6 py-4">
           <h2 className="text-lg font-semibold text-neutral">
@@ -288,7 +321,7 @@ export function FieldFormModal({
           </h2>
           <button
             type="button"
-            onClick={onClose}
+            onClick={requestClose}
             aria-label="Close"
             className="-mr-1 rounded-md p-1 text-base-content/55 transition-colors hover:bg-base-content/[0.06] hover:text-neutral"
           >
@@ -304,7 +337,10 @@ export function FieldFormModal({
               type="text"
               value={name}
               maxLength={200}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                setName(e.target.value);
+                markDirty();
+              }}
               placeholder="e.g. North 40"
               className={inputClass}
               autoFocus
@@ -314,7 +350,10 @@ export function FieldFormModal({
           <Field label="Farm" required>
             <select
               value={farmId}
-              onChange={(e) => setFarmId(e.target.value)}
+              onChange={(e) => {
+                setFarmId(e.target.value);
+                markDirty();
+              }}
               className={inputClass}
             >
               <option value="" disabled>
@@ -341,7 +380,10 @@ export function FieldFormModal({
                   min={0}
                   step="any"
                   value={lengthFt}
-                  onChange={(e) => setLengthFt(e.target.value)}
+                  onChange={(e) => {
+                    setLengthFt(e.target.value);
+                    markDirty();
+                  }}
                   placeholder="e.g. 1320"
                   className={inputClass}
                 />
@@ -353,7 +395,10 @@ export function FieldFormModal({
                   min={0}
                   step="any"
                   value={widthFt}
-                  onChange={(e) => setWidthFt(e.target.value)}
+                  onChange={(e) => {
+                    setWidthFt(e.target.value);
+                    markDirty();
+                  }}
                   placeholder="e.g. 1320"
                   className={inputClass}
                 />
@@ -379,7 +424,10 @@ export function FieldFormModal({
               value={description}
               maxLength={2000}
               rows={2}
-              onChange={(e) => setDescription(e.target.value)}
+              onChange={(e) => {
+                setDescription(e.target.value);
+                markDirty();
+              }}
               placeholder="Optional notes about this field"
               className={`${inputClass} resize-none`}
             />
@@ -394,7 +442,10 @@ export function FieldFormModal({
               {hasBox ? (
                 <button
                   type="button"
-                  onClick={() => setCenter(null)}
+                  onClick={() => {
+                    setCenter(null);
+                    markDirty();
+                  }}
                   className="text-xs font-medium text-base-content/55 transition-colors hover:text-error"
                 >
                   Clear box
@@ -535,7 +586,7 @@ export function FieldFormModal({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={onClose}
+              onClick={requestClose}
               className="rounded-md px-3.5 py-2 text-sm font-medium text-base-content/65 transition-colors hover:text-neutral"
             >
               Cancel
@@ -549,6 +600,14 @@ export function FieldFormModal({
             </button>
           </div>
         </div>
+
+        <UnsavedChangesPrompt
+          open={closePrompt}
+          saving={saving}
+          onSave={() => void save()}
+          onDiscard={onClose}
+          onKeepEditing={() => setClosePrompt(false)}
+        />
       </form>
     </dialog>
   );
