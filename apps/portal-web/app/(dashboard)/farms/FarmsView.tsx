@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import { FarmIcon, MapPinIcon, PlusIcon } from "@gaia/ui";
-import type { FarmSummary } from "../../../lib/api";
+import type { FarmSummary, FieldSummary } from "../../../lib/api";
 import { FarmFormModal } from "./FarmFormModal";
+
+const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
 // Farms grid: a card per farm, plus the dashed "new farm" tile for managers.
 // Clicking a card opens the edit modal; the tile opens the same modal in create
@@ -12,9 +14,11 @@ import { FarmFormModal } from "./FarmFormModal";
 // /farms, so this list (and the open modal's farm) reflect changes.
 export function FarmsView({
   farms,
+  fields,
   canManage
 }: {
   farms: FarmSummary[];
+  fields: FieldSummary[];
   canManage: boolean;
 }) {
   // null = closed; "new" = create; a string = the id of the farm being edited.
@@ -45,6 +49,7 @@ export function FarmsView({
           <FarmCard
             key={farm.id}
             farm={farm}
+            fields={fields.filter((f) => f.farmId === farm.id)}
             onOpen={canManage ? () => setEditing(farm.id) : undefined}
           />
         ))}
@@ -72,15 +77,90 @@ export function FarmsView({
   );
 }
 
-// One farm card: name, location summary, and the field/acre rollup. Becomes a
-// clickable button (opens the edit modal) when the viewer can manage farms;
-// otherwise it's a static panel.
-function FarmCard({ farm, onOpen }: { farm: FarmSummary; onOpen?: () => void }) {
+// Trim coordinate precision to ~1m so a farm with many fields doesn't blow past
+// the Static Images API's overlay length limit.
+function roundCoords(coords: number[][][]): number[][][] {
+  return coords.map((ring) =>
+    ring.map(([lng, lat]) => [Math.round(lng * 1e5) / 1e5, Math.round(lat * 1e5) / 1e5])
+  );
+}
+
+// A Mapbox Static Images URL for a farm preview: the farm's fields drawn as solid
+// gray outlines on the light basemap, auto-fit to them. Falls back to a pin at the
+// farm location when no field has a boundary. null when there's no token or
+// nothing to show. (The Static API can't dash strokes, so the fields are solid.)
+function farmPreviewUrl(farm: FarmSummary, fields: FieldSummary[]): string | null {
+  if (!MAPBOX_TOKEN) return null;
+  const size = "320x140@2x";
+  const style = "mapbox/light-v11";
+  // Cap the feature count to keep the URL well within Mapbox's overlay limit.
+  const boundaried = fields.filter((f) => f.boundary).slice(0, 60);
+  if (boundaried.length > 0) {
+    const collection = {
+      type: "FeatureCollection" as const,
+      features: boundaried.map((f) => ({
+        type: "Feature" as const,
+        properties: {
+          stroke: "#6b7280",
+          "stroke-width": 1.5,
+          "stroke-opacity": 0.85,
+          fill: "#6b7280",
+          "fill-opacity": 0.12
+        },
+        geometry: { type: "Polygon" as const, coordinates: roundCoords(f.boundary!.coordinates) }
+      }))
+    };
+    const overlay = `geojson(${encodeURIComponent(JSON.stringify(collection))})`;
+    return `https://api.mapbox.com/styles/v1/${style}/static/${overlay}/auto/${size}?padding=40&access_token=${MAPBOX_TOKEN}`;
+  }
+  if (farm.location) {
+    const [lng, lat] = farm.location.coordinates;
+    return `https://api.mapbox.com/styles/v1/${style}/static/pin-s+5a7d3a(${lng},${lat})/${lng},${lat},11/${size}?access_token=${MAPBOX_TOKEN}`;
+  }
+  return null;
+}
+
+// Per-card map preview: the farm's fields as gray outlines, or a pin, or a muted
+// placeholder. A lazy-loaded static image — no live map per card.
+function FarmThumbnail({ farm, fields }: { farm: FarmSummary; fields: FieldSummary[] }) {
+  const url = farmPreviewUrl(farm, fields);
+  if (!url) {
+    return (
+      <div className="flex h-28 w-full items-center justify-center rounded-lg border border-base-content/10 bg-base-content/[0.03] text-base-content/35">
+        <MapPinIcon size={18} />
+      </div>
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={url}
+      alt={`Map preview of ${farm.name}`}
+      loading="lazy"
+      className="h-28 w-full rounded-lg border border-base-content/10 object-cover"
+    />
+  );
+}
+
+// One farm card: a map preview, name, location summary, and the field/acre
+// rollup. Becomes a clickable button (opens the edit modal) when the viewer can
+// manage farms; otherwise it's a static panel.
+function FarmCard({
+  farm,
+  fields,
+  onOpen
+}: {
+  farm: FarmSummary;
+  fields: FieldSummary[];
+  onOpen?: () => void;
+}) {
   const location = locationLine(farm);
   const acres = farm.areaAcres ?? 0;
 
   const body = (
     <>
+      <FarmThumbnail farm={farm} fields={fields} />
+
       <div className="flex items-center gap-3">
         <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
           <FarmIcon size={20} />

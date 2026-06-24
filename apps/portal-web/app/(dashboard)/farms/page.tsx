@@ -1,20 +1,29 @@
-import { ApiError, listFarms, type FarmSummary } from "../../../lib/api";
+import {
+  ApiError,
+  listFarms,
+  listFields,
+  type FarmSummary,
+  type FieldSummary
+} from "../../../lib/api";
 import { FarmsView } from "./FarmsView";
 
 // Farms — the top of the land hierarchy (org → farm → field → zone). Lists the
-// org's farms and lets managers create, edit, and delete them. Fields and zones
-// hang off a farm; managing those lands in a later slice.
+// org's farms and lets managers create, edit, and delete them. Each card shows a
+// map preview of the farm's fields.
 export const dynamic = "force-dynamic";
 
 export default async function FarmsPage() {
   let farms: FarmSummary[] = [];
+  let fields: FieldSummary[] = [];
   let canManage = false;
   let loadError: string | null = null;
 
   try {
-    const result = await listFarms();
-    farms = result.farms;
-    canManage = result.canManage;
+    // Fields feed each farm card's map preview (drawn as gray outlines).
+    const [farmsResult, fieldsResult] = await Promise.all([listFarms(), listFields()]);
+    farms = farmsResult.farms;
+    canManage = farmsResult.canManage;
+    fields = fieldsResult.fields;
   } catch (err) {
     loadError =
       err instanceof ApiError ? err.message : "Could not reach the farms service.";
@@ -40,7 +49,7 @@ export default async function FarmsPage() {
       {loadError ? (
         <ErrorState message={loadError} />
       ) : (
-        <FarmsView farms={farms} canManage={canManage} />
+        <FarmsView farms={farms} fields={fields} canManage={canManage} />
       )}
     </div>
   );
