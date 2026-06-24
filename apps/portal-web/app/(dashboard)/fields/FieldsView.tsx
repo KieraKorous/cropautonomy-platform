@@ -114,31 +114,33 @@ export function FieldsView({
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
 // A lightweight Mapbox Static Images URL for a field preview: the boundary box
-// overlaid on satellite imagery, auto-fit to the box (or a pin at the centroid
-// when there's no box). Returns null when there's no token or no geometry — far
-// cheaper than mounting a live MapPanel per card.
+// overlaid on the standard light basemap, auto-fit to the box with padding so the
+// whole field shows (auto scales the zoom to the box's size). Falls back to a pin
+// at the centroid when there's no box. Returns null when there's no token or no
+// geometry — far cheaper than mounting a live MapPanel per card.
 function fieldPreviewUrl(field: FieldSummary): string | null {
   if (!MAPBOX_TOKEN) return null;
   const size = "320x140@2x";
-  const style = "mapbox/satellite-streets-v12";
+  const style = "mapbox/light-v11";
   if (field.boundary) {
     const feature = {
       type: "Feature" as const,
       properties: {
-        stroke: "#a3e635",
+        stroke: "#5a7d3a",
         "stroke-width": 2,
         "stroke-opacity": 0.95,
-        fill: "#84cc16",
+        fill: "#7c9e54",
         "fill-opacity": 0.3
       },
       geometry: field.boundary
     };
     const overlay = `geojson(${encodeURIComponent(JSON.stringify(feature))})`;
-    return `https://api.mapbox.com/styles/v1/${style}/static/${overlay}/auto/${size}?padding=22&access_token=${MAPBOX_TOKEN}`;
+    // padding keeps the box off the edges so it reads as fully contained.
+    return `https://api.mapbox.com/styles/v1/${style}/static/${overlay}/auto/${size}?padding=30&access_token=${MAPBOX_TOKEN}`;
   }
   if (field.centroid) {
     const [lng, lat] = field.centroid.coordinates;
-    return `https://api.mapbox.com/styles/v1/${style}/static/pin-s+84cc16(${lng},${lat})/${lng},${lat},13/${size}?access_token=${MAPBOX_TOKEN}`;
+    return `https://api.mapbox.com/styles/v1/${style}/static/pin-s+5a7d3a(${lng},${lat})/${lng},${lat},13/${size}?access_token=${MAPBOX_TOKEN}`;
   }
   return null;
 }
