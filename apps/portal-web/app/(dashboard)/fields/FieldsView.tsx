@@ -135,8 +135,9 @@ function fieldPreviewUrl(field: FieldSummary): string | null {
       geometry: field.boundary
     };
     const overlay = `geojson(${encodeURIComponent(JSON.stringify(feature))})`;
-    // padding keeps the box off the edges so it reads as fully contained.
-    return `https://api.mapbox.com/styles/v1/${style}/static/${overlay}/auto/${size}?padding=30&access_token=${MAPBOX_TOKEN}`;
+    // Generous padding frames a bit of ground around the field, so the view is a
+    // little larger than the box rather than hugging its edges.
+    return `https://api.mapbox.com/styles/v1/${style}/static/${overlay}/auto/${size}?padding=48&access_token=${MAPBOX_TOKEN}`;
   }
   if (field.centroid) {
     const [lng, lat] = field.centroid.coordinates;
