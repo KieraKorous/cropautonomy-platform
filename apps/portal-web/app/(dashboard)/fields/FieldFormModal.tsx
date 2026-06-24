@@ -1,77 +1,35 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { MarkerDragEvent } from "react-map-gl/mapbox";
-import type {
-  FillLayerSpecification,
-  LineLayerSpecification,
-  SymbolLayerSpecification
-} from "mapbox-gl";
-import { Layer, MapPanel, Marker, Source } from "@gaia/ui";
-import type { FarmSummary, FieldSummary, FieldWrite } from "../../../lib/api";
+import type { CropType, FarmSummary, FieldSummary, FieldWrite } from "../../../lib/api";
 import { UnsavedChangesPrompt } from "../_components/UnsavedChangesPrompt";
-import { createFieldAction, deleteFieldAction, updateFieldAction } from "./actions";
 import {
-  acresFromDimensions,
-  boxCorners,
-  boxPolygon,
-  dimensionsFromBoundary,
-  resizeFromCorner,
-  type Coords
-} from "./fieldGeometry";
+  BoundaryBoxEditor,
+  boxValueAcres,
+  boxValueToPolygon,
+  type BoxValue,
+  type ContextFeature
+} from "./BoundaryBoxEditor";
+import { createFieldAction, deleteFieldAction, updateFieldAction } from "./actions";
+import { dimensionsFromBoundary } from "./fieldGeometry";
+import { Field, inputClass } from "./formControls";
 
-const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
-
-// Continental-US framing for a field that has no box yet — zoomed out enough that
-// the operator can find their ground with a click or two.
+// Continental-US framing for a field that has no box yet.
 const DEFAULT_VIEW = { longitude: -95.57, latitude: 39.835, zoom: 3.4 };
-// Starter box dropped when the operator clicks the map before typing dimensions
-// (≈10 acres). They resize from there by dragging or retyping.
 const DEFAULT_DIM_FT = 660;
 
-const fillPaint = { "fill-color": "#7c9e54", "fill-opacity": 0.22 } as const;
-const strokePaint = { "line-color": "#5a7d3a", "line-width": 2, "line-opacity": 0.9 } as const;
+const CROP_STATUSES = ["planned", "planted", "growing", "harvested", "failed", "cancelled"];
+const EMPTY_BOX: BoxValue = { lengthFt: "", widthFt: "", center: null };
 
-// Muted styling for the farm's other fields, shown as context so the operator
-// can place/resize without overlapping them. Typed against the layer specs so
-// the expression / dash-array literals are contextually typed (not `as const`).
-const contextFillPaint: FillLayerSpecification["paint"] = {
-  "fill-color": "#6b7280",
-  "fill-opacity": 0.1
-};
-const contextStrokePaint: LineLayerSpecification["paint"] = {
-  "line-color": "#6b7280",
-  "line-width": 1.5,
-  "line-opacity": 0.65,
-  "line-dasharray": [2, 1]
-};
-const contextLabelLayout: SymbolLayerSpecification["layout"] = {
-  "text-field": ["get", "name"],
-  "text-size": 11,
-  "text-anchor": "center"
-};
-const contextLabelPaint: SymbolLayerSpecification["paint"] = {
-  "text-color": "#4b5563",
-  "text-halo-color": "#ffffff",
-  "text-halo-width": 1.2
-};
-
-// A positive number from a dimension input, or null when blank/invalid.
-function parseDim(value: string): number | null {
-  const n = Number(value);
-  return Number.isFinite(n) && n > 0 ? n : null;
-}
-
-// Create / edit a field. Native <dialog> (Escape + backdrop close), driven by the
-// `open` flag from FieldsView. `field === null` while open = create mode; a field
-// = edit mode. The size is entered as length × width (feet), which draws an
-// axis-aligned box on the map; the operator can drag the box to move it or drag a
-// corner to resize. Acreage, centroid, and boundary all derive from the box.
+// Create / edit a field. The size + boundary are handled by the shared
+// BoundaryBoxEditor (length × width → a draggable box). A field also carries a
+// current crop (one active planting) and an optional description.
 export function FieldFormModal({
   open,
   field,
   farms,
   fields,
+  cropTypes,
   seededFarmId,
   onClose
 }: {
@@ -79,6 +37,7 @@ export function FieldFormModal({
   field: FieldSummary | null;
   farms: FarmSummary[];
   fields: FieldSummary[];
+  cropTypes: CropType[];
   seededFarmId: string | null;
   onClose: () => void;
 }) {
@@ -88,19 +47,17 @@ export function FieldFormModal({
   const [name, setName] = useState("");
   const [farmId, setFarmId] = useState("");
   const [description, setDescription] = useState("");
-  // Length (N–S) and width (E–W) in feet, as free text so a blank stays blank.
-  const [lengthFt, setLengthFt] = useState("");
-  const [widthFt, setWidthFt] = useState("");
-  // Box center; null = no box placed yet (acreage can still save from L × W).
-  const [center, setCenter] = useState<Coords | null>(null);
-  // Fed to MapPanel.recenterTo to fly in when the box is first dropped from the
-  // zoomed-out continental view (a small box would otherwise be sub-pixel).
-  const [recenterTo, setRecenterTo] = useState<{ lng: number; lat: number; zoom?: number } | null>(
-    null
-  );
+  const [box, setBox] = useState<BoxValue>(EMPTY_BOX);
+  // Crop (current planting) fields.
+  const [cropTypeId, setCropTypeId] = useState("");
+  const [variety, setVariety] = useState("");
+  const [plantedAt, setPlantedAt] = useState(""); // yyyy-mm-dd
+  const [cropStatus, setCropStatus] = useState("growing");
+  // Parent-driven fly-in (auto-placement at the selected farm).
+  const [flyTo, setFlyTo] = useState<{ lng: number; lat: number; zoom?: number } | null>(null);
 
-  // Flips true once the operator positions the box themselves (click / drag), so
-  // the box stops auto-following the farm selector. Dimension edits don't trip it.
+  // Flips true once the operator positions the box themselves, so it stops
+  // auto-following the farm selector.
   const positionTouchedRef = useRef(false);
 
   const [saving, setSaving] = useState(false);
@@ -108,8 +65,7 @@ export function FieldFormModal({
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Tracks real user edits (not programmatic seeding/auto-placement) so closing
-  // with unsaved changes can prompt to save.
+  // Tracks real user edits so closing with unsaved changes can prompt to save.
   const dirtyRef = useRef(false);
   const [closePrompt, setClosePrompt] = useState(false);
   const markDirty = () => {
@@ -124,7 +80,6 @@ export function FieldFormModal({
   }, [open]);
 
   // Seed the form when the dialog opens (or switches to a different field).
-  // Dimensions + center are reconstructed from the stored boundary box.
   const fieldId = field?.id;
   useEffect(() => {
     if (!open) return;
@@ -133,63 +88,51 @@ export function FieldFormModal({
     setDescription(field?.description ?? "");
     const dims = dimensionsFromBoundary(field?.boundary ?? null);
     if (dims) {
-      // Editing a field that already has a box — seed from it and leave it put.
-      setLengthFt(String(Math.round(dims.lengthFt)));
-      setWidthFt(String(Math.round(dims.widthFt)));
-      setCenter(dims.center);
+      setBox({
+        lengthFt: String(Math.round(dims.lengthFt)),
+        widthFt: String(Math.round(dims.widthFt)),
+        center: dims.center
+      });
       positionTouchedRef.current = true;
     } else {
-      // New (or boxless) field — the box auto-drops at the selected farm below.
-      setLengthFt("");
-      setWidthFt("");
-      setCenter(null);
+      setBox(EMPTY_BOX);
       positionTouchedRef.current = isEdit;
     }
+    setCropTypeId(field?.cropTypeId ?? "");
+    setVariety(field?.cropVariety ?? "");
+    setPlantedAt((field?.plantedAt ?? new Date().toISOString()).slice(0, 10));
+    setCropStatus(field?.cropStatus ?? "growing");
     setSaving(false);
     setConfirmingDelete(false);
     setDeleting(false);
     setError(null);
-    setRecenterTo(null);
+    setFlyTo(null);
     dirtyRef.current = false;
     setClosePrompt(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, fieldId, seededFarmId]);
 
-  // Auto-place the box at the selected farm's location for a new field, and keep
-  // it following the farm selector until the operator moves it themselves. Farms
-  // without a location fall back to the continental view (click to place).
-  const selectedFarm = farms.find((f) => f.id === farmId);
-  const farmLngLat = selectedFarm?.location?.coordinates;
+  // Auto-place the box at the selected farm's location for a new field, following
+  // the farm selector until the operator moves it themselves.
+  const farmLngLat = farms.find((f) => f.id === farmId)?.location?.coordinates;
   useEffect(() => {
     if (!open || isEdit || positionTouchedRef.current || !farmLngLat) return;
     const at = { lat: farmLngLat[1], lng: farmLngLat[0] };
-    setLengthFt((prev) => prev || String(DEFAULT_DIM_FT));
-    setWidthFt((prev) => prev || String(DEFAULT_DIM_FT));
-    setCenter(at);
-    setRecenterTo({ lng: at.lng, lat: at.lat, zoom: 14 });
+    setBox((prev) => ({
+      lengthFt: prev.lengthFt || String(DEFAULT_DIM_FT),
+      widthFt: prev.widthFt || String(DEFAULT_DIM_FT),
+      center: at
+    }));
+    setFlyTo({ lng: at.lng, lat: at.lat, zoom: 14 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, farmId]);
 
-  const length = parseDim(lengthFt);
-  const width = parseDim(widthFt);
-  // The box exists once it's placed and both dimensions are valid.
-  const hasBox = center != null && length != null && width != null;
-  const corners = hasBox ? boxCorners(center, length, width) : null;
-  const acres = length != null && width != null ? acresFromDimensions(length, width) : null;
-
-  // The selected farm's other mapped fields, drawn muted as placement context
-  // (excludes the field being edited).
-  const contextFeatures = fields
+  // The selected farm's other mapped fields, drawn as gray placement context.
+  const contextFeatures: ContextFeature[] = fields
     .filter((f) => f.farmId === farmId && f.id !== field?.id && f.boundary)
-    .map((f) => ({
-      type: "Feature" as const,
-      properties: { name: f.name },
-      geometry: f.boundary as NonNullable<FieldSummary["boundary"]>
-    }));
+    .map((f) => ({ name: f.name, boundary: f.boundary! }));
 
-  // Where the map frames on open (before effects run): the field's existing box,
-  // else the seeded farm's location, else the continental view. Keyed below so a
-  // new-field modal opened for a given farm mounts already looking at it.
+  // Where the map frames on open (before effects run).
   const openFarm = farms.find((f) => f.id === (field?.farmId ?? seededFarmId ?? farms[0]?.id));
   const initialView = (() => {
     const editDims = dimensionsFromBoundary(field?.boundary ?? null);
@@ -199,40 +142,10 @@ export function FieldFormModal({
     return DEFAULT_VIEW;
   })();
 
-  // Click the map to place / move the box. Seeds default dimensions if the
-  // operator hasn't typed any yet, so a box appears immediately.
-  function placeBox(at: Coords) {
-    positionTouchedRef.current = true;
+  function onBoxChange(next: BoxValue, kind: "dimensions" | "position") {
     markDirty();
-    if (length == null) setLengthFt(String(DEFAULT_DIM_FT));
-    if (width == null) setWidthFt(String(DEFAULT_DIM_FT));
-    // Fly in only on the first drop (from the far-out view); later clicks just
-    // move the box without yanking the user's zoom.
-    if (center == null) setRecenterTo({ lng: at.lng, lat: at.lat, zoom: 14 });
-    setCenter(at);
-  }
-
-  // Drag the whole box (center handle) to move it.
-  function moveBox(at: Coords) {
-    positionTouchedRef.current = true;
-    markDirty();
-    setCenter(at);
-  }
-
-  // Drag a corner → resize against the diagonally opposite corner (kept fixed),
-  // updating both the center and the dimension inputs live.
-  function onCornerDrag(index: number, lngLat: { lng: number; lat: number }) {
-    if (!corners) return;
-    positionTouchedRef.current = true;
-    markDirty();
-    const opp = corners[(index + 2) % 4];
-    const next = resizeFromCorner(
-      { lat: lngLat.lat, lng: lngLat.lng },
-      { lat: opp[1], lng: opp[0] }
-    );
-    setCenter(next.center);
-    setLengthFt(String(Math.round(next.lengthFt)));
-    setWidthFt(String(Math.round(next.widthFt)));
+    if (kind === "position") positionTouchedRef.current = true;
+    setBox(next);
   }
 
   async function save() {
@@ -250,13 +163,22 @@ export function FieldFormModal({
     setClosePrompt(false);
     setSaving(true);
     setError(null);
+    const boundary = boxValueToPolygon(box);
     const body: FieldWrite & { name: string; farmId: string } = {
       name: trimmedName,
       farmId,
       description: description.trim() || null,
-      areaAcres: acres,
-      centroid: hasBox ? center : null,
-      boundary: hasBox ? boxPolygon(center, length, width) : null
+      areaAcres: boxValueAcres(box),
+      centroid: box.center,
+      boundary,
+      crop: cropTypeId
+        ? {
+            cropTypeId,
+            variety: variety.trim() || null,
+            plantedAt: plantedAt ? new Date(plantedAt).toISOString() : null,
+            status: cropStatus
+          }
+        : null
     };
     try {
       if (isEdit && field) {
@@ -276,7 +198,6 @@ export function FieldFormModal({
     void save();
   }
 
-  // Guarded close: prompt to save when there are unsaved edits, otherwise close.
   function requestClose() {
     if (saving || deleting) return;
     if (dirtyRef.current) setClosePrompt(true);
@@ -293,8 +214,6 @@ export function FieldFormModal({
     } catch (err) {
       setDeleting(false);
       setConfirmingDelete(false);
-      // The API 409s with a "reassign this field's captures first" message when
-      // the field still has captures — surface it verbatim.
       setError(err instanceof Error ? err.message : "Couldn't delete the field.");
     }
   }
@@ -304,7 +223,6 @@ export function FieldFormModal({
       ref={ref}
       onClose={onClose}
       onCancel={(event) => {
-        // Escape — intercept so we can prompt before closing.
         event.preventDefault();
         requestClose();
       }}
@@ -367,56 +285,85 @@ export function FieldFormModal({
             </select>
           </Field>
 
-          {/* Dimensions → acreage */}
+          {open ? (
+            <BoundaryBoxEditor
+              value={box}
+              onChange={onBoxChange}
+              contextFeatures={contextFeatures}
+              initialView={initialView}
+              mapKey={fieldId ?? `new-${seededFarmId ?? "none"}`}
+              flyTo={flyTo}
+              label="Boundary"
+              tone="field"
+            />
+          ) : null}
+
+          {/* Crop */}
           <fieldset className="flex flex-col gap-3">
             <legend className="text-xs font-semibold uppercase tracking-wider text-base-content/45">
-              Size
+              Crop
             </legend>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Length (ft)">
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  min={0}
-                  step="any"
-                  value={lengthFt}
-                  onChange={(e) => {
-                    setLengthFt(e.target.value);
-                    markDirty();
-                  }}
-                  placeholder="e.g. 1320"
-                  className={inputClass}
-                />
-              </Field>
-              <Field label="Width (ft)">
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  min={0}
-                  step="any"
-                  value={widthFt}
-                  onChange={(e) => {
-                    setWidthFt(e.target.value);
-                    markDirty();
-                  }}
-                  placeholder="e.g. 1320"
-                  className={inputClass}
-                />
-              </Field>
-            </div>
-            <p className="text-xs text-base-content/55">
-              {acres != null ? (
-                <>
-                  ≈{" "}
-                  <span className="font-semibold text-neutral">
-                    {acres.toLocaleString("en-US", { maximumFractionDigits: 2 })}
-                  </span>{" "}
-                  acres
-                </>
-              ) : (
-                "Enter length and width to size the field."
-              )}
-            </p>
+            <Field label="Current crop">
+              <select
+                value={cropTypeId}
+                onChange={(e) => {
+                  setCropTypeId(e.target.value);
+                  markDirty();
+                }}
+                className={inputClass}
+              >
+                <option value="">No crop assigned</option>
+                {cropTypes.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.commonName}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            {cropTypeId ? (
+              <div className="grid gap-3 sm:grid-cols-3">
+                <Field label="Variety">
+                  <input
+                    type="text"
+                    value={variety}
+                    maxLength={200}
+                    onChange={(e) => {
+                      setVariety(e.target.value);
+                      markDirty();
+                    }}
+                    placeholder="optional"
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label="Planted">
+                  <input
+                    type="date"
+                    value={plantedAt}
+                    onChange={(e) => {
+                      setPlantedAt(e.target.value);
+                      markDirty();
+                    }}
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label="Status">
+                  <select
+                    value={cropStatus}
+                    onChange={(e) => {
+                      setCropStatus(e.target.value);
+                      markDirty();
+                    }}
+                    className={inputClass}
+                  >
+                    {CROP_STATUSES.map((s) => (
+                      <option key={s} value={s}>
+                        {s[0].toUpperCase() + s.slice(1)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+            ) : null}
           </fieldset>
 
           <Field label="Description">
@@ -432,117 +379,6 @@ export function FieldFormModal({
               className={`${inputClass} resize-none`}
             />
           </Field>
-
-          {/* Boundary box */}
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wider text-base-content/45">
-                Boundary
-              </span>
-              {hasBox ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCenter(null);
-                    markDirty();
-                  }}
-                  className="text-xs font-medium text-base-content/55 transition-colors hover:text-error"
-                >
-                  Clear box
-                </button>
-              ) : null}
-            </div>
-            {MAPBOX_TOKEN ? (
-              open ? (
-                <MapPanel
-                  key={fieldId ?? `new-${seededFarmId ?? "none"}`}
-                  header={{
-                    title: "Field box",
-                    meta: hasBox
-                      ? "Drag the box to move · drag a corner to resize"
-                      : "Click the map to place the field"
-                  }}
-                  initialViewState={initialView}
-                  mapboxAccessToken={MAPBOX_TOKEN}
-                  height={260}
-                  enableFullscreen
-                  recenterTo={recenterTo}
-                  recenterTarget={
-                    center ? { lng: center.lng, lat: center.lat, zoom: 14 } : null
-                  }
-                  footerLeft={null}
-                  footerRight={null}
-                  onMapClick={(c) => placeBox({ lat: c.lat, lng: c.lng })}
-                >
-                  {contextFeatures.length > 0 ? (
-                    <Source
-                      id="field-context"
-                      type="geojson"
-                      data={{ type: "FeatureCollection", features: contextFeatures }}
-                    >
-                      <Layer id="field-context-fill" type="fill" paint={contextFillPaint} />
-                      <Layer id="field-context-stroke" type="line" paint={contextStrokePaint} />
-                      <Layer
-                        id="field-context-label"
-                        type="symbol"
-                        layout={contextLabelLayout}
-                        paint={contextLabelPaint}
-                      />
-                    </Source>
-                  ) : null}
-
-                  {hasBox && corners ? (
-                    <>
-                      <Source
-                        id="field-box"
-                        type="geojson"
-                        data={{
-                          type: "Feature",
-                          properties: {},
-                          geometry: boxPolygon(center, length, width)
-                        }}
-                      >
-                        <Layer id="field-box-fill" type="fill" paint={fillPaint} />
-                        <Layer id="field-box-stroke" type="line" paint={strokePaint} />
-                      </Source>
-
-                      {/* Center handle — drag to move the whole box. */}
-                      <Marker
-                        latitude={center.lat}
-                        longitude={center.lng}
-                        anchor="center"
-                        draggable
-                        onDrag={(e: MarkerDragEvent) =>
-                          moveBox({ lat: e.lngLat.lat, lng: e.lngLat.lng })
-                        }
-                      >
-                        <span className="block h-3.5 w-3.5 cursor-move rounded-full border-2 border-base-100 bg-primary shadow" />
-                      </Marker>
-
-                      {/* Corner handles — drag to resize. */}
-                      {corners.map((c, i) => (
-                        <Marker
-                          key={i}
-                          latitude={c[1]}
-                          longitude={c[0]}
-                          anchor="center"
-                          draggable
-                          onDrag={(e: MarkerDragEvent) => onCornerDrag(i, e.lngLat)}
-                        >
-                          <span className="block h-3 w-3 cursor-pointer rounded-sm border-2 border-primary bg-base-100 shadow" />
-                        </Marker>
-                      ))}
-                    </>
-                  ) : null}
-                </MapPanel>
-              ) : null
-            ) : (
-              <p className="rounded-lg border border-dashed border-base-content/20 bg-base-content/[0.02] px-4 py-3 text-xs text-base-content/55">
-                Set <code className="rounded bg-base-content/[0.06] px-1 py-0.5">NEXT_PUBLIC_MAPBOX_TOKEN</code> to draw a
-                boundary. The field still saves without it.
-              </p>
-            )}
-          </div>
 
           {error ? <p className="text-sm text-error">{error}</p> : null}
         </div>
@@ -610,28 +446,5 @@ export function FieldFormModal({
         />
       </form>
     </dialog>
-  );
-}
-
-const inputClass =
-  "w-full rounded-md border border-base-content/15 bg-base-100 px-3 py-2 text-sm text-neutral outline-none transition-colors focus:border-primary/50";
-
-function Field({
-  label,
-  required,
-  children
-}: {
-  label: string;
-  required?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className="flex flex-col gap-1.5">
-      <span className="text-xs font-medium text-base-content/65">
-        {label}
-        {required ? <span className="text-error"> *</span> : null}
-      </span>
-      {children}
-    </label>
   );
 }

@@ -1,9 +1,13 @@
 import {
   ApiError,
+  listCropTypes,
   listFarms,
   listFields,
+  listZones,
+  type CropType,
   type FarmSummary,
-  type FieldSummary
+  type FieldSummary,
+  type ZoneSummary
 } from "../../../lib/api";
 import { FieldsView } from "./FieldsView";
 
@@ -16,16 +20,28 @@ export const dynamic = "force-dynamic";
 export default async function FieldsPage() {
   let fields: FieldSummary[] = [];
   let farms: FarmSummary[] = [];
+  let cropTypes: CropType[] = [];
+  let zones: ZoneSummary[] = [];
   let canManage = false;
+  let zonesCanManage = false;
   let loadError: string | null = null;
 
   try {
-    // Farms give the section headings + ordering and the form's farm selector;
-    // fields are the cards. Both are org-scoped and small.
-    const [fieldsResult, farmsResult] = await Promise.all([listFields(), listFarms()]);
+    // Farms give the section headings + the form's farm selector; fields are the
+    // cards; crop types feed the crop selector; zones drive the per-field count +
+    // the zones manager. All org-scoped and small.
+    const [fieldsResult, farmsResult, cropTypesResult, zonesResult] = await Promise.all([
+      listFields(),
+      listFarms(),
+      listCropTypes(),
+      listZones()
+    ]);
     fields = fieldsResult.fields;
     canManage = fieldsResult.canManage;
     farms = farmsResult.farms;
+    cropTypes = cropTypesResult.cropTypes;
+    zones = zonesResult.zones;
+    zonesCanManage = zonesResult.canManage;
   } catch (err) {
     loadError =
       err instanceof ApiError ? err.message : "Could not reach the fields service.";
@@ -51,7 +67,14 @@ export default async function FieldsPage() {
       {loadError ? (
         <ErrorState message={loadError} />
       ) : (
-        <FieldsView fields={fields} farms={farms} canManage={canManage} />
+        <FieldsView
+          fields={fields}
+          farms={farms}
+          cropTypes={cropTypes}
+          zones={zones}
+          canManage={canManage}
+          zonesCanManage={zonesCanManage}
+        />
       )}
     </div>
   );

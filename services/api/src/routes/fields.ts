@@ -26,6 +26,11 @@ interface FieldListRow {
   area_acres: number | null;
   boundary: GeoJsonPolygon | null;
   centroid: GeoJsonPoint | null;
+  crop_type_id: string | null;
+  crop_common_name: string | null;
+  crop_variety: string | null;
+  crop_status: string | null;
+  planted_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -49,13 +54,33 @@ const boundarySchema = z
 // area_acres is numeric(10,3) in the DB; cap well under its 9,999,999.999 max.
 const acresSchema = z.number().min(0).max(10_000_000).nullable();
 
+// The field's current crop. An object upserts the field's single active planting;
+// null clears it. Mirrors the crop_plantings status check constraint.
+const cropStatusEnum = z.enum([
+  "planned",
+  "planted",
+  "growing",
+  "harvested",
+  "failed",
+  "cancelled"
+]);
+const cropSchema = z
+  .object({
+    cropTypeId: z.string().uuid(),
+    variety: z.string().max(200).nullable().optional(),
+    plantedAt: z.string().datetime().nullable().optional(),
+    status: cropStatusEnum.optional()
+  })
+  .nullable();
+
 const createFieldSchema = z.object({
   name: z.string().min(1).max(200),
   farmId: z.string().uuid(),
   description: z.string().max(2000).nullable().optional(),
   areaAcres: acresSchema.optional(),
   centroid: centroidSchema.optional(),
-  boundary: boundarySchema.optional()
+  boundary: boundarySchema.optional(),
+  crop: cropSchema.optional()
 });
 
 const updateFieldSchema = z
@@ -65,7 +90,8 @@ const updateFieldSchema = z
     description: z.string().max(2000).nullable().optional(),
     areaAcres: acresSchema.optional(),
     centroid: centroidSchema.optional(),
-    boundary: boundarySchema.optional()
+    boundary: boundarySchema.optional(),
+    crop: cropSchema.optional()
   })
   .refine((v) => Object.keys(v).length > 0, {
     message: "At least one field must be provided."
@@ -115,6 +141,11 @@ function toFieldSummary(row: FieldListRow) {
     areaAcres: row.area_acres === null ? null : Number(row.area_acres),
     boundary: row.boundary,
     centroid: row.centroid,
+    cropTypeId: row.crop_type_id,
+    cropCommonName: row.crop_common_name,
+    cropVariety: row.crop_variety,
+    cropStatus: row.crop_status,
+    plantedAt: row.planted_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -150,6 +181,87 @@ async function assertFarmInOrg(
   if (error) throw error;
   if (!data || (data as { org_id: string }).org_id !== orgId) {
     throw badRequest("fields.invalid_farm", "Farm not found in this organization.");
+  }
+}
+
+// Verify the crop type is visible to the org (platform-wide org_id null, or the
+// caller's own custom type). Throws badRequest otherwise.
+async function assertCropTypeInOrg(
+  supabase: ReturnType<typeof getDb>,
+  orgId: string,
+  cropTypeId: string
+) {
+  const { data, error } = await supabase
+    .from("crop_types")
+    .select("id, org_id")
+    .eq("id", cropTypeId)
+    .maybeSingle();
+  if (error) throw error;
+  const ownerOrg = (data as { org_id: string | null } | null)?.org_id;
+  if (!data || (ownerOrg !== null && ownerOrg !== orgId)) {
+    throw badRequest("fields.invalid_crop_type", "Crop type not available to this organization.");
+  }
+}
+
+type FieldCrop = z.infer<typeof cropSchema>;
+
+// Upsert the field's single CURRENT crop (active crop_plantings row). `undefined`
+// leaves plantings untouched (the caller didn't address crop); an object updates
+// the active planting or inserts one; null clears the active planting(s). MVP:
+// one current crop per field — full planting history is a later slice.
+async function applyFieldCrop(
+  supabase: ReturnType<typeof getDb>,
+  orgId: string,
+  fieldId: string,
+  crop: FieldCrop | undefined
+) {
+  if (crop === undefined) return;
+
+  const { data: existing, error: findErr } = await supabase
+    .from("crop_plantings")
+    .select("id")
+    .eq("field_id", fieldId)
+    .eq("org_id", orgId)
+    .in("status", ["planted", "growing"])
+    .order("planted_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (findErr) throw findErr;
+  const existingId = (existing as { id: string } | null)?.id ?? null;
+
+  if (crop === null) {
+    if (existingId) {
+      const { error: delErr } = await supabase
+        .from("crop_plantings")
+        .delete()
+        .eq("field_id", fieldId)
+        .eq("org_id", orgId)
+        .in("status", ["planted", "growing"]);
+      if (delErr) throw delErr;
+    }
+    return;
+  }
+
+  await assertCropTypeInOrg(supabase, orgId, crop.cropTypeId);
+  const fields = {
+    crop_type_id: crop.cropTypeId,
+    variety: crop.variety ?? null,
+    status: crop.status ?? "growing",
+    planted_at: crop.plantedAt ?? new Date().toISOString()
+  };
+
+  if (existingId) {
+    const { error: updErr } = await supabase
+      .from("crop_plantings")
+      .update(fields)
+      .eq("id", existingId)
+      .eq("org_id", orgId);
+    if (updErr) throw updErr;
+  } else {
+    const { error: insErr } = await supabase
+      .from("crop_plantings")
+      .insert({ org_id: orgId, field_id: fieldId, ...fields });
+    if (insErr) throw insErr;
   }
 }
 
@@ -201,7 +313,10 @@ const fieldsRoutes: FastifyPluginAsync = async (app) => {
       .single();
     if (insertErr) throw insertErr;
 
-    const field = await loadFieldSummary(supabase, caller.orgId, (inserted as { id: string }).id);
+    const fieldId = (inserted as { id: string }).id;
+    await applyFieldCrop(supabase, caller.orgId, fieldId, body.crop);
+
+    const field = await loadFieldSummary(supabase, caller.orgId, fieldId);
     reply.status(201);
     return field;
   });
@@ -254,12 +369,18 @@ const fieldsRoutes: FastifyPluginAsync = async (app) => {
         await assertFarmInOrg(supabase, caller.orgId, parsed.data.farmId);
       }
 
-      const { error: updErr } = await supabase
-        .from("fields")
-        .update(buildFieldPatch(parsed.data))
-        .eq("id", id)
-        .eq("org_id", caller.orgId);
-      if (updErr) throw updErr;
+      // The crop lives in crop_plantings, not the fields row — apply it
+      // separately and only touch the fields row when a column actually changed.
+      const patch = buildFieldPatch(parsed.data);
+      if (Object.keys(patch).length > 0) {
+        const { error: updErr } = await supabase
+          .from("fields")
+          .update(patch)
+          .eq("id", id)
+          .eq("org_id", caller.orgId);
+        if (updErr) throw updErr;
+      }
+      await applyFieldCrop(supabase, caller.orgId, id, parsed.data.crop);
 
       const field = await loadFieldSummary(supabase, caller.orgId, id);
       if (!field) throw notFound("fields.not_found", "Field not found.");

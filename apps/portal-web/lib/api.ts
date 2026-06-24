@@ -486,9 +486,24 @@ export interface FieldSummary {
   areaAcres: number | null;
   boundary: GeoJsonPolygon | null;
   centroid: GeoJsonPoint | null;
+  // The field's current crop (latest active planting), null when none.
+  cropTypeId: string | null;
+  cropCommonName: string | null;
+  cropVariety: string | null;
+  cropStatus: string | null;
+  plantedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
+
+// Crop assignment written with a field: an object upserts the field's current
+// crop, null clears it, undefined leaves it untouched.
+export type FieldCropWrite = {
+  cropTypeId: string;
+  variety?: string | null;
+  plantedAt?: string | null;
+  status?: string;
+} | null;
 
 interface ListFieldsResponse {
   orgId: string;
@@ -509,6 +524,7 @@ export interface FieldWrite {
   areaAcres?: number | null;
   centroid?: { lat: number; lng: number } | null;
   boundary?: GeoJsonPolygon | null;
+  crop?: FieldCropWrite;
 }
 
 // The operator's org-scoped fields for the Overview map + acreage stats + the
@@ -540,6 +556,84 @@ export function updateField(id: string, patch: FieldWrite): Promise<FieldSummary
 // fields.delete (owner only, per the current role grants).
 export function deleteField(id: string): Promise<{ fieldId: string; deleted: boolean }> {
   return apiFetch(`/v1/fields/${id}`, { method: "DELETE" });
+}
+
+// --- Crop types -----------------------------------------------------------
+
+// A crop type the org can assign to a field: every platform-wide type plus the
+// org's own custom ones. Mirrors GET /v1/crop-types.
+export interface CropType {
+  id: string;
+  key: string;
+  commonName: string;
+  scientificName: string | null;
+  category: string | null;
+  orgScoped: boolean;
+}
+
+// The crop types available to this org (platform + org-custom). Requires
+// crop_types.read (all roles).
+export function listCropTypes(): Promise<{ cropTypes: CropType[] }> {
+  return apiFetch<{ cropTypes: CropType[] }>("/v1/crop-types");
+}
+
+// --- Zones ----------------------------------------------------------------
+
+// One zone (sub-area within a field) with its boundary serialized as GeoJSON.
+// Mirrors the /v1/zones response (services/api/src/routes/zones.ts).
+export interface ZoneSummary {
+  id: string;
+  fieldId: string;
+  name: string;
+  description: string | null;
+  boundary: GeoJsonPolygon | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface ListZonesResponse {
+  orgId: string;
+  // Whether the current user may create/edit/delete zones (zones.update).
+  canManage: boolean;
+  zones: ZoneSummary[];
+}
+
+// The zones a create/edit form writes. `boundary` is an axis-aligned rectangle
+// drawn within the parent field. `name` + `fieldId` required on create.
+export interface ZoneWrite {
+  fieldId?: string;
+  name?: string;
+  description?: string | null;
+  boundary?: GeoJsonPolygon | null;
+}
+
+// The org's zones, optionally scoped to one field. Requires zones.read.
+export function listZones(fieldId?: string): Promise<ListZonesResponse> {
+  const qs = fieldId ? `?fieldId=${encodeURIComponent(fieldId)}` : "";
+  return apiFetch<ListZonesResponse>(`/v1/zones${qs}`);
+}
+
+// Create a zone within a field. Requires zones.create (manager+).
+export function createZone(body: ZoneWrite & { fieldId: string; name: string }): Promise<ZoneSummary> {
+  return apiFetch<ZoneSummary>("/v1/zones", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body)
+  });
+}
+
+// Edit any subset of a zone's columns. Requires zones.update (manager+).
+export function updateZone(id: string, patch: ZoneWrite): Promise<ZoneSummary> {
+  return apiFetch<ZoneSummary>(`/v1/zones/${id}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(patch)
+  });
+}
+
+// Permanent delete. Requires zones.delete (owner only, per the current grants).
+export function deleteZone(id: string): Promise<{ zoneId: string; deleted: boolean }> {
+  return apiFetch(`/v1/zones/${id}`, { method: "DELETE" });
 }
 
 // --- Farms ----------------------------------------------------------------

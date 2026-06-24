@@ -3,10 +3,15 @@
 import { revalidatePath } from "next/cache";
 import {
   createField,
+  createZone,
   deleteField,
+  deleteZone,
   updateField,
+  updateZone,
   type FieldSummary,
-  type FieldWrite
+  type FieldWrite,
+  type ZoneSummary,
+  type ZoneWrite
 } from "../../../lib/api";
 
 // Create a field, then refresh the grid (+ the overview/sidebar counts, which
@@ -37,4 +42,25 @@ export async function deleteFieldAction(id: string): Promise<void> {
   await deleteField(id);
   revalidatePath("/fields");
   revalidatePath("/");
+}
+
+// --- Zones ----------------------------------------------------------------
+
+export async function createZoneAction(
+  body: ZoneWrite & { fieldId: string; name: string }
+): Promise<ZoneSummary> {
+  const zone = await createZone(body);
+  revalidatePath("/fields");
+  return zone;
+}
+
+export async function updateZoneAction(id: string, patch: ZoneWrite): Promise<ZoneSummary> {
+  const zone = await updateZone(id, patch);
+  revalidatePath("/fields");
+  return zone;
+}
+
+export async function deleteZoneAction(id: string): Promise<void> {
+  await deleteZone(id);
+  revalidatePath("/fields");
 }

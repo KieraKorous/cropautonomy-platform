@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { FarmIcon, GridIcon, MapPinIcon, PlusIcon } from "@gaia/ui";
-import type { FarmSummary, FieldSummary } from "../../../lib/api";
+import type { CropType, FarmSummary, FieldSummary, ZoneSummary } from "../../../lib/api";
 import { FieldFormModal } from "./FieldFormModal";
+import { ZonesModal } from "./ZonesModal";
 
 // Fields grouped by farm: a section per farm (heading + field/acre rollup) with
 // its fields as cards beneath and a per-section "New field" tile that pre-selects
@@ -18,13 +19,20 @@ type ModalState =
 export function FieldsView({
   fields,
   farms,
-  canManage
+  cropTypes,
+  zones,
+  canManage,
+  zonesCanManage
 }: {
   fields: FieldSummary[];
   farms: FarmSummary[];
+  cropTypes: CropType[];
+  zones: ZoneSummary[];
   canManage: boolean;
+  zonesCanManage: boolean;
 }) {
   const [modal, setModal] = useState<ModalState>(null);
+  const [zonesFieldId, setZonesFieldId] = useState<string | null>(null);
 
   // Resolve the edited field from the current list so a post-edit refresh reflows
   // the modal (or closes it if the field was deleted out from under it).
@@ -32,6 +40,11 @@ export function FieldsView({
     modal?.kind === "edit" ? fields.find((f) => f.id === modal.fieldId) ?? null : null;
   // The farm a "new field" is seeded into; used to default the form's selector.
   const seededFarmId = modal?.kind === "new" ? modal.farmId : null;
+
+  const zonesField = zonesFieldId ? fields.find((f) => f.id === zonesFieldId) ?? null : null;
+  const zonesForField = zonesFieldId ? zones.filter((z) => z.fieldId === zonesFieldId) : [];
+  const zoneCounts = new Map<string, number>();
+  for (const z of zones) zoneCounts.set(z.fieldId, (zoneCounts.get(z.fieldId) ?? 0) + 1);
 
   // Fields need a farm to hang off — there's nothing to manage until one exists.
   if (farms.length === 0) {
@@ -73,7 +86,9 @@ export function FieldsView({
                   <FieldCard
                     key={field.id}
                     field={field}
+                    zoneCount={zoneCounts.get(field.id) ?? 0}
                     onOpen={canManage ? () => setModal({ kind: "edit", fieldId: field.id }) : undefined}
+                    onZones={() => setZonesFieldId(field.id)}
                   />
                 ))}
 
@@ -104,8 +119,17 @@ export function FieldsView({
         field={selected}
         farms={farms}
         fields={fields}
+        cropTypes={cropTypes}
         seededFarmId={seededFarmId}
         onClose={() => setModal(null)}
+      />
+
+      <ZonesModal
+        open={zonesFieldId !== null}
+        field={zonesField}
+        zones={zonesForField}
+        canManage={zonesCanManage}
+        onClose={() => setZonesFieldId(null)}
       />
     </>
   );
@@ -146,8 +170,8 @@ function fieldPreviewUrl(field: FieldSummary): string | null {
   return null;
 }
 
-// Per-card map preview. Satellite thumbnail when the field has geometry; a muted
-// placeholder otherwise. Lazy-loaded so off-screen cards defer their requests.
+// Per-card map preview. Light-basemap thumbnail when the field has geometry; a
+// muted placeholder otherwise. Lazy-loaded so off-screen cards defer requests.
 function FieldThumbnail({ field }: { field: FieldSummary }) {
   const url = fieldPreviewUrl(field);
   if (!url) {
@@ -168,60 +192,75 @@ function FieldThumbnail({ field }: { field: FieldSummary }) {
   );
 }
 
-// One field card: a map preview, name, acreage, and whether it's mapped. Becomes
-// a clickable button (opens the edit modal) when the viewer can manage fields;
-// otherwise it's a static panel.
-function FieldCard({ field, onOpen }: { field: FieldSummary; onOpen?: () => void }) {
+// One field card: a map preview, name, crop, acreage, and a Zones entry. The body
+// opens the edit modal (when the viewer can manage fields); the footer's Zones
+// button opens the zones manager.
+function FieldCard({
+  field,
+  zoneCount,
+  onOpen,
+  onZones
+}: {
+  field: FieldSummary;
+  zoneCount: number;
+  onOpen?: () => void;
+  onZones: () => void;
+}) {
   const acres = field.areaAcres ?? 0;
 
-  const body = (
-    <>
-      <FieldThumbnail field={field} />
+  return (
+    <div className="flex min-h-[8.5rem] flex-col overflow-hidden rounded-xl border border-base-content/10 bg-base-100">
+      <button
+        type="button"
+        onClick={onOpen}
+        disabled={!onOpen}
+        className="flex flex-1 flex-col gap-3 p-4 text-left transition-colors enabled:hover:bg-base-content/[0.02]"
+      >
+        <FieldThumbnail field={field} />
 
-      <div className="flex items-center gap-3">
-        <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <GridIcon size={18} />
-        </span>
-        <div className="flex min-w-0 flex-col">
-          <span className="truncate text-sm font-semibold text-neutral" title={field.name}>
-            {field.name}
+        <div className="flex items-center gap-3">
+          <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <GridIcon size={18} />
           </span>
-          <span className="flex items-center gap-1 truncate text-xs text-base-content/55">
-            <MapPinIcon size={12} />
-            <span className="truncate">{field.boundary ? "Mapped" : "No boundary"}</span>
-          </span>
+          <div className="flex min-w-0 flex-col">
+            <span className="truncate text-sm font-semibold text-neutral" title={field.name}>
+              {field.name}
+            </span>
+            <span className="flex items-center gap-1 truncate text-xs text-base-content/55">
+              <MapPinIcon size={12} />
+              <span className="truncate">{field.boundary ? "Mapped" : "No boundary"}</span>
+            </span>
+          </div>
         </div>
-      </div>
 
-      {field.description ? (
-        <p className="line-clamp-2 text-sm text-base-content/65">{field.description}</p>
-      ) : null}
+        {field.cropCommonName ? (
+          <span className="inline-flex w-fit items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+            {field.cropCommonName}
+            {field.cropVariety ? <span className="text-primary/70">· {field.cropVariety}</span> : null}
+          </span>
+        ) : null}
 
-      <div className="mt-auto flex items-center gap-4 border-t border-base-content/10 pt-3 text-xs text-base-content/55">
+        {field.description ? (
+          <p className="line-clamp-2 text-sm text-base-content/65">{field.description}</p>
+        ) : null}
+      </button>
+
+      <div className="flex items-center justify-between gap-3 border-t border-base-content/10 px-4 py-2.5 text-xs text-base-content/55">
         <span>
           <span className="font-semibold text-neutral">
             {acres > 0 ? acres.toLocaleString("en-US", { maximumFractionDigits: 1 }) : "—"}
           </span>{" "}
           acres
         </span>
+        <button
+          type="button"
+          onClick={onZones}
+          className="rounded-md px-2 py-1 font-medium text-base-content/65 transition-colors hover:bg-base-content/[0.05] hover:text-primary"
+        >
+          Zones · <span className="font-semibold text-neutral">{zoneCount}</span>
+        </button>
       </div>
-    </>
-  );
-
-  const className =
-    "flex min-h-[8.5rem] flex-col gap-3 rounded-xl border border-base-content/10 bg-base-100 p-4 text-left";
-
-  if (!onOpen) {
-    return <div className={className}>{body}</div>;
-  }
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className={`${className} transition-colors hover:border-primary/40`}
-    >
-      {body}
-    </button>
+    </div>
   );
 }
 
