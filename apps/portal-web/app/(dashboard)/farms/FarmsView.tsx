@@ -4,6 +4,7 @@ import { useState } from "react";
 import { FarmIcon, MapPinIcon, PlusIcon } from "@gaia/ui";
 import type { FarmSummary, FieldSummary } from "../../../lib/api";
 import { FarmFormModal } from "./FarmFormModal";
+import { fitViewport, labelPoint, projectToPercent, type LngLat } from "./farmPreview";
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
@@ -77,6 +78,10 @@ export function FarmsView({
   );
 }
 
+const PREVIEW_W = 320;
+const PREVIEW_H = 140;
+const PREVIEW_PAD = 40;
+
 // Trim coordinate precision to ~1m so a farm with many fields doesn't blow past
 // the Static Images API's overlay length limit.
 function roundCoords(coords: number[][][]): number[][][] {
@@ -85,16 +90,38 @@ function roundCoords(coords: number[][][]): number[][][] {
   );
 }
 
-// A Mapbox Static Images URL for a farm preview: the farm's fields drawn as solid
-// gray outlines on the light basemap, auto-fit to them. Falls back to a pin at the
-// farm location when no field has a boundary. null when there's no token or
-// nothing to show. (The Static API can't dash strokes, so the fields are solid.)
-function farmPreviewUrl(farm: FarmSummary, fields: FieldSummary[]): string | null {
+const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
+
+type FieldLabel = { id: string; name: string; leftPct: number; topPct: number };
+
+// Build the static-image URL + HTML label positions for a farm preview. The
+// fields are drawn as solid gray outlines (the Static API can't dash strokes) and
+// the farm location gets a marker; we compute the fitting viewport ourselves so
+// the field-name labels can be overlaid at the right spot. null when there's no
+// token or nothing to show.
+function buildFarmPreview(
+  farm: FarmSummary,
+  fields: FieldSummary[]
+): { url: string; labels: FieldLabel[] } | null {
   if (!MAPBOX_TOKEN) return null;
-  const size = "320x140@2x";
   const style = "mapbox/light-v11";
-  // Cap the feature count to keep the URL well within Mapbox's overlay limit.
+  // Cap the feature count to keep the URL within Mapbox's overlay limit.
   const boundaried = fields.filter((f) => f.boundary).slice(0, 60);
+  const farmLoc = farm.location
+    ? { lng: farm.location.coordinates[0], lat: farm.location.coordinates[1] }
+    : null;
+
+  // Points to fit: every field-boundary vertex plus the farm marker.
+  const points: LngLat[] = [];
+  for (const f of boundaried) {
+    for (const [lng, lat] of f.boundary!.coordinates[0]) points.push([lng, lat]);
+  }
+  if (farmLoc) points.push([farmLoc.lng, farmLoc.lat]);
+  if (points.length === 0) return null;
+
+  const view = fitViewport(points, PREVIEW_W, PREVIEW_H, PREVIEW_PAD);
+
+  const overlays: string[] = [];
   if (boundaried.length > 0) {
     const collection = {
       type: "FeatureCollection" as const,
@@ -110,35 +137,58 @@ function farmPreviewUrl(farm: FarmSummary, fields: FieldSummary[]): string | nul
         geometry: { type: "Polygon" as const, coordinates: roundCoords(f.boundary!.coordinates) }
       }))
     };
-    const overlay = `geojson(${encodeURIComponent(JSON.stringify(collection))})`;
-    return `https://api.mapbox.com/styles/v1/${style}/static/${overlay}/auto/${size}?padding=40&access_token=${MAPBOX_TOKEN}`;
+    overlays.push(`geojson(${encodeURIComponent(JSON.stringify(collection))})`);
   }
-  if (farm.location) {
-    const [lng, lat] = farm.location.coordinates;
-    return `https://api.mapbox.com/styles/v1/${style}/static/pin-s+5a7d3a(${lng},${lat})/${lng},${lat},11/${size}?access_token=${MAPBOX_TOKEN}`;
+  if (farmLoc) overlays.push(`pin-s+5a7d3a(${round6(farmLoc.lng)},${round6(farmLoc.lat)})`);
+
+  const position = `${round6(view.centerLng)},${round6(view.centerLat)},${view.zoom.toFixed(2)}`;
+  const url = `https://api.mapbox.com/styles/v1/${style}/static/${overlays.join(
+    ","
+  )}/${position}/${PREVIEW_W}x${PREVIEW_H}@2x?access_token=${MAPBOX_TOKEN}`;
+
+  const labels: FieldLabel[] = [];
+  for (const f of boundaried) {
+    const pt = labelPoint(f.centroid, f.boundary);
+    if (!pt) continue;
+    const pos = projectToPercent(pt.lng, pt.lat, view, PREVIEW_W, PREVIEW_H);
+    if (!pos) continue;
+    labels.push({ id: f.id, name: f.name, leftPct: pos.leftPct, topPct: pos.topPct });
   }
-  return null;
+
+  return { url, labels };
 }
 
-// Per-card map preview: the farm's fields as gray outlines, or a pin, or a muted
-// placeholder. A lazy-loaded static image — no live map per card.
+// Per-card map preview: the farm's fields as gray outlines with name labels and a
+// farm marker, or a muted placeholder. A lazy-loaded static image (no live map),
+// with the labels overlaid as HTML since the Static API can't render text.
 function FarmThumbnail({ farm, fields }: { farm: FarmSummary; fields: FieldSummary[] }) {
-  const url = farmPreviewUrl(farm, fields);
-  if (!url) {
+  const preview = buildFarmPreview(farm, fields);
+  if (!preview) {
     return (
-      <div className="flex h-28 w-full items-center justify-center rounded-lg border border-base-content/10 bg-base-content/[0.03] text-base-content/35">
+      <div className="flex aspect-[16/7] w-full items-center justify-center rounded-lg border border-base-content/10 bg-base-content/[0.03] text-base-content/35">
         <MapPinIcon size={18} />
       </div>
     );
   }
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={url}
-      alt={`Map preview of ${farm.name}`}
-      loading="lazy"
-      className="h-28 w-full rounded-lg border border-base-content/10 object-cover"
-    />
+    <div className="relative aspect-[16/7] w-full overflow-hidden rounded-lg border border-base-content/10">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={preview.url}
+        alt={`Map preview of ${farm.name}`}
+        loading="lazy"
+        className="absolute inset-0 h-full w-full object-cover"
+      />
+      {preview.labels.map((label) => (
+        <span
+          key={label.id}
+          className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded bg-base-100/85 px-1 py-0.5 text-[9px] font-medium leading-none text-neutral shadow-sm"
+          style={{ left: `${label.leftPct}%`, top: `${label.topPct}%`, maxWidth: "75%" }}
+        >
+          <span className="block max-w-[7rem] truncate">{label.name}</span>
+        </span>
+      ))}
+    </div>
   );
 }
 
