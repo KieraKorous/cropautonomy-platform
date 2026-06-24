@@ -6,13 +6,11 @@ import {
   Check,
   DroneIcon,
   FarmIcon,
-  FieldsLayer,
   MapPanel,
   MapPinIcon,
   RoverIcon,
   StatCard,
   StatusPill,
-  type FieldFeature,
   type MapLayerToggle,
   type MapViewMode
 } from "@gaia/ui";
@@ -31,7 +29,26 @@ import {
   type FieldSummary
 } from "../../lib/api";
 import { LiveCountBadge } from "./overview/LiveCountBadge";
+import {
+  OverviewMapContent,
+  type FarmMarker,
+  type FieldFeatureCollection
+} from "./overview/OverviewMapContent";
 import { RecentScansLive } from "./overview/RecentScansLive";
+
+// A calm, distinguishable palette assigned to farms in list order so each farm's
+// fields + marker share one color on the map.
+const FARM_COLORS = [
+  "#5a7d3a", // green
+  "#2f6f8f", // blue
+  "#b26b2c", // amber
+  "#6b5b95", // purple
+  "#3f7d6e", // teal
+  "#8a8f3a", // olive
+  "#9a4f4f", // brick
+  "#4f6d9a" // slate-blue
+];
+const DEFAULT_FARM_COLOR = FARM_COLORS[0];
 
 // The Overview reads live, per-account data on every request (Clerk identity +
 // org-scoped captures/devices/fields), then hands the live sections to client
@@ -74,15 +91,43 @@ export default async function Overview() {
   const fieldNames: Record<string, string> = {};
   for (const f of fields) fieldNames[f.id] = f.name;
 
-  const mapFeatures = fields
-    .map(toFieldFeature)
-    .filter((f): f is FieldFeature => f !== null);
+  // Assign each farm a color (list order), then color fields + markers by farm.
+  const farms = farmsResult.farms;
+  const farmColor: Record<string, string> = {};
+  farms.forEach((farm, i) => {
+    farmColor[farm.id] = FARM_COLORS[i % FARM_COLORS.length];
+  });
+
+  const fieldCollection: FieldFeatureCollection = {
+    type: "FeatureCollection",
+    features: fields
+      .filter((f) => f.boundary)
+      .map((f) => ({
+        type: "Feature",
+        properties: {
+          id: f.id,
+          name: f.name,
+          color: farmColor[f.farmId] ?? DEFAULT_FARM_COLOR
+        },
+        geometry: f.boundary!
+      }))
+  };
+
+  const farmMarkers: FarmMarker[] = farms
+    .filter((farm) => farm.location)
+    .map((farm) => ({
+      id: farm.id,
+      name: farm.name,
+      longitude: farm.location!.coordinates[0],
+      latitude: farm.location!.coordinates[1],
+      color: farmColor[farm.id] ?? DEFAULT_FARM_COLOR
+    }));
 
   const totalAcres = Math.round(
     fields.reduce((sum, f) => sum + (f.areaAcres ?? 0), 0)
   );
   // Count managed farms directly — a farm with no fields yet still counts.
-  const farmCount = farmsResult.farms.length;
+  const farmCount = farms.length;
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
   const capturesToday = captures.filter(
@@ -126,7 +171,12 @@ export default async function Overview() {
         />
       </div>
 
-      <MapSection acres={totalAcres} farms={farmCount} features={mapFeatures} />
+      <MapSection
+        acres={totalAcres}
+        farmCount={farmCount}
+        fields={fieldCollection}
+        farmMarkers={farmMarkers}
+      />
 
       <div className="grid items-start gap-5 lg:grid-cols-[1fr_360px]">
         <div className="flex flex-col gap-5">
@@ -146,15 +196,6 @@ export default async function Overview() {
       </div>
     </div>
   );
-}
-
-function toFieldFeature(field: FieldSummary): FieldFeature | null {
-  if (!field.boundary) return null;
-  return {
-    type: "Feature",
-    properties: { id: field.id, name: field.name },
-    geometry: field.boundary
-  };
 }
 
 // --- Page header ----------------------------------------------------------
@@ -230,13 +271,15 @@ function PageHeader({
 // --- Map ------------------------------------------------------------------
 
 function MapSection({
-  features,
+  fields,
+  farmMarkers,
   acres,
-  farms
+  farmCount
 }: {
-  features: FieldFeature[];
+  fields: FieldFeatureCollection;
+  farmMarkers: FarmMarker[];
   acres: number;
-  farms: number;
+  farmCount: number;
 }) {
   if (!MAPBOX_TOKEN) {
     return (
@@ -258,13 +301,13 @@ function MapSection({
     );
   }
 
-  const initialViewState = viewStateForFields(features);
+  const initialViewState = viewStateForFields(fields, farmMarkers);
 
   return (
     <MapPanel
       header={{
         title: "Field map",
-        meta: `${farms} ${farms === 1 ? "farm" : "farms"} · ${acres.toLocaleString("en-US")} acres`,
+        meta: `${farmCount} ${farmCount === 1 ? "farm" : "farms"} · ${acres.toLocaleString("en-US")} acres`,
         orgSelector: { label: "All farms", icon: <MapPinIcon /> },
         viewModes: mapViewModes,
         timeRange: { label: "Today" },
@@ -274,24 +317,52 @@ function MapSection({
       layers={mapLayers}
       mapboxAccessToken={MAPBOX_TOKEN}
     >
-      <FieldsLayer features={features} />
+      <OverviewMapContent fields={fields} farms={farmMarkers} />
     </MapPanel>
   );
 }
 
 function viewStateForFields(
-  features: FieldFeature[]
-): { longitude: number; latitude: number; zoom: number } {
-  const fallback = { longitude: -95.57, latitude: 39.835, zoom: 11.2 };
+  fields: FieldFeatureCollection,
+  farmMarkers: FarmMarker[]
+): {
+  longitude: number;
+  latitude: number;
+  zoom: number;
+  bounds?: [[number, number], [number, number]];
+  fitBoundsOptions?: { padding?: number; maxZoom?: number };
+} {
+  const fallback = { longitude: -95.57, latitude: 39.835, zoom: 3.6 };
   const points: Array<[number, number]> = [];
-  for (const f of features) {
-    const ring = f.geometry.coordinates[0];
-    for (const [lng, lat] of ring) points.push([lng, lat]);
+  for (const feature of fields.features) {
+    for (const [lng, lat] of feature.geometry.coordinates[0]) points.push([lng, lat]);
   }
+  for (const m of farmMarkers) points.push([m.longitude, m.latitude]);
   if (points.length === 0) return fallback;
-  const lng = points.reduce((s, p) => s + p[0], 0) / points.length;
-  const lat = points.reduce((s, p) => s + p[1], 0) / points.length;
-  return { longitude: lng, latitude: lat, zoom: 11.2 };
+
+  // Fit the whole operation in view: bounds over every field vertex + farm
+  // marker. Mapbox frames these at the real render size; maxZoom keeps a single
+  // small farm from zooming in too far. center/zoom are the recenter fallback.
+  let minLng = Infinity;
+  let maxLng = -Infinity;
+  let minLat = Infinity;
+  let maxLat = -Infinity;
+  for (const [lng, lat] of points) {
+    if (lng < minLng) minLng = lng;
+    if (lng > maxLng) maxLng = lng;
+    if (lat < minLat) minLat = lat;
+    if (lat > maxLat) maxLat = lat;
+  }
+  return {
+    longitude: (minLng + maxLng) / 2,
+    latitude: (minLat + maxLat) / 2,
+    zoom: 11.2,
+    bounds: [
+      [minLng, minLat],
+      [maxLng, maxLat]
+    ],
+    fitBoundsOptions: { padding: 56, maxZoom: 14 }
+  };
 }
 
 // --- Scout list (sample) --------------------------------------------------

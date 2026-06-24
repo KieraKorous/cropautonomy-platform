@@ -71,6 +71,16 @@ export type MapPanelProps = {
     longitude: number;
     latitude: number;
     zoom: number;
+    /**
+     * Optional bounds to fit on first render — react-map-gl frames these at the
+     * real render size (overrides the longitude/latitude/zoom for the initial
+     * view; those remain the fallback for the recenter button + footer coords).
+     */
+    bounds?: [[number, number], [number, number]];
+    fitBoundsOptions?: {
+      padding?: number | { top: number; bottom: number; left: number; right: number };
+      maxZoom?: number;
+    };
   };
   /** Map body height. Default 460px. */
   height?: number;
