@@ -27,14 +27,14 @@ export default async function FieldsPage() {
   let loadError: string | null = null;
 
   try {
-    // Farms give the section headings + the form's farm selector; fields are the
-    // cards; crop types feed the crop selector; zones drive the per-field count +
-    // the zones manager. All org-scoped and small.
+    // Fields + farms are essential (a failure shows the error state). Crop types
+    // and zones are best-effort enrichments — caught individually so a hiccup
+    // there (or a not-yet-applied migration) never blocks the core list.
     const [fieldsResult, farmsResult, cropTypesResult, zonesResult] = await Promise.all([
       listFields(),
       listFarms(),
-      listCropTypes(),
-      listZones()
+      listCropTypes().catch(() => ({ cropTypes: [] as CropType[] })),
+      listZones().catch(() => ({ orgId: "", canManage: false, zones: [] as ZoneSummary[] }))
     ]);
     fields = fieldsResult.fields;
     canManage = fieldsResult.canManage;
