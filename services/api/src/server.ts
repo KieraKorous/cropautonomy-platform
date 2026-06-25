@@ -9,7 +9,6 @@ import errorHandlerPlugin from "./plugins/error-handler.js";
 import requestIdPlugin from "./plugins/request-id.js";
 import captureSessionsRoutes from "./routes/capture-sessions.js";
 import capturesRoutes from "./routes/captures.js";
-import cropTypesRoutes from "./routes/crop-types.js";
 import devicesRoutes from "./routes/devices.js";
 import farmsRoutes from "./routes/farms.js";
 import fieldsRoutes from "./routes/fields.js";
@@ -56,7 +55,6 @@ export async function buildServer(config: Config): Promise<FastifyInstance> {
   await app.register(devicesRoutes);
   await app.register(farmsRoutes);
   await app.register(fieldsRoutes);
-  await app.register(cropTypesRoutes);
   await app.register(zonesRoutes);
   await app.register(realtimeRoutes);
 

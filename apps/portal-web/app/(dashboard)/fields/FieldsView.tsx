@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { FarmIcon, GridIcon, MapPinIcon, PlusIcon } from "@gaia/ui";
-import type { CropType, FarmSummary, FieldSummary, ZoneSummary } from "../../../lib/api";
+import type { FarmSummary, FieldSummary, ZoneSummary } from "../../../lib/api";
 import { FieldFormModal } from "./FieldFormModal";
 import { ZonesModal } from "./ZonesModal";
 
@@ -19,14 +19,12 @@ type ModalState =
 export function FieldsView({
   fields,
   farms,
-  cropTypes,
   zones,
   canManage,
   zonesCanManage
 }: {
   fields: FieldSummary[];
   farms: FarmSummary[];
-  cropTypes: CropType[];
   zones: ZoneSummary[];
   canManage: boolean;
   zonesCanManage: boolean;
@@ -119,7 +117,6 @@ export function FieldsView({
         field={selected}
         farms={farms}
         fields={fields}
-        cropTypes={cropTypes}
         seededFarmId={seededFarmId}
         onClose={() => setModal(null)}
       />
@@ -233,12 +230,13 @@ function FieldCard({
           </div>
         </div>
 
-        {field.cropCommonName ? (
+        {field.crop ? (
           <span className="inline-flex w-fit items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-            {field.cropCommonName}
-            {field.cropVariety ? <span className="text-primary/70">· {field.cropVariety}</span> : null}
+            {field.crop}
           </span>
-        ) : null}
+        ) : (
+          <span className="text-xs italic text-base-content/45">No crop assigned</span>
+        )}
 
         {field.description ? (
           <p className="line-clamp-2 text-sm text-base-content/65">{field.description}</p>

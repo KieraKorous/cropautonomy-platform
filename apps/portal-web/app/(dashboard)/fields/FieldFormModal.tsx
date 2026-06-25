@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { CropType, FarmSummary, FieldSummary, FieldWrite } from "../../../lib/api";
+import type { FarmSummary, FieldSummary, FieldWrite } from "../../../lib/api";
 import { UnsavedChangesPrompt } from "../_components/UnsavedChangesPrompt";
 import {
   BoundaryBoxEditor,
@@ -18,18 +18,16 @@ import { Field, inputClass } from "./formControls";
 const DEFAULT_VIEW = { longitude: -95.57, latitude: 39.835, zoom: 3.4 };
 const DEFAULT_DIM_FT = 660;
 
-const CROP_STATUSES = ["planned", "planted", "growing", "harvested", "failed", "cancelled"];
 const EMPTY_BOX: BoxValue = { lengthFt: "", widthFt: "", center: null };
 
 // Create / edit a field. The size + boundary are handled by the shared
 // BoundaryBoxEditor (length × width → a draggable box). A field also carries a
-// current crop (one active planting) and an optional description.
+// free-text crop and an optional description.
 export function FieldFormModal({
   open,
   field,
   farms,
   fields,
-  cropTypes,
   seededFarmId,
   onClose
 }: {
@@ -37,7 +35,6 @@ export function FieldFormModal({
   field: FieldSummary | null;
   farms: FarmSummary[];
   fields: FieldSummary[];
-  cropTypes: CropType[];
   seededFarmId: string | null;
   onClose: () => void;
 }) {
@@ -48,11 +45,7 @@ export function FieldFormModal({
   const [farmId, setFarmId] = useState("");
   const [description, setDescription] = useState("");
   const [box, setBox] = useState<BoxValue>(EMPTY_BOX);
-  // Crop (current planting) fields.
-  const [cropTypeId, setCropTypeId] = useState("");
-  const [variety, setVariety] = useState("");
-  const [plantedAt, setPlantedAt] = useState(""); // yyyy-mm-dd
-  const [cropStatus, setCropStatus] = useState("growing");
+  const [crop, setCrop] = useState("");
   // Parent-driven fly-in (auto-placement at the selected farm).
   const [flyTo, setFlyTo] = useState<{ lng: number; lat: number; zoom?: number } | null>(null);
 
@@ -98,10 +91,7 @@ export function FieldFormModal({
       setBox(EMPTY_BOX);
       positionTouchedRef.current = isEdit;
     }
-    setCropTypeId(field?.cropTypeId ?? "");
-    setVariety(field?.cropVariety ?? "");
-    setPlantedAt((field?.plantedAt ?? new Date().toISOString()).slice(0, 10));
-    setCropStatus(field?.cropStatus ?? "growing");
+    setCrop(field?.crop ?? "");
     setSaving(false);
     setConfirmingDelete(false);
     setDeleting(false);
@@ -171,14 +161,7 @@ export function FieldFormModal({
       areaAcres: boxValueAcres(box),
       centroid: box.center,
       boundary,
-      crop: cropTypeId
-        ? {
-            cropTypeId,
-            variety: variety.trim() || null,
-            plantedAt: plantedAt ? new Date(plantedAt).toISOString() : null,
-            status: cropStatus
-          }
-        : null
+      crop: crop.trim() || null
     };
     try {
       if (isEdit && field) {
@@ -298,73 +281,19 @@ export function FieldFormModal({
             />
           ) : null}
 
-          {/* Crop */}
-          <fieldset className="flex flex-col gap-3">
-            <legend className="text-xs font-semibold uppercase tracking-wider text-base-content/45">
-              Crop
-            </legend>
-            <Field label="Current crop">
-              <select
-                value={cropTypeId}
-                onChange={(e) => {
-                  setCropTypeId(e.target.value);
-                  markDirty();
-                }}
-                className={inputClass}
-              >
-                <option value="">No crop assigned</option>
-                {cropTypes.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.commonName}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            {cropTypeId ? (
-              <div className="grid gap-3 sm:grid-cols-3">
-                <Field label="Variety">
-                  <input
-                    type="text"
-                    value={variety}
-                    maxLength={200}
-                    onChange={(e) => {
-                      setVariety(e.target.value);
-                      markDirty();
-                    }}
-                    placeholder="optional"
-                    className={inputClass}
-                  />
-                </Field>
-                <Field label="Planted">
-                  <input
-                    type="date"
-                    value={plantedAt}
-                    onChange={(e) => {
-                      setPlantedAt(e.target.value);
-                      markDirty();
-                    }}
-                    className={inputClass}
-                  />
-                </Field>
-                <Field label="Status">
-                  <select
-                    value={cropStatus}
-                    onChange={(e) => {
-                      setCropStatus(e.target.value);
-                      markDirty();
-                    }}
-                    className={inputClass}
-                  >
-                    {CROP_STATUSES.map((s) => (
-                      <option key={s} value={s}>
-                        {s[0].toUpperCase() + s.slice(1)}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-              </div>
-            ) : null}
-          </fieldset>
+          <Field label="Crop">
+            <input
+              type="text"
+              value={crop}
+              maxLength={200}
+              onChange={(e) => {
+                setCrop(e.target.value);
+                markDirty();
+              }}
+              placeholder="e.g. Corn — leave blank if none"
+              className={inputClass}
+            />
+          </Field>
 
           <Field label="Description">
             <textarea

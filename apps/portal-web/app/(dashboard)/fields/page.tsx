@@ -1,10 +1,8 @@
 import {
   ApiError,
-  listCropTypes,
   listFarms,
   listFields,
   listZones,
-  type CropType,
   type FarmSummary,
   type FieldSummary,
   type ZoneSummary
@@ -20,26 +18,23 @@ export const dynamic = "force-dynamic";
 export default async function FieldsPage() {
   let fields: FieldSummary[] = [];
   let farms: FarmSummary[] = [];
-  let cropTypes: CropType[] = [];
   let zones: ZoneSummary[] = [];
   let canManage = false;
   let zonesCanManage = false;
   let loadError: string | null = null;
 
   try {
-    // Fields + farms are essential (a failure shows the error state). Crop types
-    // and zones are best-effort enrichments — caught individually so a hiccup
-    // there (or a not-yet-applied migration) never blocks the core list.
-    const [fieldsResult, farmsResult, cropTypesResult, zonesResult] = await Promise.all([
+    // Fields + farms are essential (a failure shows the error state). Zones are a
+    // best-effort enrichment — caught so a hiccup (or a not-yet-applied migration)
+    // never blocks the core list.
+    const [fieldsResult, farmsResult, zonesResult] = await Promise.all([
       listFields(),
       listFarms(),
-      listCropTypes().catch(() => ({ cropTypes: [] as CropType[] })),
       listZones().catch(() => ({ orgId: "", canManage: false, zones: [] as ZoneSummary[] }))
     ]);
     fields = fieldsResult.fields;
     canManage = fieldsResult.canManage;
     farms = farmsResult.farms;
-    cropTypes = cropTypesResult.cropTypes;
     zones = zonesResult.zones;
     zonesCanManage = zonesResult.canManage;
   } catch (err) {
@@ -70,7 +65,6 @@ export default async function FieldsPage() {
         <FieldsView
           fields={fields}
           farms={farms}
-          cropTypes={cropTypes}
           zones={zones}
           canManage={canManage}
           zonesCanManage={zonesCanManage}
