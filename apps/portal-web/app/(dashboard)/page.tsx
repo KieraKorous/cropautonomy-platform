@@ -397,7 +397,7 @@ function DevicesOnTheMoveCard({ devices }: { devices: Device[] }) {
                 <div className="flex min-w-0 flex-1 flex-col">
                   <span className="text-sm font-semibold text-neutral">{deviceName(device)}</span>
                   <span className="text-xs text-base-content/55">
-                    {device.live ? "Live now" : lastUsedLabel(device.lastUsedAt)}
+                    {device.live ? "In use now" : lastUsedLabel(device.lastUsedAt)}
                   </span>
                 </div>
                 {maintenance ? (

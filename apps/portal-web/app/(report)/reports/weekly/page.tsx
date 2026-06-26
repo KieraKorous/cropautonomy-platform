@@ -218,7 +218,7 @@ export default async function WeeklyReportPage() {
                     <Td className="text-base-content/70">{familyLabel(device.deviceFamily)}</Td>
                     <Td className="text-base-content/70">{activityStatusLabel(device)}</Td>
                     <Td className="text-right text-base-content/70">
-                      {device.live ? "Live now" : lastUsedLabel(device.lastUsedAt)}
+                      {device.live ? "In use now" : lastUsedLabel(device.lastUsedAt)}
                     </Td>
                   </tr>
                 ))}

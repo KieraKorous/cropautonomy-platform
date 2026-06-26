@@ -102,7 +102,7 @@ function DeviceCard({ device, onOpen }: { device: Device; onOpen: () => void }) 
           {name}
         </span>
         <span className="block truncate text-xs text-neutral-content/70">
-          {label} · {device.live ? "Live now" : `Used ${formatRelativeTime(device.lastUsedAt)}`}
+          {label} · {device.live ? "In use now" : `Used ${formatRelativeTime(device.lastUsedAt)}`}
         </span>
       </div>
     </button>

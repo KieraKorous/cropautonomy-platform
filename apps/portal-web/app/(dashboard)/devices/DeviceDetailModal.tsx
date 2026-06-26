@@ -289,7 +289,7 @@ export function DeviceDetailModal({
           <DetailRow label="Registered" value={formatDate(device.registeredAt)} />
           <DetailRow
             label="Last used"
-            value={device.live ? "Live now" : formatRelativeTime(device.lastUsedAt)}
+            value={device.live ? "In use now" : formatRelativeTime(device.lastUsedAt)}
           />
         </dl>
 

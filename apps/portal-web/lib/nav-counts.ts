@@ -44,7 +44,11 @@ export async function loadNavCounts(): Promise<NavCounts> {
     // fields yet would be invisible if we still derived this from field.farmId.
     farms: farmsResult.farms.length,
     fields: fieldsResult.fields.length,
-    devicesActive: devices.filter((d) => d.status === "active").length,
+    // "Active" = the field app is capturing/streaming on the device right now
+    // (the org_device_activity `live` flag), matching the Overview's "Fleet on
+    // the move" — not the operator lifecycle status. Refreshed on the shell's 30s
+    // poll, so the sidebar tracks real activity.
+    devicesActive: devices.filter((d) => d.live).length,
     devicesTotal: devices.length,
     devicesMaintenance: devices.filter((d) => d.status === "maintenance").length
   };

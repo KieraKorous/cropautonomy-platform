@@ -166,7 +166,7 @@ function FleetPulse({ counts }: { counts: NavCounts }) {
     <SidebarPulseCard
       body={`${counts.devicesActive} of ${counts.devicesTotal} ${
         counts.devicesTotal === 1 ? "device" : "devices"
-      } active${maint}.`}
+      } active now${maint}.`}
       title={counts.devicesActive > 0 ? "Fleet operational" : "Fleet quiet"}
       tone={counts.devicesActive > 0 ? "success" : "muted"}
     />
