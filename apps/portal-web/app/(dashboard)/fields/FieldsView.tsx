@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { FarmIcon, GridIcon, MapPinIcon, PlusIcon } from "@gaia/ui";
+import { FarmIcon, GridIcon, MapPinIcon, PlusIcon, RowsIcon } from "@gaia/ui";
 import type { FarmSummary, FieldSummary, ZoneSummary } from "../../../lib/api";
 import { FieldFormModal } from "./FieldFormModal";
 import { ZonesModal } from "./ZonesModal";
@@ -85,6 +85,7 @@ export function FieldsView({
                     key={field.id}
                     field={field}
                     zoneCount={zoneCounts.get(field.id) ?? 0}
+                    canManageZones={zonesCanManage}
                     onOpen={canManage ? () => setModal({ kind: "edit", fieldId: field.id }) : undefined}
                     onZones={() => setZonesFieldId(field.id)}
                   />
@@ -195,11 +196,13 @@ function FieldThumbnail({ field }: { field: FieldSummary }) {
 function FieldCard({
   field,
   zoneCount,
+  canManageZones,
   onOpen,
   onZones
 }: {
   field: FieldSummary;
   zoneCount: number;
+  canManageZones: boolean;
   onOpen?: () => void;
   onZones: () => void;
 }) {
@@ -253,9 +256,28 @@ function FieldCard({
         <button
           type="button"
           onClick={onZones}
-          className="rounded-md px-2 py-1 font-medium text-base-content/65 transition-colors hover:bg-base-content/[0.05] hover:text-primary"
+          className="inline-flex items-center gap-1.5 rounded-md border border-base-content/15 px-2.5 py-1 font-medium text-base-content/70 transition-colors hover:border-primary/40 hover:bg-primary/[0.06] hover:text-primary"
+          title={zoneCount > 0 ? "Manage zones" : canManageZones ? "Add zones" : "View zones"}
         >
-          Zones · <span className="font-semibold text-neutral">{zoneCount}</span>
+          {zoneCount > 0 ? (
+            <>
+              <RowsIcon size={13} />
+              Zones
+              <span className="rounded-full bg-base-content/10 px-1.5 font-semibold text-neutral">
+                {zoneCount}
+              </span>
+            </>
+          ) : canManageZones ? (
+            <>
+              <PlusIcon size={13} />
+              Add zones
+            </>
+          ) : (
+            <>
+              <RowsIcon size={13} />
+              No zones
+            </>
+          )}
         </button>
       </div>
     </div>
