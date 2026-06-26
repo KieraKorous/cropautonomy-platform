@@ -81,10 +81,10 @@ export default async function Overview() {
   const capturesToday = captures.filter(
     (c) => new Date(c.capturedAt).getTime() >= startOfToday.getTime()
   ).length;
-  const fleetActive = devices.filter((d) => d.status === "active").length;
-  const onTheMove = devices.filter(
-    (d) => d.status === "active" || d.status === "maintenance"
-  );
+  // "Active right now" = the field app is capturing/streaming on the device
+  // (live), per the device-activity rollup — not the operator lifecycle status.
+  const fleetActive = devices.filter((d) => d.live).length;
+  const onTheMove = devices.filter((d) => d.live || d.status === "maintenance");
 
   return (
     <div className="flex flex-col gap-7">
@@ -396,7 +396,9 @@ function DevicesOnTheMoveCard({ devices }: { devices: Device[] }) {
                 </span>
                 <div className="flex min-w-0 flex-1 flex-col">
                   <span className="text-sm font-semibold text-neutral">{deviceName(device)}</span>
-                  <span className="text-xs text-base-content/55">{lastSeenLabel(device.lastSeenAt)}</span>
+                  <span className="text-xs text-base-content/55">
+                    {device.live ? "Live now" : lastUsedLabel(device.lastUsedAt)}
+                  </span>
                 </div>
                 {maintenance ? (
                   <StatusPill label="Maintenance" tone="muted" />
@@ -422,15 +424,15 @@ function deviceName(device: Device): string {
   return device.nickname ?? device.displayName ?? device.serialNumber;
 }
 
-function lastSeenLabel(lastSeenAt: string | null): string {
-  if (!lastSeenAt) return "No telemetry yet";
-  const mins = Math.round((Date.now() - new Date(lastSeenAt).getTime()) / 60000);
-  if (mins < 1) return "Last seen just now";
-  if (mins < 60) return `Last seen ${mins} min ago`;
+function lastUsedLabel(lastUsedAt: string | null): string {
+  if (!lastUsedAt) return "Not used yet";
+  const mins = Math.round((Date.now() - new Date(lastUsedAt).getTime()) / 60000);
+  if (mins < 1) return "Used just now";
+  if (mins < 60) return `Used ${mins} min ago`;
   const hours = Math.round(mins / 60);
-  if (hours < 24) return `Last seen ${hours} ${hours === 1 ? "hour" : "hours"} ago`;
+  if (hours < 24) return `Used ${hours} ${hours === 1 ? "hour" : "hours"} ago`;
   const days = Math.round(hours / 24);
-  return `Last seen ${days} ${days === 1 ? "day" : "days"} ago`;
+  return `Used ${days} ${days === 1 ? "day" : "days"} ago`;
 }
 
 // --- Shared ---------------------------------------------------------------

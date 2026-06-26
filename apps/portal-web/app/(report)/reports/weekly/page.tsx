@@ -198,7 +198,7 @@ export default async function WeeklyReportPage() {
         </Section>
 
         {/* Device / fleet activity */}
-        <Section title="Fleet activity" subtitle="Registered devices and when each was last seen.">
+        <Section title="Fleet activity" subtitle="Registered devices and when each was last used.">
           {devices.length === 0 ? (
             <EmptyRow message="No devices registered yet." />
           ) : (
@@ -208,7 +208,7 @@ export default async function WeeklyReportPage() {
                   <Th>Device</Th>
                   <Th>Type</Th>
                   <Th>Status</Th>
-                  <Th className="text-right">Last seen</Th>
+                  <Th className="text-right">Last used</Th>
                 </tr>
               </thead>
               <tbody>
@@ -216,8 +216,10 @@ export default async function WeeklyReportPage() {
                   <tr key={device.id} className="border-b border-base-content/8">
                     <Td className="font-medium text-neutral">{deviceName(device)}</Td>
                     <Td className="text-base-content/70">{familyLabel(device.deviceFamily)}</Td>
-                    <Td className="capitalize text-base-content/70">{device.status}</Td>
-                    <Td className="text-right text-base-content/70">{lastSeenLabel(device.lastSeenAt)}</Td>
+                    <Td className="text-base-content/70">{activityStatusLabel(device)}</Td>
+                    <Td className="text-right text-base-content/70">
+                      {device.live ? "Live now" : lastUsedLabel(device.lastUsedAt)}
+                    </Td>
                   </tr>
                 ))}
               </tbody>
@@ -281,9 +283,18 @@ function familyLabel(family: Device["deviceFamily"]): string {
   return "Rover";
 }
 
-function lastSeenLabel(lastSeenAt: string | null): string {
-  if (!lastSeenAt) return "No telemetry";
-  const mins = Math.round((Date.now() - new Date(lastSeenAt).getTime()) / 60000);
+// Activity-derived status, mirroring the devices page: operator lifecycle states
+// win, otherwise "Active" only while live, else "Inactive".
+function activityStatusLabel(device: Device): string {
+  if (device.status === "retired") return "Retired";
+  if (device.status === "maintenance") return "Maintenance";
+  if (device.status === "unregistered") return "Unregistered";
+  return device.live ? "Active" : "Inactive";
+}
+
+function lastUsedLabel(lastUsedAt: string | null): string {
+  if (!lastUsedAt) return "Never";
+  const mins = Math.round((Date.now() - new Date(lastUsedAt).getTime()) / 60000);
   if (mins < 1) return "Just now";
   if (mins < 60) return `${mins} min ago`;
   const hours = Math.round(mins / 60);

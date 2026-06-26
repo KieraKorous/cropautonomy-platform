@@ -364,6 +364,14 @@ export interface Device {
   registeredByName: string | null;
   registeredAt: string | null;
   lastSeenAt: string | null;
+  // Latest real activity: the most recent capture the device produced or live
+  // session it drove. null if it has never been used. Distinct from lastSeenAt
+  // (stamped only at pairing today). From the org_device_activity rollup.
+  lastUsedAt: string | null;
+  // True when the field app is capturing/streaming on the device right now (an
+  // active capture session with a fresh heartbeat). Drives the Active/Inactive
+  // activity status in the portal.
+  live: boolean;
 }
 
 interface ListDevicesResponse {

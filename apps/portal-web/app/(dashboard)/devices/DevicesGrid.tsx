@@ -6,7 +6,14 @@ import { PlusIcon, StatusPill } from "@gaia/ui";
 import type { Device } from "../../../lib/api";
 import { AddDeviceDialog } from "./AddDeviceDialog";
 import { DeviceDetailModal } from "./DeviceDetailModal";
-import { DeviceVisual, deviceFamilyMeta, deviceName, deviceStatusDisplay, deviceVisual } from "./deviceDisplay";
+import {
+  DeviceVisual,
+  deviceActivityStatus,
+  deviceFamilyMeta,
+  deviceName,
+  deviceVisual,
+  formatRelativeTime
+} from "./deviceDisplay";
 
 // Devices grid: a card per registered device plus the dashed "add device" tile.
 // Clicking a card opens the detail modal (rename / retire / delete); the add
@@ -65,7 +72,7 @@ export function DevicesGrid({
 
 function DeviceCard({ device, onOpen }: { device: Device; onOpen: () => void }) {
   const { label } = deviceFamilyMeta(device.deviceFamily);
-  const status = deviceStatusDisplay(device.status);
+  const status = deviceActivityStatus(device);
   const visual = deviceVisual(device);
   const name = deviceName(device);
 
@@ -94,7 +101,9 @@ function DeviceCard({ device, onOpen }: { device: Device; onOpen: () => void }) 
         <span className="block truncate text-sm font-semibold text-neutral-content" title={name}>
           {name}
         </span>
-        <span className="block truncate text-xs text-neutral-content/70">{label}</span>
+        <span className="block truncate text-xs text-neutral-content/70">
+          {label} · {device.live ? "Live now" : `Used ${formatRelativeTime(device.lastUsedAt)}`}
+        </span>
       </div>
     </button>
   );

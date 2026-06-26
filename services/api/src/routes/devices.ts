@@ -89,6 +89,13 @@ interface DeviceRow {
   registered_by: { display_name: string | null; email: string } | null;
 }
 
+// One row of the org_device_activity(uuid) rollup (migration 0022).
+interface DeviceActivityRow {
+  device_id: string;
+  last_used_at: string | null;
+  is_live: boolean;
+}
+
 // One device row → the portal-facing summary. nickname lives in metadata;
 // registeredByName falls back through display_name → email → "Unknown".
 function toDeviceSummary(row: DeviceRow) {
@@ -323,8 +330,32 @@ const devicesRoutes: FastifyPluginAsync = async (app) => {
         "devices.update"
       );
 
+      // Per-device activity (last used + currently-live) derived from captures +
+      // capture_sessions. Best-effort: if the rollup errors, fall back to no
+      // activity rather than failing the whole registry list.
+      const activity = new Map<string, { lastUsedAt: string | null; live: boolean }>();
+      const { data: activityRows, error: activityErr } = await supabase.rpc(
+        "org_device_activity",
+        { p_org_id: caller.orgId }
+      );
+      if (activityErr) {
+        request.log.warn({ err: activityErr }, "org_device_activity rollup failed");
+      } else {
+        for (const r of (activityRows ?? []) as DeviceActivityRow[]) {
+          activity.set(r.device_id, { lastUsedAt: r.last_used_at, live: r.is_live });
+        }
+      }
+
       const rows = (data ?? []) as unknown as DeviceRow[];
-      return { orgId: caller.orgId, canManage, devices: rows.map(toDeviceSummary) };
+      const devices = rows.map((row) => {
+        const act = activity.get(row.id);
+        return {
+          ...toDeviceSummary(row),
+          lastUsedAt: act?.lastUsedAt ?? null,
+          live: act?.live ?? false
+        };
+      });
+      return { orgId: caller.orgId, canManage, devices };
     }
   );
 

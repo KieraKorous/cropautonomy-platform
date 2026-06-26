@@ -87,6 +87,37 @@ export function deviceStatusDisplay(status: DeviceStatus): { label: string; tone
   return STATUS[status] ?? { label: status, tone: "muted" };
 }
 
+// The status pill shown on cards + the detail modal. Operator lifecycle states
+// (retired / maintenance / unregistered) take precedence; otherwise the pill
+// reflects *real activity* — "Active" only while the field app is capturing or
+// live on the device right now, "Inactive" when it's idle. So a paired-but-idle
+// phone reads Inactive rather than a permanent Active.
+export function deviceActivityStatus(device: Device): { label: string; tone: Tone } {
+  if (device.status === "retired") return STATUS.retired;
+  if (device.status === "maintenance") return STATUS.maintenance;
+  if (device.status === "unregistered") return STATUS.unregistered;
+  return device.live
+    ? { label: "Active", tone: "success" }
+    : { label: "Inactive", tone: "muted" };
+}
+
+// Relative "last used" label (e.g. "3 days ago"). "Never" when the device has no
+// recorded captures or sessions yet.
+export function formatRelativeTime(value: string | null): string {
+  if (!value) return "Never";
+  const mins = Math.round((Date.now() - new Date(value).getTime()) / 60000);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours} ${hours === 1 ? "hour" : "hours"} ago`;
+  const days = Math.round(hours / 24);
+  if (days < 30) return `${days} ${days === 1 ? "day" : "days"} ago`;
+  const months = Math.round(days / 30);
+  if (months < 12) return `${months} ${months === 1 ? "month" : "months"} ago`;
+  const years = Math.round(months / 12);
+  return `${years} ${years === 1 ? "year" : "years"} ago`;
+}
+
 // The name shown on cards / headers: operator nickname first, then the
 // registration name, then a placeholder.
 export function deviceName(device: Device): string {

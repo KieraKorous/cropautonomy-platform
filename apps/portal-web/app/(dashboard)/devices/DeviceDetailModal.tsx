@@ -11,11 +11,12 @@ import {
   APPEARANCE_ICONS,
   DeviceVisual,
   colorVarName,
+  deviceActivityStatus,
   deviceFamilyMeta,
   deviceName,
-  deviceStatusDisplay,
   deviceVisual,
   familyIconKey,
+  formatRelativeTime,
   resolveVisual
 } from "./deviceDisplay";
 
@@ -126,7 +127,7 @@ export function DeviceDetailModal({
   }
 
   const { label: familyLabel } = deviceFamilyMeta(device.deviceFamily);
-  const status = deviceStatusDisplay(device.status);
+  const status = deviceActivityStatus(device);
   const isRetired = device.status === "retired";
   // Optimistic override wins until the server prop confirms it (see effect above).
   const autoLiveChecked = autoLiveOverride ?? device.autoLiveEnabled;
@@ -286,7 +287,10 @@ export function DeviceDetailModal({
           <DetailRow label="Firmware" value={device.firmwareVersion ?? "—"} />
           <DetailRow label="Registered by" value={device.registeredByName ?? "—"} />
           <DetailRow label="Registered" value={formatDate(device.registeredAt)} />
-          <DetailRow label="Last seen" value={formatDate(device.lastSeenAt)} />
+          <DetailRow
+            label="Last used"
+            value={device.live ? "Live now" : formatRelativeTime(device.lastUsedAt)}
+          />
         </dl>
 
         {/* Auto go-live switch. On = streams live without watcher approval; off =
