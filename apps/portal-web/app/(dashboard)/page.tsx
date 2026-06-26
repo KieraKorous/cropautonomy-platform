@@ -19,10 +19,12 @@ import {
   listFarms,
   listFields,
   listLiveSessions,
+  listZones,
   type CaptureSummary,
   type Device,
   type FarmSummary,
-  type FieldSummary
+  type FieldSummary,
+  type ZoneSummary
 } from "../../lib/api";
 import { FieldMapExplorer } from "./overview/FieldMapExplorer";
 import { buildFieldMapData, type FieldMapData } from "./overview/fieldMapData";
@@ -38,16 +40,25 @@ export const dynamic = "force-dynamic";
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
 export default async function Overview() {
-  const [clerkUser, me, capturesResult, devicesResult, farmsResult, fieldsResult, liveResult] =
-    await Promise.all([
-      currentUser(),
-      getMe().catch(() => null),
-      listCaptures({ limit: 12 }).catch(() => ({ captures: [] as CaptureSummary[] })),
-      listDevices().catch(() => ({ devices: [] as Device[] })),
-      listFarms().catch(() => ({ farms: [] as FarmSummary[] })),
-      listFields().catch(() => ({ fields: [] as FieldSummary[] })),
-      listLiveSessions().catch(() => ({ sessions: [], orgId: "" }))
-    ]);
+  const [
+    clerkUser,
+    me,
+    capturesResult,
+    devicesResult,
+    farmsResult,
+    fieldsResult,
+    zonesResult,
+    liveResult
+  ] = await Promise.all([
+    currentUser(),
+    getMe().catch(() => null),
+    listCaptures({ limit: 12 }).catch(() => ({ captures: [] as CaptureSummary[] })),
+    listDevices().catch(() => ({ devices: [] as Device[] })),
+    listFarms().catch(() => ({ farms: [] as FarmSummary[] })),
+    listFields().catch(() => ({ fields: [] as FieldSummary[] })),
+    listZones().catch(() => ({ zones: [] as ZoneSummary[] })),
+    listLiveSessions().catch(() => ({ sessions: [], orgId: "" }))
+  ]);
 
   const orgId = me?.orgId ?? liveResult.orgId ?? "";
   const captures = capturesResult.captures;
@@ -61,7 +72,7 @@ export default async function Overview() {
   for (const f of fields) fieldNames[f.id] = f.name;
 
   // Shape the field-map inputs (colors, markers, dropdown options, activity pins).
-  const mapData = buildFieldMapData(fields, farmsResult.farms, captures);
+  const mapData = buildFieldMapData(fields, farmsResult.farms, captures, zonesResult.zones);
   const totalAcres = mapData.acres;
   // Count managed farms directly — a farm with no fields yet still counts.
   const farmCount = farmsResult.farms.length;
@@ -226,6 +237,7 @@ function MapSection({ mapData }: { mapData: FieldMapData }) {
   return (
     <FieldMapExplorer
       fields={mapData.fieldCollection}
+      zones={mapData.zoneCollection}
       farmMarkers={mapData.farmMarkers}
       farmOptions={mapData.farmOptions}
       activityPins={mapData.activityPins}

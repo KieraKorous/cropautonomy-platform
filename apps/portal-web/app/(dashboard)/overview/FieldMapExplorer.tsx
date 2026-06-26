@@ -6,9 +6,11 @@ import {
   ActivityMarkers,
   FarmMarkers,
   FieldPolygons,
+  ZonePolygons,
   type ActivityPin,
   type FarmMarker,
-  type FieldFeatureCollection
+  type FieldFeatureCollection,
+  type ZoneFeatureCollection
 } from "./OverviewMapContent";
 
 type ViewMode = "map" | "satellite" | "ndvi" | "activity";
@@ -28,9 +30,16 @@ const BASEMAP: Record<ViewMode, string> = {
   activity: "mapbox://styles/mapbox/light-v11"
 };
 
-// Persisted view preferences (the user's basemap/layer choice survives reloads).
-const PREFS_KEY = "gaia.fieldmap.prefs.v1";
-type Prefs = { viewMode: ViewMode; fieldsVisible: boolean };
+// Persisted view preferences (the user's basemap + per-layer choices survive
+// reloads). v2 adds the Farms/Zones toggles alongside Fields; a missing key
+// defaults the layer on, so upgrading from v1 simply starts with all layers shown.
+const PREFS_KEY = "gaia.fieldmap.prefs.v2";
+type Prefs = {
+  viewMode: ViewMode;
+  farmsVisible: boolean;
+  fieldsVisible: boolean;
+  zonesVisible: boolean;
+};
 
 function loadPrefs(): Prefs | null {
   try {
@@ -40,7 +49,12 @@ function loadPrefs(): Prefs | null {
     const viewMode = VIEW_MODES.some((m) => m.id === parsed.viewMode)
       ? (parsed.viewMode as ViewMode)
       : "map";
-    return { viewMode, fieldsVisible: parsed.fieldsVisible !== false };
+    return {
+      viewMode,
+      farmsVisible: parsed.farmsVisible !== false,
+      fieldsVisible: parsed.fieldsVisible !== false,
+      zonesVisible: parsed.zonesVisible !== false
+    };
   } catch {
     return null;
   }
@@ -90,6 +104,7 @@ function fitBounds(
 // of recent captures. Shared by the Overview card and the full-screen /map page.
 export function FieldMapExplorer({
   fields,
+  zones,
   farmMarkers,
   farmOptions,
   activityPins,
@@ -99,6 +114,7 @@ export function FieldMapExplorer({
   fill
 }: {
   fields: FieldFeatureCollection;
+  zones: ZoneFeatureCollection;
   farmMarkers: FarmMarker[];
   farmOptions: { id: string; name: string }[];
   activityPins: ActivityPin[];
@@ -108,7 +124,9 @@ export function FieldMapExplorer({
   fill?: boolean;
 }) {
   const [viewMode, setViewMode] = useState<ViewMode>("map");
+  const [farmsVisible, setFarmsVisible] = useState(true);
   const [fieldsVisible, setFieldsVisible] = useState(true);
+  const [zonesVisible, setZonesVisible] = useState(true);
   const [selectedFarmId, setSelectedFarmId] = useState<string>("all");
 
   // Restore persisted prefs after mount (avoids SSR/client hydration mismatch).
@@ -116,17 +134,22 @@ export function FieldMapExplorer({
     const prefs = loadPrefs();
     if (prefs) {
       setViewMode(prefs.viewMode);
+      setFarmsVisible(prefs.farmsVisible);
       setFieldsVisible(prefs.fieldsVisible);
+      setZonesVisible(prefs.zonesVisible);
     }
   }, []);
 
   useEffect(() => {
     try {
-      localStorage.setItem(PREFS_KEY, JSON.stringify({ viewMode, fieldsVisible }));
+      localStorage.setItem(
+        PREFS_KEY,
+        JSON.stringify({ viewMode, farmsVisible, fieldsVisible, zonesVisible })
+      );
     } catch {
       // Ignore storage failures (private mode, quota) — non-fatal.
     }
-  }, [viewMode, fieldsVisible]);
+  }, [viewMode, farmsVisible, fieldsVisible, zonesVisible]);
 
   const filtered = useMemo<FieldFeatureCollection>(
     () =>
@@ -137,6 +160,16 @@ export function FieldMapExplorer({
             features: fields.features.filter((f) => f.properties.farmId === selectedFarmId)
           },
     [fields, selectedFarmId]
+  );
+  const filteredZones = useMemo<ZoneFeatureCollection>(
+    () =>
+      selectedFarmId === "all"
+        ? zones
+        : {
+            type: "FeatureCollection",
+            features: zones.features.filter((z) => z.properties.farmId === selectedFarmId)
+          },
+    [zones, selectedFarmId]
   );
   const visibleMarkers = useMemo(
     () =>
@@ -161,8 +194,15 @@ export function FieldMapExplorer({
     active: m.id === viewMode
   }));
   const layers: MapLayerToggle[] = [
-    { id: "fields", label: "Fields", active: fieldsVisible, tone: "primary" }
+    { id: "farms", label: "Farms", active: farmsVisible, tone: "muted" },
+    { id: "fields", label: "Fields", active: fieldsVisible, tone: "primary" },
+    { id: "zones", label: "Zones", active: zonesVisible, tone: "accent" }
   ];
+  const toggleLayer = (id: string) => {
+    if (id === "farms") setFarmsVisible((v) => !v);
+    else if (id === "fields") setFieldsVisible((v) => !v);
+    else if (id === "zones") setZonesVisible((v) => !v);
+  };
   const orgOptions = [{ id: "all", label: "All farms" }, ...farmOptions.map((f) => ({ id: f.id, label: f.name }))];
   const selectedLabel =
     selectedFarmId === "all"
@@ -194,13 +234,14 @@ export function FieldMapExplorer({
       initialViewState={view}
       mapStyle={BASEMAP[viewMode]}
       layers={layers}
-      onLayerToggle={() => setFieldsVisible((v) => !v)}
+      onLayerToggle={toggleLayer}
       mapboxAccessToken={mapboxToken}
       enableFullscreen
       fill={fill}
     >
       {fieldsVisible ? <FieldPolygons fields={filtered} /> : null}
-      <FarmMarkers farms={visibleMarkers} />
+      {zonesVisible ? <ZonePolygons zones={filteredZones} /> : null}
+      {farmsVisible ? <FarmMarkers farms={visibleMarkers} /> : null}
       {viewMode === "activity" ? <ActivityMarkers pins={visibleActivity} /> : null}
       {viewMode === "ndvi" ? (
         <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-lg border border-base-content/10 bg-base-100/90 px-4 py-2.5 text-center shadow-md">

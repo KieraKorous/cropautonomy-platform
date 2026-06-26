@@ -2,9 +2,11 @@ import {
   listCaptures,
   listFarms,
   listFields,
+  listZones,
   type CaptureSummary,
   type FarmSummary,
-  type FieldSummary
+  type FieldSummary,
+  type ZoneSummary
 } from "../../../lib/api";
 import { FieldMapExplorer } from "../overview/FieldMapExplorer";
 import { buildFieldMapData } from "../overview/fieldMapData";
@@ -17,16 +19,18 @@ export const dynamic = "force-dynamic";
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
 export default async function FullMapPage() {
-  const [farmsResult, fieldsResult, capturesResult] = await Promise.all([
+  const [farmsResult, fieldsResult, capturesResult, zonesResult] = await Promise.all([
     listFarms().catch(() => ({ farms: [] as FarmSummary[] })),
     listFields().catch(() => ({ fields: [] as FieldSummary[] })),
-    listCaptures({ limit: 200 }).catch(() => ({ captures: [] as CaptureSummary[] }))
+    listCaptures({ limit: 200 }).catch(() => ({ captures: [] as CaptureSummary[] })),
+    listZones().catch(() => ({ zones: [] as ZoneSummary[] }))
   ]);
 
   const mapData = buildFieldMapData(
     fieldsResult.fields,
     farmsResult.farms,
-    capturesResult.captures
+    capturesResult.captures,
+    zonesResult.zones
   );
 
   if (!MAPBOX_TOKEN) {
@@ -49,6 +53,7 @@ export default async function FullMapPage() {
     <div className="h-[calc(100vh-8rem)]">
       <FieldMapExplorer
         fields={mapData.fieldCollection}
+        zones={mapData.zoneCollection}
         farmMarkers={mapData.farmMarkers}
         farmOptions={mapData.farmOptions}
         activityPins={mapData.activityPins}

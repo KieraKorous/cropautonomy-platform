@@ -27,6 +27,17 @@ export type FieldFeatureCollection = {
   }>;
 };
 
+// Field sub-areas (zones), drawn inside their parent field. `farmId` is carried
+// (resolved from the parent field) so the per-farm filter applies to zones too.
+export type ZoneFeatureCollection = {
+  type: "FeatureCollection";
+  features: Array<{
+    type: "Feature";
+    properties: { id: string; name: string; fieldId: string; farmId: string };
+    geometry: { type: "Polygon"; coordinates: number[][][] };
+  }>;
+};
+
 // One recent-capture cluster, placed at a field's centroid (Activity view).
 export type ActivityPin = {
   id: string;
@@ -69,6 +80,39 @@ export function FieldPolygons({ fields }: { fields: FieldFeatureCollection }) {
       <Layer id="overview-fields-fill" type="fill" paint={fillPaint} />
       <Layer id="overview-fields-line" type="line" paint={linePaint} />
       <Layer id="overview-fields-label" type="symbol" layout={labelLayout} paint={labelPaint} />
+    </Source>
+  );
+}
+
+// Zones read as a distinct amber, dashed-outline layer so they're legible on top
+// of (and against) their parent field. Drawn after fields so they sit above them.
+const zoneFillPaint: FillLayerSpecification["paint"] = {
+  "fill-color": "#b26b2c",
+  "fill-opacity": 0.18
+};
+const zoneLinePaint: LineLayerSpecification["paint"] = {
+  "line-color": "#8a4f1d",
+  "line-width": 1.5,
+  "line-opacity": 0.85,
+  "line-dasharray": [2, 1]
+};
+const zoneLabelLayout: SymbolLayerSpecification["layout"] = {
+  "text-field": ["get", "name"],
+  "text-size": 10,
+  "text-anchor": "center"
+};
+const zoneLabelPaint: SymbolLayerSpecification["paint"] = {
+  "text-color": "#7a431a",
+  "text-halo-color": "#ffffff",
+  "text-halo-width": 1.2
+};
+
+export function ZonePolygons({ zones }: { zones: ZoneFeatureCollection }) {
+  return (
+    <Source id="overview-zones" type="geojson" data={zones}>
+      <Layer id="overview-zones-fill" type="fill" paint={zoneFillPaint} />
+      <Layer id="overview-zones-line" type="line" paint={zoneLinePaint} />
+      <Layer id="overview-zones-label" type="symbol" layout={zoneLabelLayout} paint={zoneLabelPaint} />
     </Source>
   );
 }

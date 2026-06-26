@@ -1,5 +1,10 @@
-import type { CaptureSummary, FarmSummary, FieldSummary } from "../../../lib/api";
-import type { ActivityPin, FarmMarker, FieldFeatureCollection } from "./OverviewMapContent";
+import type { CaptureSummary, FarmSummary, FieldSummary, ZoneSummary } from "../../../lib/api";
+import type {
+  ActivityPin,
+  FarmMarker,
+  FieldFeatureCollection,
+  ZoneFeatureCollection
+} from "./OverviewMapContent";
 
 // A calm, distinguishable palette assigned to farms in list order so each farm's
 // fields + marker share one color on the map.
@@ -37,6 +42,7 @@ function fieldCenter(field: FieldSummary): { lng: number; lat: number } | null {
 
 export type FieldMapData = {
   fieldCollection: FieldFeatureCollection;
+  zoneCollection: ZoneFeatureCollection;
   farmMarkers: FarmMarker[];
   farmOptions: { id: string; name: string }[];
   activityPins: ActivityPin[];
@@ -44,12 +50,13 @@ export type FieldMapData = {
 };
 
 // Shared shaping of the field-map inputs for the Overview card + the /map page:
-// per-farm colors, the field FeatureCollection, farm markers, the dropdown
-// options, and Activity pins (recent-capture counts at field centroids).
+// per-farm colors, the field + zone FeatureCollections, farm markers, the
+// dropdown options, and Activity pins (recent-capture counts at field centroids).
 export function buildFieldMapData(
   fields: FieldSummary[],
   farms: FarmSummary[],
-  captures: CaptureSummary[]
+  captures: CaptureSummary[],
+  zones: ZoneSummary[] = []
 ): FieldMapData {
   const farmColor: Record<string, string> = {};
   farms.forEach((farm, i) => {
@@ -69,6 +76,24 @@ export function buildFieldMapData(
           color: farmColor[f.farmId] ?? DEFAULT_FARM_COLOR
         },
         geometry: f.boundary!
+      }))
+  };
+
+  // Zones carry their parent field's farmId so the per-farm filter reaches them.
+  const fieldFarm = new Map(fields.map((f) => [f.id, f.farmId]));
+  const zoneCollection: ZoneFeatureCollection = {
+    type: "FeatureCollection",
+    features: zones
+      .filter((z) => z.boundary)
+      .map((z) => ({
+        type: "Feature",
+        properties: {
+          id: z.id,
+          name: z.name,
+          fieldId: z.fieldId,
+          farmId: fieldFarm.get(z.fieldId) ?? ""
+        },
+        geometry: z.boundary!
       }))
   };
 
@@ -109,5 +134,5 @@ export function buildFieldMapData(
 
   const acres = Math.round(fields.reduce((sum, f) => sum + (f.areaAcres ?? 0), 0));
 
-  return { fieldCollection, farmMarkers, farmOptions, activityPins, acres };
+  return { fieldCollection, zoneCollection, farmMarkers, farmOptions, activityPins, acres };
 }
