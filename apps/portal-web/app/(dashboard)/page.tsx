@@ -179,9 +179,9 @@ function PageHeader({
         </p>
       </div>
       <div className="flex items-center gap-2">
-        <button
+        <a
           className="flex items-center gap-1.5 rounded-md border border-base-content/15 px-3 py-2 text-sm font-medium text-neutral hover:bg-base-content/[0.04]"
-          type="button"
+          href="/reports/weekly"
         >
           <svg
             fill="none"
@@ -198,13 +198,6 @@ function PageHeader({
             <line x1="12" x2="12" y1="15" y2="3" />
           </svg>
           Export weekly
-        </button>
-        <a
-          className="flex items-center gap-1.5 rounded-md bg-primary px-3.5 py-2 text-sm font-semibold text-primary-content hover:bg-primary/90"
-          href="/captures"
-        >
-          <CameraIcon size={14} />
-          New scan
         </a>
       </div>
     </header>
