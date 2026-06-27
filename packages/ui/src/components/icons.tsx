@@ -77,6 +77,15 @@ export function TrashIcon(props: IconProps) {
   );
 }
 
+export function RotateCcwIcon(props: IconProps) {
+  return (
+    <Base size={16} {...props}>
+      <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+      <path d="M3 3v5h5" />
+    </Base>
+  );
+}
+
 export function BrainIcon(props: IconProps) {
   return (
     <Base size={22} {...props}>

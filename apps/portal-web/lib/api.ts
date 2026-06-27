@@ -241,19 +241,17 @@ export function reanalyzeCapture(
   return apiFetch(`/v1/captures/${id}/reanalyze`, { method: "POST" });
 }
 
-// Only discarded observation captures appear here — drives the settings cleanup
-// view. Scoped to kind=observation so discarded recordings get their own section.
+// Every discarded item — captures and recordings alike — drives the single
+// settings cleanup view. Both are captures, so they share one endpoint.
 export function listDiscardedCaptures(): Promise<ListCapturesResponse> {
-  return apiFetch<ListCapturesResponse>(
-    "/v1/captures?discarded=true&kind=observation"
-  );
+  return apiFetch<ListCapturesResponse>("/v1/captures?discarded=true");
 }
 
-// Discarded session recordings — drives the recordings cleanup view in settings.
-export function listDiscardedRecordings(): Promise<ListCapturesResponse> {
-  return apiFetch<ListCapturesResponse>(
-    "/v1/captures?discarded=true&kind=session_recording"
-  );
+// Recover (un-discard) a capture or recording, returning it to its list.
+export function recoverCapture(
+  id: string
+): Promise<{ captureId: string; recovered: boolean }> {
+  return apiFetch(`/v1/captures/${id}/recover`, { method: "POST" });
 }
 
 // Permanent delete (row + Storage object). Requires captures.delete (manager+).

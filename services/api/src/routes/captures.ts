@@ -694,6 +694,39 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
     }
   );
 
+  // Recover — reverses a discard by clearing discarded_at, returning the capture
+  // to the default list. Idempotent (recovering a live capture is a no-op).
+  app.post<{ Params: { id: string } }>(
+    "/v1/captures/:id/recover",
+    { preHandler: app.requireAuth("captures.update") },
+    async (request, _reply) => {
+      const { id } = request.params;
+      if (!UUID_RE.test(id)) {
+        throw badRequest("captures.invalid_id", "Invalid capture id.");
+      }
+      const caller = request.auth!;
+      const supabase = getDb();
+
+      const { data: row, error: loadErr } = await supabase
+        .from("captures")
+        .select("id, org_id")
+        .eq("id", id)
+        .maybeSingle();
+      if (loadErr) throw loadErr;
+      if (!row || (row as { org_id: string }).org_id !== caller.orgId) {
+        throw notFound("captures.not_found", "Capture not found.");
+      }
+
+      const { error: updateErr } = await supabase
+        .from("captures")
+        .update({ discarded_at: null })
+        .eq("id", id);
+      if (updateErr) throw updateErr;
+
+      return { captureId: id, recovered: true };
+    }
+  );
+
   // Re-queue analysis for a capture whose analysis previously failed. The
   // Storage object already exists, so this just inserts a fresh analysis_jobs
   // row, points the capture back at it, and re-enqueues the worker — the same
