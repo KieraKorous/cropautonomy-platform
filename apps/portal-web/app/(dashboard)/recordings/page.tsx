@@ -1,5 +1,6 @@
 import { ApiError, listRecordings, type CaptureSummary } from "../../../lib/api";
 import { dateFormat } from "../captures/captureDisplay";
+import { RecordingDiscardButton } from "./RecordingDiscardButton";
 
 // Saved live-feed recordings — kind='session_recording' video captures, from
 // either the field phone (during a live session) or a portal watcher recording
@@ -57,7 +58,7 @@ export default async function RecordingsPage() {
       ) : recordings.length === 0 ? (
         <EmptyState />
       ) : (
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           {recordings.map((rec) => (
             <RecordingCard key={rec.id} recording={rec} />
           ))}
@@ -94,16 +95,17 @@ function RecordingCard({ recording }: { recording: CaptureSummary }) {
           </span>
         ) : null}
       </div>
-      <div className="flex items-end justify-between gap-2 px-3.5 py-3">
+      <div className="flex items-center justify-between gap-1.5 px-2.5 py-2">
         <div className="flex min-w-0 flex-col gap-0.5">
-          <span className="truncate text-sm font-medium text-neutral">
+          <span className="truncate text-xs font-medium text-neutral">
             {dateFormat.format(new Date(recording.capturedAt))}
           </span>
-          <span className="text-xs text-base-content/55">
+          <span className="truncate text-[11px] text-base-content/55">
             {recording.fieldId ? "Field session" : "Live session"}
             {size ? ` · ${size}` : ""}
           </span>
         </div>
+        <RecordingDiscardButton recordingId={recording.id} />
       </div>
     </article>
   );
