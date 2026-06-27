@@ -51,6 +51,13 @@ export function CapturePage() {
     const [sessionRecording, setSessionRecording] = useState(false);
     const sessionRecorderRef = useRef<MediaRecorder | null>(null);
     const sessionChunksRef = useRef<Blob[]>([]);
+    // Wall-clock time each recorder has spent paused (session-pause spans), so the
+    // reported duration excludes the gap. pauseStart marks when the current pause
+    // began; pausedMs accumulates each completed pause span. Reset on (re)start.
+    const videoPausedMsRef = useRef(0);
+    const videoPauseStartRef = useRef(0);
+    const sessionPausedMsRef = useRef(0);
+    const sessionPauseStartRef = useRef(0);
     const burstAbortRef = useRef<{ aborted: boolean } | null>(null);
     const libraryInputRef = useRef<HTMLInputElement | null>(null);
     const [device, setDevice] = useState<PairedDevice | null>(null);
@@ -120,19 +127,50 @@ export function CapturePage() {
             session?.status !== "paused"
     });
 
-    // Pausing the session stops any recording in progress — a paused session
-    // must not keep capturing the live feed (or a video) in the background. The
-    // recorders' onstop handlers flush whatever was already captured to the
-    // upload queue, so nothing recorded before the pause is lost.
+    // Pausing the session pauses any recording in progress rather than stopping
+    // it: a paused session must not capture the live feed in the background, but
+    // resuming must continue the SAME recording, not start a new file. We use
+    // MediaRecorder.pause()/resume(), which keep the buffered chunks intact, so
+    // the saved clip is one continuous recording with the paused span omitted.
+    // The paused span is tracked so the reported duration stays accurate.
     useEffect(() => {
-        if (session?.status !== "paused") return;
-        if (sessionRecorderRef.current?.state === "recording") {
-            sessionRecorderRef.current.stop();
-        }
-        if (recorderRef.current?.state === "recording") {
-            recorderRef.current.stop();
+        const status = session?.status;
+        if (status === "paused") {
+            const now = Date.now();
+            if (sessionRecorderRef.current?.state === "recording") {
+                sessionPauseStartRef.current = now;
+                sessionRecorderRef.current.pause();
+            }
+            if (recorderRef.current?.state === "recording") {
+                videoPauseStartRef.current = now;
+                recorderRef.current.pause();
+            }
+        } else if (status === "live") {
+            const now = Date.now();
+            if (sessionRecorderRef.current?.state === "paused") {
+                sessionPausedMsRef.current += now - sessionPauseStartRef.current;
+                sessionRecorderRef.current.resume();
+            }
+            if (recorderRef.current?.state === "paused") {
+                videoPausedMsRef.current += now - videoPauseStartRef.current;
+                recorderRef.current.resume();
+            }
         }
     }, [session?.status]);
+
+    // On unmount (e.g. ending the session, including while paused, or navigating
+    // away mid-recording), flush any recorder that's still active so its onstop
+    // handler enqueues the clip — otherwise a paused recording would be lost.
+    useEffect(() => {
+        return () => {
+            if (sessionRecorderRef.current && sessionRecorderRef.current.state !== "inactive") {
+                sessionRecorderRef.current.stop();
+            }
+            if (recorderRef.current && recorderRef.current.state !== "inactive") {
+                recorderRef.current.stop();
+            }
+        };
+    }, []);
 
     // Liveness heartbeat: while this phone holds the session, ping the server so
     // the Live wall knows the camera is still here. When the phone closes or
@@ -293,6 +331,7 @@ export function CapturePage() {
         }
         const recorder = new MediaRecorder(stream, { mimeType: pickVideoMime() });
         videoChunksRef.current = [];
+        videoPausedMsRef.current = 0;
         recorder.ondataavailable = (e) => {
             if (e.data.size > 0) videoChunksRef.current.push(e.data);
         };
@@ -312,7 +351,7 @@ export function CapturePage() {
                 cropTypeId: session!.cropTypeId,
                 source: "field_capture_pwa",
                 mediaType: "video",
-                videoDurationMs: Date.now() - startedMs,
+                videoDurationMs: Date.now() - startedMs - videoPausedMsRef.current,
                 mimeType,
                 sizeBytes: blob.size,
                 capturedAt: startedAt,
@@ -351,6 +390,7 @@ export function CapturePage() {
         }
         const recorder = new MediaRecorder(stream, { mimeType: pickVideoMime() });
         sessionChunksRef.current = [];
+        sessionPausedMsRef.current = 0;
         recorder.ondataavailable = (e) => {
             if (e.data.size > 0) sessionChunksRef.current.push(e.data);
         };
@@ -371,7 +411,7 @@ export function CapturePage() {
                 source: "field_capture_pwa",
                 mediaType: "video",
                 kind: "session_recording",
-                videoDurationMs: Date.now() - startedMs,
+                videoDurationMs: Date.now() - startedMs - sessionPausedMsRef.current,
                 mimeType,
                 sizeBytes: blob.size,
                 capturedAt: startedAt,
