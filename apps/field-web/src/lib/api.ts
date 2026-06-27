@@ -7,6 +7,9 @@ export interface ReserveCaptureRequest {
   zoneId?: string | null;
   cropTypeId?: string | null;
   sessionId?: string | null;
+  // The paired device this capture came from, so the portal can attribute
+  // activity (incl. capture-only sessions) to the device.
+  deviceId?: string | null;
   source: "field_capture_pwa";
   mediaType: "photo" | "burst_frame" | "video";
   // 'observation' (default) vs a saved live-feed recording.

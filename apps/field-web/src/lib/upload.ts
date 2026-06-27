@@ -5,6 +5,7 @@ import { publishFromClient } from "@gaia/realtime/client";
 import { api } from "./api.js";
 import {
   deleteCapture,
+  getPairedDevice,
   listPendingForUpload,
   patchCapture,
   reapStuckInFlight,
@@ -64,11 +65,16 @@ async function processOne(record: QueuedCaptureRecord) {
   // 1) reserve (if not yet reserved)
   if (!record.remoteCaptureId) {
     await patchCapture(record.id, { status: "reserving" });
+    // Attribute the capture to this phone's paired device so the portal can show
+    // it as in-use — including capture-only sessions, which have no
+    // started_by_device_id of their own.
+    const pairedDevice = await getPairedDevice();
     const reservation = await api.reserveCapture({
       farmId: record.farmId ?? null,
       fieldId: record.fieldId ?? null,
       cropTypeId: record.cropTypeId ?? null,
       sessionId: record.sessionId ?? null,
+      deviceId: pairedDevice?.deviceId ?? null,
       source: record.source,
       mediaType: record.mediaType,
       kind: record.kind ?? "observation",

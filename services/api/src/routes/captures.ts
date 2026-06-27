@@ -35,6 +35,11 @@ const reserveSchema = z.object({
   zoneId: z.string().uuid().nullable().optional(),
   cropTypeId: z.string().uuid().nullable().optional(),
   sessionId: z.string().uuid().nullable().optional(),
+  // The device that produced this capture (e.g. the paired phone running the
+  // field app). Recorded as captures.source_device_id so capture activity —
+  // including capture-only sessions, which carry no started_by_device_id — is
+  // attributable to a device. See org_device_activity (migration 0022).
+  deviceId: z.string().uuid().nullable().optional(),
   source: z.enum([
     "field_capture_pwa",
     "bulk_upload",
@@ -423,6 +428,7 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
           zone_id: body.zoneId ?? null,
           crop_type_id: body.cropTypeId ?? null,
           session_id: body.sessionId ?? null,
+          source_device_id: body.deviceId ?? null,
           source: body.source,
           kind: body.kind ?? "observation",
           captured_by_user_id: caller.userId,
@@ -848,6 +854,8 @@ async function validateOrgScoped(
       id: body.sessionId,
       label: "capture session"
     });
+  if (body.deviceId)
+    checks.push({ table: "devices", id: body.deviceId, label: "device" });
   if (checks.length === 0) return;
 
   const supabase = getDb();
