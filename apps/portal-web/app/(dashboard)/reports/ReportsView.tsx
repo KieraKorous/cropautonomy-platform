@@ -37,7 +37,6 @@ export function ReportsView({ captures, fields, farms }: ReportsViewProps) {
     const split = splitByWindow(captures, w);
     return {
       split,
-      captureDelta: delta(split.current.length, split.previous.length),
       fieldsScanned: distinctFields(split.current),
       fieldsScannedDelta: delta(
         distinctFields(split.current),
@@ -85,9 +84,8 @@ export function ReportsView({ captures, fields, farms }: ReportsViewProps) {
         <StatCard
           icon={<CameraIcon size={16} />}
           label="Captures"
-          meta={`Last ${periodLabel} · vs. prior ${periodLabel}`}
+          meta={`Made in the last ${periodLabel}`}
           value={model.split.current.length.toLocaleString("en-US")}
-          delta={model.captureDelta}
         />
         <StatCard
           icon={<FarmIcon size={16} />}
