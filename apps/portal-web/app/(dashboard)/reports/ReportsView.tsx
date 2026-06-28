@@ -1,14 +1,9 @@
 "use client";
 
-import { CameraIcon, ChartIcon, FarmIcon, RoverIcon, StatCard, StatusPill } from "@gaia/ui";
+import { CameraIcon, ChartIcon, FarmIcon, StatCard, StatusPill } from "@gaia/ui";
 import { useMemo, useState } from "react";
 
-import type {
-  CaptureSummary,
-  Device,
-  FarmSummary,
-  FieldSummary
-} from "../../../lib/api";
+import type { CaptureSummary, FarmSummary, FieldSummary } from "../../../lib/api";
 import {
   capturesPerBucket,
   delta,
@@ -30,12 +25,11 @@ interface ReportsViewProps {
   captures: CaptureSummary[];
   fields: FieldSummary[];
   farms: FarmSummary[];
-  devices: Device[];
 }
 
 // The interactive analytics view: one range toggle re-windows everything below
 // it from the in-memory capture batch the server fetched. No re-fetch on toggle.
-export function ReportsView({ captures, fields, farms, devices }: ReportsViewProps) {
+export function ReportsView({ captures, fields, farms }: ReportsViewProps) {
   const [range, setRange] = useState<Range>("7d");
 
   const model = useMemo(() => {
@@ -57,7 +51,6 @@ export function ReportsView({ captures, fields, farms, devices }: ReportsViewPro
     };
   }, [range, captures, fields, farms]);
 
-  const activeDevices = devices.filter((d) => d.live).length;
   const periodLabel = RANGES.find((r) => r.key === range)?.label ?? "";
 
   return (
@@ -88,7 +81,7 @@ export function ReportsView({ captures, fields, farms, devices }: ReportsViewPro
       </div>
 
       {/* KPIs */}
-      <div className="grid gap-3.5 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3.5 md:grid-cols-2 lg:grid-cols-3">
         <StatCard
           icon={<CameraIcon size={16} />}
           label="Captures"
@@ -109,12 +102,6 @@ export function ReportsView({ captures, fields, farms, devices }: ReportsViewPro
           meta="Captures with an observation"
           value={model.findings.toLocaleString("en-US")}
           delta={model.findingsDelta}
-        />
-        <StatCard
-          icon={<RoverIcon size={16} />}
-          label="Devices active now"
-          meta="Streaming or capturing live"
-          value={`${activeDevices} of ${devices.length}`}
         />
       </div>
 
@@ -184,11 +171,11 @@ function CapturesChart({ buckets }: { buckets: ChartBucket[] }) {
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex h-36 items-end gap-1">
+      <div className="flex h-36 items-stretch gap-1">
         {buckets.map((b, i) => {
           const heightPct = max === 0 ? 0 : Math.round((b.count / max) * 100);
           return (
-            <div className="group relative flex flex-1 flex-col justify-end" key={i}>
+            <div className="group flex flex-1 flex-col justify-end" key={i}>
               <div
                 className="w-full rounded-t-sm bg-primary/70 transition-colors group-hover:bg-primary"
                 style={{ height: `${Math.max(heightPct, b.count > 0 ? 4 : 0)}%` }}

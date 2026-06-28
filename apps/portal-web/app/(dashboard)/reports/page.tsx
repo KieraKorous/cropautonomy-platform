@@ -1,11 +1,9 @@
 import {
   getMe,
   listCaptures,
-  listDevices,
   listFarms,
   listFields,
   type CaptureSummary,
-  type Device,
   type FarmSummary,
   type FieldSummary
 } from "../../../lib/api";
@@ -26,14 +24,13 @@ export const dynamic = "force-dynamic";
 const CAPTURE_FETCH_LIMIT = 1000;
 
 export default async function ReportsPage() {
-  const [me, capturesResult, fieldsResult, farmsResult, devicesResult] = await Promise.all([
+  const [me, capturesResult, fieldsResult, farmsResult] = await Promise.all([
     getMe().catch(() => null),
     listCaptures({ limit: CAPTURE_FETCH_LIMIT }).catch(() => ({
       captures: [] as CaptureSummary[]
     })),
     listFields().catch(() => ({ fields: [] as FieldSummary[] })),
-    listFarms().catch(() => ({ farms: [] as FarmSummary[] })),
-    listDevices().catch(() => ({ devices: [] as Device[] }))
+    listFarms().catch(() => ({ farms: [] as FarmSummary[] }))
   ]);
 
   const orgName = me?.org.name ?? "your operation";
@@ -52,7 +49,6 @@ export default async function ReportsPage() {
         captures={capturesResult.captures}
         fields={fieldsResult.fields}
         farms={farmsResult.farms}
-        devices={devicesResult.devices}
       />
     </div>
   );
