@@ -25,6 +25,7 @@ Task = Literal[
     "weed_detection",
     "disease_detection",
     "stage_classification",
+    "video_summary",
 ]
 
 StageRole = Literal[

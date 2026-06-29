@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     vision_port: int = 8081
     vision_log_level: str = "info"
     vision_max_image_bytes: int = 20 * 1024 * 1024
+    # Recordings are videos and run heavier than a still — allow a bigger upload.
+    vision_max_video_bytes: int = 200 * 1024 * 1024
     vision_provider_timeout_seconds: float = 30.0
 
     plantnet_api_key: str | None = None
@@ -33,6 +35,13 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = None
     anthropic_summary_model: str = "claude-sonnet-4-6"
     anthropic_summary_max_tokens: int = 200
+
+    # Video summary stage (Claude multimodal over sampled frames). Shares the
+    # ANTHROPIC_API_KEY; model + token budget + frame count overridable per
+    # pipeline_stages.config.
+    anthropic_video_model: str = "claude-sonnet-4-6"
+    anthropic_video_max_tokens: int = 600
+    vision_video_frames: int = 4
 
     @property
     def plantnet_configured(self) -> bool:

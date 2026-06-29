@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowRight, CameraIcon, StatusPill } from "@gaia/ui";
 import { ApiError, getCapture, type CaptureSummary } from "../../../../lib/api";
+import { DownloadButton } from "../../_components/DownloadButton";
 import { dateFormat, mediaLabel, statusDisplay } from "../captureDisplay";
 import { PlantName } from "../PlantName";
 import { AnalysisViewedTracker } from "./AnalysisViewedTracker";
@@ -98,9 +99,14 @@ export default async function CaptureDetailPage({
           </section>
 
           <section className="rounded-xl border border-base-content/10 bg-base-100 p-5">
-            <h2 className="mb-3 text-xs font-medium uppercase tracking-wide text-base-content/55">
-              Metadata
-            </h2>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="text-xs font-medium uppercase tracking-wide text-base-content/55">
+                Metadata
+              </h2>
+              {capture.imageUrl ? (
+                <DownloadButton captureId={capture.id} variant="button" label="Download" />
+              ) : null}
+            </div>
             <dl className="flex flex-col gap-3 text-sm">
               <div className="flex items-baseline justify-between gap-4">
                 <dt className="flex-shrink-0 text-base-content/55">Plant type</dt>

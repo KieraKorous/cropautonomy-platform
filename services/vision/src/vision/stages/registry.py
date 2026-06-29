@@ -17,6 +17,7 @@ from .agronomic_summary import AgronomicSummaryStage
 from .base import Stage
 from .plantnet import PlantNetStage
 from .rtdetr import RTDetrStage
+from .video_summary import VideoSummaryStage
 
 
 class StageRegistry:
@@ -51,6 +52,13 @@ def get_registry() -> StageRegistry:
             api_key=settings.anthropic_api_key,
             default_model=settings.anthropic_summary_model,
             default_max_tokens=settings.anthropic_summary_max_tokens,
+            timeout_seconds=settings.vision_provider_timeout_seconds,
+        ),
+        VideoSummaryStage(
+            api_key=settings.anthropic_api_key,
+            default_model=settings.anthropic_video_model,
+            default_max_tokens=settings.anthropic_video_max_tokens,
+            default_frames=settings.vision_video_frames,
             timeout_seconds=settings.vision_provider_timeout_seconds,
         ),
     ]

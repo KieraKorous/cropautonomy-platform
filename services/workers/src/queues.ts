@@ -27,7 +27,8 @@ export const scanAnalysisRequestedSchema = z.object({
       "tree_count",
       "weed_detection",
       "disease_detection",
-      "stage_classification"
+      "stage_classification",
+      "video_summary"
     ])
     .default("plant_classification")
 });

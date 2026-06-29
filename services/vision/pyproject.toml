@@ -34,6 +34,11 @@ dependencies = [
     # Agronomic summary stage. Optional at runtime (no ANTHROPIC_API_KEY → the
     # stage reports unconfigured and is skipped), but the SDK is always present.
     "anthropic>=0.40.0",
+    # Video frame sampling for the recording summary stage. imageio-ffmpeg
+    # bundles a static ffmpeg build (no system binary needed). NOTE: ffmpeg is
+    # LGPL/GPL — confirm against docs/dependency-policy.md before shipping.
+    "imageio>=2.34.0",
+    "imageio-ffmpeg>=0.5.1",
 ]
 
 [project.optional-dependencies]

@@ -83,10 +83,16 @@ async def infer(
     image_bytes = await image.read()
     if not image_bytes:
         raise HTTPException(status_code=400, detail="Empty image upload.")
-    if len(image_bytes) > settings.vision_max_image_bytes:
+    content_type = image.content_type or "image/jpeg"
+    max_bytes = (
+        settings.vision_max_video_bytes
+        if content_type.startswith("video/")
+        else settings.vision_max_image_bytes
+    )
+    if len(image_bytes) > max_bytes:
         raise HTTPException(
             status_code=413,
-            detail=f"Image exceeds {settings.vision_max_image_bytes} bytes.",
+            detail=f"Upload exceeds {max_bytes} bytes.",
         )
     if not req.pipeline.stages:
         raise HTTPException(
@@ -100,7 +106,7 @@ async def infer(
             capture_id=req.capture_id,
             task=req.task,
             image_bytes=image_bytes,
-            mime_type=image.content_type or "image/jpeg",
+            mime_type=content_type,
             pipeline=req.pipeline,
         )
     except StageNotRegisteredError as exc:

@@ -263,8 +263,8 @@ Server:
 2. Verifies the object exists in Supabase Storage at the expected path with the expected size + checksum
 3. If a thumbnail was provided, uploads it to `{path}_thumb.jpg`
 4. Transitions `status` to `uploaded`, sets `uploaded_at`
-5. **If `media_type = 'video'`** (incl. `kind='session_recording'`): stops here — videos are stored raw for v0 and skip the still-image classification pipeline. Returns with `status='uploaded'`, `analysisJobId: null`. Keyframe-based analysis of recordings is future work.
-6. Otherwise enqueues a pg-boss `scan.analysis.requested` job with `{ captureId }`
+5. **If `media_type = 'video'` and `kind='session_recording'`** (a recording): enqueues a `scan.analysis.requested` job with `task='video_summary'`. The `default-video@v1` pipeline (one `summary`-role stage, `video_summary@v1`) samples a few frames from the clip and asks Claude (multimodal) for a short whole-clip description + best-effort plant-issue tags (`observation_type`/`severity`) — no bounding-box detection. Other videos (`kind='observation'`) have no analysis path yet and stop here (`status='uploaded'`, `analysisJobId: null`).
+6. Otherwise (photos) enqueues a `scan.analysis.requested` job with `task='plant_classification'` (`default-plant@v2`)
 7. Transitions `status` to `analysis_queued`
 8. Returns the updated `captures` row
 

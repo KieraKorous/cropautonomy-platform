@@ -582,11 +582,12 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
         .eq("id", id);
       if (updateErr) throw updateErr;
 
-      // The plant-classification pipeline expects a still image. Videos —
-      // including saved live-feed recordings (kind='session_recording') — are
-      // stored as raw for v0 and skip analysis entirely. Keyframe-based analysis
-      // is future work (see docs/architecture/capture-pipeline.md).
-      if (capture.media_type === "video") {
+      // Session recordings (video) get a whole-clip description via the
+      // 'video_summary' task (default-video@v1 samples frames + asks Claude).
+      // Other videos have no analysis path yet and are stored raw.
+      const isRecording =
+        capture.media_type === "video" && capture.kind === "session_recording";
+      if (capture.media_type === "video" && !isRecording) {
         return {
           captureId: id,
           analysisJobId: null,
@@ -594,6 +595,7 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
           thumbnailPath
         };
       }
+      const analysisTask = isRecording ? "video_summary" : "plant_classification";
 
       const { data: job, error: jobErr } = await supabase
         .from("analysis_jobs")
@@ -641,7 +643,7 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
           captureId: id,
           analysisJobId: jobId,
           orgId: caller.orgId,
-          task: "plant_classification"
+          task: analysisTask
         });
       } catch (queueErr) {
         request.log.error(
@@ -745,19 +747,29 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
 
       const { data: row, error: loadErr } = await supabase
         .from("captures")
-        .select("id, org_id, status")
+        .select("id, org_id, status, media_type, kind")
         .eq("id", id)
         .maybeSingle();
       if (loadErr) throw loadErr;
       if (!row || (row as { org_id: string }).org_id !== caller.orgId) {
         throw notFound("captures.not_found", "Capture not found.");
       }
-      if ((row as { status: string }).status !== "failed") {
+      const reanalyzeRow = row as {
+        status: string;
+        media_type: string;
+        kind: string;
+      };
+      if (reanalyzeRow.status !== "failed") {
         throw conflict(
           "captures.invalid_transition",
-          `Only failed captures can be re-analyzed (status '${(row as { status: string }).status}').`
+          `Only failed captures can be re-analyzed (status '${reanalyzeRow.status}').`
         );
       }
+      // Route recordings to the video pipeline, everything else to plants.
+      const reanalyzeTask =
+        reanalyzeRow.media_type === "video" && reanalyzeRow.kind === "session_recording"
+          ? "video_summary"
+          : "plant_classification";
 
       const { data: job, error: jobErr } = await supabase
         .from("analysis_jobs")
@@ -783,7 +795,7 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
           captureId: id,
           analysisJobId: jobId,
           orgId: caller.orgId,
-          task: "plant_classification"
+          task: reanalyzeTask
         });
       } catch (queueErr) {
         request.log.error(

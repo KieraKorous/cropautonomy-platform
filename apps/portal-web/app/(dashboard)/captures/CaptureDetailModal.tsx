@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowRight, CameraIcon, StatusPill } from "@gaia/ui";
 import type { CaptureSummary } from "../../../lib/api";
+import { DownloadButton } from "../_components/DownloadButton";
 import { dateFormat, mediaLabel, statusDisplay } from "./captureDisplay";
 import { PlantName } from "./PlantName";
 import { RetryButton } from "./RetryButton";
@@ -350,14 +351,17 @@ export function CaptureDetailModal({
             ) : null}
 
             {/* Jump to the full detail page for this capture (description,
-                same-plant gallery). */}
-            <Link
-              href={`/captures/${capture.id}`}
-              className="mt-auto inline-flex items-center justify-center gap-1.5 rounded-lg bg-neutral px-4 py-2.5 text-sm font-semibold text-base-100 transition-colors hover:bg-neutral/90"
-            >
-              See more
-              <ArrowRight size={16} />
-            </Link>
+                same-plant gallery), or save the original media. */}
+            <div className="mt-auto flex items-center gap-2">
+              <Link
+                href={`/captures/${capture.id}`}
+                className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-neutral px-4 py-2.5 text-sm font-semibold text-base-100 transition-colors hover:bg-neutral/90"
+              >
+                See more
+                <ArrowRight size={16} />
+              </Link>
+              {capture.imageUrl ? <DownloadButton captureId={capture.id} /> : null}
+            </div>
 
             <div className="text-xs text-base-content/45">
               {position} of {captures.length}

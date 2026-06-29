@@ -1,6 +1,21 @@
+import { StatusPill, type Tone } from "@gaia/ui";
+
 import { ApiError, listRecordings, type CaptureSummary } from "../../../lib/api";
+import { DownloadButton } from "../_components/DownloadButton";
 import { dateFormat } from "../captures/captureDisplay";
 import { RecordingDiscardButton } from "./RecordingDiscardButton";
+
+// Title-case an enum value ("growth_stage" → "Growth stage") for display.
+function titleCase(value: string): string {
+  const s = value.replace(/_/g, " ");
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+const severityTone: Record<string, Tone> = {
+  high: "accent",
+  medium: "secondary",
+  low: "muted"
+};
 
 // Saved live-feed recordings — kind='session_recording' video captures, from
 // either the field phone (during a live session) or a portal watcher recording
@@ -105,8 +120,38 @@ function RecordingCard({ recording }: { recording: CaptureSummary }) {
             {size ? ` · ${size}` : ""}
           </span>
         </div>
-        <RecordingDiscardButton recordingId={recording.id} />
+        <div className="flex flex-shrink-0 items-center">
+          {ready ? <DownloadButton captureId={recording.id} /> : null}
+          <RecordingDiscardButton recordingId={recording.id} />
+        </div>
       </div>
+
+      {/* AI brief — a few sentences on what the clip showed, plus any flagged
+          plant issue. Populated by the video_summary pipeline; absent until the
+          recording is analyzed. */}
+      {recording.summary || recording.observationType ? (
+        <div className="flex flex-col gap-1.5 border-t border-base-content/8 px-2.5 py-2">
+          {recording.observationType ? (
+            <StatusPill
+              label={
+                titleCase(recording.observationType) +
+                (recording.severity ? ` · ${titleCase(recording.severity)}` : "")
+              }
+              tone={
+                recording.severity ? severityTone[recording.severity] ?? "muted" : "muted"
+              }
+            />
+          ) : null}
+          {recording.summary ? (
+            <p className="line-clamp-3 text-[11px] leading-relaxed text-base-content/70">
+              <span className="mr-1 rounded-full bg-accent/20 px-1 py-0.5 text-[9px] font-semibold uppercase text-accent-content">
+                AI
+              </span>
+              {recording.summary}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
     </article>
   );
 }
