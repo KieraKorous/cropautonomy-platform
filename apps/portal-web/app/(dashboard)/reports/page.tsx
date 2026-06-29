@@ -1,12 +1,4 @@
-import {
-  getMe,
-  listCaptures,
-  listFarms,
-  listFields,
-  type CaptureSummary,
-  type FarmSummary,
-  type FieldSummary
-} from "../../../lib/api";
+import { getMe, listCaptures, type CaptureSummary } from "../../../lib/api";
 import { ReportsView } from "./ReportsView";
 
 // The interactive operations report — live, per-account org data rolled up into
@@ -16,21 +8,18 @@ import { ReportsView } from "./ReportsView";
 // inside the view). force-dynamic because every fetch reads the caller's token.
 export const dynamic = "force-dynamic";
 
-// Captures have no date filter on the API, so we window client-side. The view
-// also compares each range to the prior period of equal length, so this batch
-// must cover up to ~2× the largest range (180 days). v0 org volume is low;
-// captures older than this batch are excluded — revisit the limit (or add a
-// server-side date filter) when an org's volume routinely exceeds it.
+// Captures have no date filter on the API, so we window client-side over one
+// generous batch. v0 org volume is low; captures older than this batch are
+// excluded — revisit the limit (or add a server-side date filter) when an org's
+// volume routinely exceeds it.
 const CAPTURE_FETCH_LIMIT = 1000;
 
 export default async function ReportsPage() {
-  const [me, capturesResult, fieldsResult, farmsResult] = await Promise.all([
+  const [me, capturesResult] = await Promise.all([
     getMe().catch(() => null),
     listCaptures({ limit: CAPTURE_FETCH_LIMIT }).catch(() => ({
       captures: [] as CaptureSummary[]
-    })),
-    listFields().catch(() => ({ fields: [] as FieldSummary[] })),
-    listFarms().catch(() => ({ farms: [] as FarmSummary[] }))
+    }))
   ]);
 
   const orgName = me?.org.name ?? "your operation";
@@ -45,11 +34,7 @@ export default async function ReportsPage() {
         </p>
       </header>
 
-      <ReportsView
-        captures={capturesResult.captures}
-        fields={fieldsResult.fields}
-        farms={farmsResult.farms}
-      />
+      <ReportsView captures={capturesResult.captures} />
     </div>
   );
 }

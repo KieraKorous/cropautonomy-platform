@@ -1,54 +1,41 @@
 "use client";
 
-import { CameraIcon, ChartIcon, FarmIcon, StatCard, StatusPill } from "@gaia/ui";
+import { BrainIcon, CameraIcon, FarmIcon, StatCard } from "@gaia/ui";
 import { useMemo, useState } from "react";
 
-import type { CaptureSummary, FarmSummary, FieldSummary } from "../../../lib/api";
+import type { CaptureSummary } from "../../../lib/api";
 import {
+  analyzedCount,
   capturesPerBucket,
-  delta,
-  distinctFields,
-  findingsCount,
-  rollupByField,
-  rollupFindings,
-  splitByWindow,
+  distinctSpecies,
+  inWindow,
+  rollupSpecies,
   windowFor,
   RANGES,
-  severityTone,
   type ChartBucket,
-  type FieldActivityRow,
-  type FindingRow,
-  type Range
+  type Range,
+  type SpeciesRow
 } from "./reportMetrics";
 
 interface ReportsViewProps {
   captures: CaptureSummary[];
-  fields: FieldSummary[];
-  farms: FarmSummary[];
 }
 
 // The interactive analytics view: one range toggle re-windows everything below
 // it from the in-memory capture batch the server fetched. No re-fetch on toggle.
-export function ReportsView({ captures, fields, farms }: ReportsViewProps) {
+export function ReportsView({ captures }: ReportsViewProps) {
   const [range, setRange] = useState<Range>("7d");
 
   const model = useMemo(() => {
-    const w = windowFor(range);
-    const split = splitByWindow(captures, w);
+    const current = inWindow(captures, windowFor(range));
     return {
-      split,
-      fieldsScanned: distinctFields(split.current),
-      fieldsScannedDelta: delta(
-        distinctFields(split.current),
-        distinctFields(split.previous)
-      ),
-      findings: findingsCount(split.current),
-      findingsDelta: delta(findingsCount(split.current), findingsCount(split.previous)),
-      buckets: capturesPerBucket(split.current, range),
-      findingRows: rollupFindings(split.current),
-      fieldRows: rollupByField(split, fields, farms)
+      current,
+      speciesIdentified: distinctSpecies(current),
+      analyzed: analyzedCount(current),
+      buckets: capturesPerBucket(current, range),
+      speciesRows: rollupSpecies(current)
     };
-  }, [range, captures, fields, farms]);
+  }, [range, captures]);
 
   const periodLabel = RANGES.find((r) => r.key === range)?.label ?? "";
 
@@ -85,21 +72,19 @@ export function ReportsView({ captures, fields, farms }: ReportsViewProps) {
           icon={<CameraIcon size={16} />}
           label="Captures"
           meta={`Made in the last ${periodLabel}`}
-          value={model.split.current.length.toLocaleString("en-US")}
+          value={model.current.length.toLocaleString("en-US")}
         />
         <StatCard
           icon={<FarmIcon size={16} />}
-          label="Fields scanned"
-          meta="Distinct fields with captures"
-          value={model.fieldsScanned.toLocaleString("en-US")}
-          delta={model.fieldsScannedDelta}
+          label="Species identified"
+          meta="Distinct plants the analysis named"
+          value={model.speciesIdentified.toLocaleString("en-US")}
         />
         <StatCard
-          icon={<ChartIcon size={16} />}
-          label="Findings flagged"
-          meta="Captures with an observation"
-          value={model.findings.toLocaleString("en-US")}
-          delta={model.findingsDelta}
+          icon={<BrainIcon size={16} />}
+          label="Analyzed"
+          meta={`Of ${model.current.length.toLocaleString("en-US")} captures`}
+          value={model.analyzed.toLocaleString("en-US")}
         />
       </div>
 
@@ -108,20 +93,12 @@ export function ReportsView({ captures, fields, farms }: ReportsViewProps) {
         <CapturesChart buckets={model.buckets} />
       </Panel>
 
-      {/* Findings — what changed in the fields */}
+      {/* What's been identified */}
       <Panel
-        title="Findings"
-        subtitle="What the analysis flagged this period, by type and severity."
+        title="What's been identified"
+        subtitle="Plants the analysis recognized this period, by species."
       >
-        <FindingsTable rows={model.findingRows} />
-      </Panel>
-
-      {/* Field activity */}
-      <Panel
-        title="Field activity"
-        subtitle="Captures per field this period, with the trend vs. the prior period."
-      >
-        <FieldActivityTable rows={model.fieldRows} />
+        <SpeciesTable rows={model.speciesRows} />
       </Panel>
     </div>
   );
@@ -197,108 +174,37 @@ function CapturesChart({ buckets }: { buckets: ChartBucket[] }) {
   );
 }
 
-// --- Findings table -------------------------------------------------------
+// --- Species table --------------------------------------------------------
 
-function FindingsTable({ rows }: { rows: FindingRow[] }) {
+function SpeciesTable({ rows }: { rows: SpeciesRow[] }) {
   if (rows.length === 0) {
-    return <EmptyRow message="Nothing flagged this period — no captures carried an observation." />;
+    return <EmptyRow message="Nothing identified in this period." />;
   }
   return (
     <table className="w-full border-collapse text-sm">
       <thead>
         <tr className="border-b border-base-content/15 text-left text-xs uppercase tracking-wider text-base-content/55">
-          <Th>Type</Th>
-          <Th>Severity</Th>
-          <Th className="text-right">Count</Th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row) => (
-          <tr key={row.type} className="border-b border-base-content/8">
-            <Td className="font-medium text-neutral">{row.label}</Td>
-            <Td>
-              <div className="flex flex-wrap gap-1.5">
-                {row.severity.high > 0 ? (
-                  <StatusPill label={`${row.severity.high} high`} tone={severityTone("high")} />
-                ) : null}
-                {row.severity.medium > 0 ? (
-                  <StatusPill
-                    label={`${row.severity.medium} medium`}
-                    tone={severityTone("medium")}
-                  />
-                ) : null}
-                {row.severity.low > 0 ? (
-                  <StatusPill label={`${row.severity.low} low`} tone={severityTone("low")} />
-                ) : null}
-                {row.severity.unrated > 0 ? (
-                  <span className="text-xs text-base-content/45">
-                    {row.severity.unrated} unrated
-                  </span>
-                ) : null}
-              </div>
-            </Td>
-            <Td className="text-right tabular-nums text-neutral">{row.total}</Td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
-
-// --- Field activity table -------------------------------------------------
-
-function FieldActivityTable({ rows }: { rows: FieldActivityRow[] }) {
-  if (rows.length === 0) {
-    return <EmptyRow message="No field activity in this period." />;
-  }
-  return (
-    <table className="w-full border-collapse text-sm">
-      <thead>
-        <tr className="border-b border-base-content/15 text-left text-xs uppercase tracking-wider text-base-content/55">
-          <Th>Field</Th>
-          <Th>Farm</Th>
+          <Th>Plant</Th>
+          <Th>Species</Th>
           <Th className="text-right">Captures</Th>
-          <Th className="text-right">Trend</Th>
         </tr>
       </thead>
       <tbody>
         {rows.map((row) => (
-          <tr key={row.fieldId ?? "__unassigned__"} className="border-b border-base-content/8">
+          <tr key={row.species ?? "__none__"} className="border-b border-base-content/8">
             <Td
               className={
-                row.fieldId === null ? "italic text-base-content/55" : "font-medium text-neutral"
+                row.species === null ? "italic text-base-content/55" : "font-medium text-neutral"
               }
             >
-              {row.fieldName}
+              {row.species === null ? "Unidentified" : row.commonName ?? "—"}
             </Td>
-            <Td className="text-base-content/70">{row.farm}</Td>
+            <Td className="italic text-base-content/70">{row.species ?? "—"}</Td>
             <Td className="text-right tabular-nums text-neutral">{row.count}</Td>
-            <Td className="text-right">
-              <TrendCell row={row} />
-            </Td>
           </tr>
         ))}
       </tbody>
     </table>
-  );
-}
-
-function TrendCell({ row }: { row: FieldActivityRow }) {
-  const diff = row.count - row.prevCount;
-  if (diff === 0) {
-    return <span className="tabular-nums text-base-content/45">—</span>;
-  }
-  const up = diff > 0;
-  return (
-    <span
-      className={`inline-flex items-center gap-1 tabular-nums ${
-        up ? "text-success" : "text-base-content/55"
-      }`}
-      title={`${row.prevCount} in the prior period`}
-    >
-      <span aria-hidden>{up ? "▲" : "▼"}</span>
-      {Math.abs(diff)}
-    </span>
   );
 }
 
