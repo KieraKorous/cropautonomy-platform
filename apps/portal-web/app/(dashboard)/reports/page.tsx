@@ -9,10 +9,11 @@ import { ReportsView } from "./ReportsView";
 export const dynamic = "force-dynamic";
 
 // Captures have no date filter on the API, so we window client-side over one
-// generous batch. v0 org volume is low; captures older than this batch are
-// excluded — revisit the limit (or add a server-side date filter) when an org's
-// volume routinely exceeds it.
-const CAPTURE_FETCH_LIMIT = 1000;
+// batch. The list endpoint caps `limit` at 500 (requesting more is a 400), so
+// that's the ceiling here — it covers a v0 org's full history today. When an org
+// exceeds 500 captures, paginate with `offset` (or add a server-side date
+// filter) so older captures aren't silently dropped from the report.
+const CAPTURE_FETCH_LIMIT = 500;
 
 export default async function ReportsPage() {
   const [me, capturesResult] = await Promise.all([

@@ -95,7 +95,7 @@ const updateSchema = z
   });
 
 const listQuerySchema = z.object({
-  limit: z.coerce.number().int().positive().max(100).default(50),
+  limit: z.coerce.number().int().positive().max(500).default(50),
   offset: z.coerce.number().int().nonnegative().default(0),
   // false (default) → only live captures; true → only discarded (settings view).
   discarded: z.coerce.boolean().default(false),
