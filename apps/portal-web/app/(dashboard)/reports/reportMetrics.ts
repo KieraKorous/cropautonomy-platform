@@ -4,11 +4,21 @@
 // here over the in-memory batch (see reports/page.tsx CAPTURE_FETCH_LIMIT).
 //
 // Reports are built on the capture columns that are actually populated today:
-// capturedAt, status, and the analysis-inferred plant species (plantType /
+// the upload time, status, and the analysis-inferred plant species (plantType /
 // commonName). fieldId, observationType, and severity are null across the
 // current data, so per-field and findings breakdowns aren't surfaced here yet.
 
 import type { CaptureSummary } from "../../../lib/api";
+
+// The axis the report windows on: when the capture landed in the system. This
+// is robust to old source-file dates — file/gallery uploads stamp capturedAt
+// from the photo's lastModified (which can be weeks old), but uploadedAt is
+// always "when we received it". Falls back to capturedAt for an upload still in
+// flight (uploadedAt null). Returns NaN if neither parses.
+export function captureTime(c: CaptureSummary): number {
+  const t = new Date(c.uploadedAt ?? c.capturedAt).getTime();
+  return t;
+}
 
 export type Range = "1d" | "7d" | "30d" | "90d";
 
@@ -35,10 +45,10 @@ export function windowFor(range: Range, now: number = Date.now()): Window {
   return { now, start: now - rangeDays(range) * DAY_MS };
 }
 
-// Captures whose capturedAt falls in the current window.
+// Captures whose upload time falls in the current window.
 export function inWindow(captures: CaptureSummary[], w: Window): CaptureSummary[] {
   return captures.filter((c) => {
-    const t = new Date(c.capturedAt).getTime();
+    const t = captureTime(c);
     return !Number.isNaN(t) && t >= w.start && t < w.now;
   });
 }
@@ -65,8 +75,7 @@ export function capturesPerBucket(
       buckets.push({ label: `${d.getHours()}:00`, count: 0 });
     }
     for (const c of current) {
-      const t = new Date(c.capturedAt).getTime();
-      const idx = Math.floor((t - startMs) / (60 * 60 * 1000));
+      const idx = Math.floor((captureTime(c) - startMs) / (60 * 60 * 1000));
       if (idx >= 0 && idx < 24) buckets[idx].count += 1;
     }
     return buckets;
@@ -85,8 +94,7 @@ export function capturesPerBucket(
     });
   }
   for (const c of current) {
-    const t = new Date(c.capturedAt).getTime();
-    const idx = Math.floor((t - startMs) / DAY_MS);
+    const idx = Math.floor((captureTime(c) - startMs) / DAY_MS);
     if (idx >= 0 && idx < days) buckets[idx].count += 1;
   }
   return buckets;

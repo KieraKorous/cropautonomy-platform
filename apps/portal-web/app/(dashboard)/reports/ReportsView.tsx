@@ -71,7 +71,7 @@ export function ReportsView({ captures }: ReportsViewProps) {
         <StatCard
           icon={<CameraIcon size={16} />}
           label="Captures"
-          meta={`Made in the last ${periodLabel}`}
+          meta={`Uploaded in the last ${periodLabel}`}
           value={model.current.length.toLocaleString("en-US")}
         />
         <StatCard
@@ -89,7 +89,7 @@ export function ReportsView({ captures }: ReportsViewProps) {
       </div>
 
       {/* Captures over time */}
-      <Panel title="Captures over time" subtitle={`Captures recorded in the last ${periodLabel}.`}>
+      <Panel title="Captures over time" subtitle={`Captures uploaded in the last ${periodLabel}.`}>
         <CapturesChart buckets={model.buckets} />
       </Panel>
 
