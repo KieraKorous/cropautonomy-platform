@@ -1,1 +1,1 @@
-export { publish } from "./publish";
+export { publish } from "./publish.js";

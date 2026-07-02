@@ -5,8 +5,8 @@ import {
   subscribe,
   type ConnectionStatus,
   type SupabaseTransportConfig
-} from "../transports/supabase";
-import type { RealtimeEvent } from "../events";
+} from "../transports/supabase.js";
+import type { RealtimeEvent } from "../events.js";
 
 let cachedConfig: SupabaseTransportConfig | null = null;
 

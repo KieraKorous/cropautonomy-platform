@@ -5,7 +5,7 @@
 // When the bridge lands, swap this for transports/supabase.broadcastFromClient
 // by configuring the client publishFromClient with mode: "direct".
 
-import { validateForPublish, type RealtimeEventInput } from "../events";
+import { validateForPublish, type RealtimeEventInput } from "../events.js";
 
 export interface ProxyTransportConfig {
   endpoint: string; // absolute URL e.g. https://api.cropautonomy.com/v1/realtime/publish

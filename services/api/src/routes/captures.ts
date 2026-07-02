@@ -94,6 +94,83 @@ const updateSchema = z
     message: "At least one field must be provided."
   });
 
+// --- Annotations (Phase 3 confirm loop) ---------------------------------------
+// Finding domain — kept in sync with analysis_results.finding_type /
+// capture_annotations.finding_type (migration 0024).
+const FINDING_TYPE = z.enum([
+  "plant",
+  "disease",
+  "pest",
+  "weed",
+  "nutrient",
+  "irrigation",
+  "soil",
+  "damage",
+  "growth_stage",
+  "other"
+]);
+const CONFIRMATION_LEVEL = z.enum(["field_visual", "expert_visual", "lab_confirmed"]);
+// The four human-annotation sources (capture_annotations.source, migration 0008).
+const ANNOTATION_SOURCE = z.enum([
+  "human_confirmed_seed",
+  "human_corrected_seed",
+  "human_rejected_seed",
+  "human_de_novo"
+]);
+const NORM_BBOX = z.object({
+  x: z.number().min(0).max(1),
+  y: z.number().min(0).max(1),
+  w: z.number().gt(0).max(1),
+  h: z.number().gt(0).max(1)
+});
+
+// One human annotation event on a capture: confirm / reject / correct a model
+// finding, or add one de novo. Mirrors the capture_annotations check constraints
+// (has_signal, negative_shape) so bad shapes are rejected before the insert.
+const annotationSchema = z
+  .object({
+    source: ANNOTATION_SOURCE,
+    // The model finding this acts on. Required for confirm/correct/reject;
+    // must be omitted for de novo.
+    analysisResultId: z.string().uuid().nullable().optional(),
+    findingType: FINDING_TYPE.nullable().optional(),
+    category: z.string().min(1).max(200).nullable().optional(),
+    subcategory: z.string().max(200).nullable().optional(),
+    boundingBox: NORM_BBOX.nullable().optional(),
+    severity: SEVERITY.nullable().optional(),
+    // "no plants present" — a training negative. Carries no bbox or seed link.
+    isNegative: z.boolean().optional().default(false),
+    confirmationLevel: CONFIRMATION_LEVEL.optional().default("field_visual"),
+    annotatorConfidence: z.number().min(0).max(1).nullable().optional(),
+    notes: z.string().max(2000).nullable().optional()
+  })
+  // Seed actions reference a result; de novo must not. (When a seed action omits
+  // category/bbox the server backfills them from the referenced result.)
+  .refine(
+    (v) =>
+      v.source === "human_de_novo"
+        ? v.analysisResultId == null
+        : v.analysisResultId != null,
+    {
+      message: "confirm/reject/correct require analysisResultId; de novo must omit it.",
+      path: ["analysisResultId"]
+    }
+  )
+  // has_signal: a positive annotation needs a category (unless it copies one
+  // from a referenced result); a negative needs none.
+  .refine(
+    (v) =>
+      v.isNegative ||
+      v.analysisResultId != null ||
+      (v.category != null && v.category.trim().length > 0),
+    { message: "category is required unless isNegative or a seed is referenced.", path: ["category"] }
+  )
+  // negative_shape: a negative carries no bbox and no seed link.
+  .refine((v) => !v.isNegative || (v.boundingBox == null && v.analysisResultId == null), {
+    message: "A negative annotation cannot carry a bounding box or analysisResultId.",
+    path: ["isNegative"]
+  });
+
 const listQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(500).default(50),
   offset: z.coerce.number().int().nonnegative().default(0),
@@ -170,6 +247,87 @@ function toCaptureSummary(row: CaptureListRow, imageUrl: string | null) {
     videoDurationMs: row.video_duration_ms,
     analysisJobId: row.analysis_job_id,
     discardedAt: row.discarded_at
+  };
+}
+
+// Per-detection analysis results (findings) for the capture detail page. These
+// were previously write-only (worker inserts, nothing read them back). See
+// docs/architecture/capture-analysis-intelligence.md § Phase 2.
+const FINDING_SELECT =
+  "id, finding_type, category, subcategory, confidence, severity, severity_pct, bounding_box, segmentation, provenance, payload, created_at";
+
+interface FindingRow {
+  id: string;
+  finding_type: string;
+  category: string;
+  subcategory: string | null;
+  confidence: number | string;
+  severity: string | null;
+  severity_pct: number | string | null;
+  bounding_box: { x: number; y: number; w: number; h: number } | null;
+  segmentation: Record<string, unknown> | null;
+  provenance: Record<string, unknown> | null;
+  payload: Record<string, unknown> | null;
+  created_at: string;
+}
+
+// numeric columns can arrive as strings from PostgREST; coerce to number.
+const num = (v: number | string | null): number | null =>
+  v == null ? null : typeof v === "number" ? v : Number(v);
+
+function toFinding(row: FindingRow) {
+  return {
+    id: row.id,
+    findingType: row.finding_type,
+    category: row.category,
+    subcategory: row.subcategory,
+    confidence: num(row.confidence) ?? 0,
+    severity: row.severity,
+    severityPct: num(row.severity_pct),
+    boundingBox: row.bounding_box,
+    segmentation: row.segmentation ?? null,
+    provenance: row.provenance ?? {},
+    // Short reason emitted by the LLM findings stage (rides in payload.note).
+    note: typeof row.payload?.note === "string" ? row.payload.note : null,
+    createdAt: row.created_at
+  };
+}
+
+// Human annotations on a capture (the confirm loop's durable output).
+const ANNOTATION_SELECT =
+  "id, analysis_result_id, annotator_user_id, source, finding_type, category, subcategory, bounding_box, is_negative, annotator_confidence, confirmation_level, notes, created_at";
+
+interface AnnotationRow {
+  id: string;
+  analysis_result_id: string | null;
+  annotator_user_id: string;
+  source: string;
+  finding_type: string | null;
+  category: string | null;
+  subcategory: string | null;
+  bounding_box: { x: number; y: number; w: number; h: number } | null;
+  is_negative: boolean;
+  annotator_confidence: number | string | null;
+  confirmation_level: string;
+  notes: string | null;
+  created_at: string;
+}
+
+function toAnnotation(row: AnnotationRow) {
+  return {
+    id: row.id,
+    analysisResultId: row.analysis_result_id,
+    annotatorUserId: row.annotator_user_id,
+    source: row.source,
+    findingType: row.finding_type,
+    category: row.category,
+    subcategory: row.subcategory,
+    boundingBox: row.bounding_box,
+    isNegative: row.is_negative,
+    annotatorConfidence: num(row.annotator_confidence),
+    confirmationLevel: row.confirmation_level,
+    notes: row.notes,
+    createdAt: row.created_at
   };
 }
 
@@ -336,10 +494,137 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
         return path ? (signedByPath.get(path) ?? null) : null;
       };
 
+      // Per-detection findings for this capture (issues + species/objects), most
+      // relevant first. Org scoping is transitive: we already verified the
+      // capture belongs to the caller's org above.
+      const { data: findingData, error: findingsErr } = await supabase
+        .from("analysis_results")
+        .select(FINDING_SELECT)
+        .eq("capture_id", id)
+        .order("finding_type", { ascending: true })
+        .order("confidence", { ascending: false });
+      if (findingsErr) throw findingsErr;
+      const findings = ((findingData ?? []) as FindingRow[]).map(toFinding);
+
+      // Human annotations on this capture (confirm/reject/correct/add), oldest
+      // first so the UI can show the latest state per finding.
+      const { data: annotationData, error: annotationsErr } = await supabase
+        .from("capture_annotations")
+        .select(ANNOTATION_SELECT)
+        .eq("capture_id", id)
+        .order("created_at", { ascending: true });
+      if (annotationsErr) throw annotationsErr;
+      const annotations = ((annotationData ?? []) as AnnotationRow[]).map(toAnnotation);
+
+      // Whether this caller may confirm/correct/reject/add (drives the review UI).
+      const canAnnotate = await request.permissions!.hasPermission(
+        { userId: caller.userId, orgId: caller.orgId },
+        "analysis.annotate"
+      );
+
       return {
         capture: toCaptureSummary(capture, sign(capture.id)),
-        related: relatedRows.map((rel) => toCaptureSummary(rel, sign(rel.id)))
+        related: relatedRows.map((rel) => toCaptureSummary(rel, sign(rel.id))),
+        findings,
+        annotations,
+        canAnnotate
       };
+    }
+  );
+
+  // Create a human annotation on a capture: confirm / reject / correct a model
+  // finding, or add one de novo. This is the confirm loop that builds the
+  // labeled corpus. Append-only — each action is a new capture_annotations row,
+  // so inter-annotator disagreement is preserved. Requires analysis.annotate.
+  app.post<{ Params: { id: string } }>(
+    "/v1/captures/:id/annotations",
+    { preHandler: app.requireAuth("analysis.annotate") },
+    async (request, _reply) => {
+      const { id } = request.params;
+      if (!UUID_RE.test(id)) {
+        throw badRequest("captures.invalid_id", "Invalid capture id.");
+      }
+      const caller = request.auth!;
+      const parsed = annotationSchema.safeParse(request.body);
+      if (!parsed.success) {
+        throw badRequest("annotations.invalid_input", "Invalid annotation body.", {
+          issues: parsed.error.issues
+        });
+      }
+      const body = parsed.data;
+      const supabase = getDb();
+
+      // Capture must exist in the caller's org.
+      const { data: capRow, error: capErr } = await supabase
+        .from("captures")
+        .select("id, org_id")
+        .eq("id", id)
+        .maybeSingle();
+      if (capErr) throw capErr;
+      if (!capRow || (capRow as { org_id: string }).org_id !== caller.orgId) {
+        throw notFound("captures.not_found", "Capture not found.");
+      }
+
+      // Seed actions reference a result that must belong to this capture. Copy
+      // its category / finding_type / bbox when the client omits them, so a
+      // confirm or reject needs only the analysisResultId.
+      let category = body.category ?? null;
+      let findingType: string | null = body.findingType ?? null;
+      let boundingBox = body.boundingBox ?? null;
+      if (body.analysisResultId) {
+        const { data: ar, error: arErr } = await supabase
+          .from("analysis_results")
+          .select("id, category, finding_type, bounding_box")
+          .eq("id", body.analysisResultId)
+          .eq("capture_id", id)
+          .maybeSingle();
+        if (arErr) throw arErr;
+        if (!ar) {
+          throw badRequest(
+            "annotations.result_not_found",
+            "analysisResultId does not belong to this capture."
+          );
+        }
+        const seed = ar as {
+          category: string | null;
+          finding_type: string | null;
+          bounding_box: { x: number; y: number; w: number; h: number } | null;
+        };
+        if (category == null) category = seed.category;
+        if (findingType == null) findingType = seed.finding_type;
+        if (boundingBox == null) boundingBox = seed.bounding_box;
+      }
+
+      if (!body.isNegative && (category == null || category.trim().length === 0)) {
+        throw badRequest("annotations.missing_category", "A category is required.");
+      }
+
+      const payload: Record<string, unknown> = {};
+      if (body.severity) payload.severity = body.severity;
+
+      const { data: inserted, error: insErr } = await supabase
+        .from("capture_annotations")
+        .insert({
+          org_id: caller.orgId,
+          capture_id: id,
+          analysis_result_id: body.analysisResultId ?? null,
+          annotator_user_id: caller.userId,
+          source: body.source,
+          finding_type: findingType,
+          category: body.isNegative ? null : category,
+          subcategory: body.subcategory ?? null,
+          bounding_box: boundingBox,
+          is_negative: body.isNegative,
+          annotator_confidence: body.annotatorConfidence ?? null,
+          confirmation_level: body.confirmationLevel,
+          notes: body.notes ?? null,
+          payload
+        })
+        .select(ANNOTATION_SELECT)
+        .single();
+      if (insErr) throw insErr;
+
+      return { annotation: toAnnotation(inserted as AnnotationRow) };
     }
   );
 

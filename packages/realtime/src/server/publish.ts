@@ -4,7 +4,7 @@
 // process.env on first call.
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { validateForPublish, type RealtimeEventInput } from "../events";
+import { validateForPublish, type RealtimeEventInput } from "../events.js";
 
 const BROADCAST_EVENT = "envelope";
 

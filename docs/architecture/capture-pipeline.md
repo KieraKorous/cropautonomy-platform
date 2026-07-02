@@ -282,6 +282,8 @@ pg-boss worker picks up the job:
 
 The production pipeline `default-plant@v2` runs RT-DETR (detection) → PlantNet (species classification) → **`agronomic_summary` (optional `summary` stage)**. The summary stage is a Claude call in `services/vision` ([`agronomic_summary.py`](../../services/vision/src/vision/stages/agronomic_summary.py)) that turns the detections into a JSON `{ summary, observation_type, severity }` — a 1-2 sentence agronomic brief plus best-effort structured tags, surfaced as `inferred_summary` / `observation_type` / `severity`. This **replaces hand-annotation**: capture metadata is generated automatically. The stage is **optional** (`required=false`): when `ANTHROPIC_API_KEY` is unset it reports unconfigured and the pipeline still succeeds with species + detections (no brief/tags). Set `ANTHROPIC_API_KEY` (and optionally `ANTHROPIC_SUMMARY_MODEL`) in `services/vision`'s env to enable it; the concrete model id is also overridable per-pipeline in `pipeline_stages.config.model`.
 
+> This doc covers the *mechanics* of running analysis. What we detect beyond plant type (pests, diseases/viruses, soil-surface issues, nutrient, etc.), how findings are modeled and human-verified, and how trained per-domain models replace the seed layer is specified in [Capture Analysis Intelligence](./capture-analysis-intelligence.md).
+
 See [`packages/realtime` spec](./realtime-package-spec.md) for the exact event schemas.
 
 ### 5. Result delivery

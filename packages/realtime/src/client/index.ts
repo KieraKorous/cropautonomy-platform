@@ -3,9 +3,9 @@ export {
   useRealtimeChannel,
   type UseRealtimeChannelOptions,
   type UseRealtimeChannelResult
-} from "./useRealtimeChannel";
+} from "./useRealtimeChannel.js";
 export {
   configurePublishFromClient,
   publishFromClient,
   type ClientPublishTransport
-} from "./publishFromClient";
+} from "./publishFromClient.js";
