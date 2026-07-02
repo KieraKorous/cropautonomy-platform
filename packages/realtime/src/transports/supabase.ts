@@ -15,7 +15,7 @@ import {
   validateReceived,
   type RealtimeEvent,
   type RealtimeEventInput
-} from "../events.js";
+} from "../events";
 
 const BROADCAST_EVENT = "envelope";
 
