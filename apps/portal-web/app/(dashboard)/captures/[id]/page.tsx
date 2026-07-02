@@ -37,8 +37,14 @@ export default async function CaptureDetailPage({
     capture = result.capture;
     related = result.related;
   } catch (err) {
+    // A missing/cross-tenant capture is a genuine 404. Any other failure
+    // (API 500, unreachable service) shouldn't crash the whole RSC render —
+    // degrade to a readable error like the captures list does, surfacing the
+    // underlying message instead of a blank "Server Components render" error.
     if (err instanceof ApiError && err.status === 404) notFound();
-    throw err;
+    const message =
+      err instanceof ApiError ? err.message : "Could not reach the captures service.";
+    return <CaptureLoadError message={message} />;
   }
 
   const display = statusDisplay(capture.status, capture.plantType);
@@ -201,6 +207,36 @@ function SamePlantBar({
         </div>
       )}
     </section>
+  );
+}
+
+// Shown when the capture can't be loaded for any reason other than 404 (API
+// error, service unreachable). Keeps a link back to the list and surfaces the
+// underlying message so the failure is diagnosable rather than a blank crash.
+function CaptureLoadError({ message }: { message: string }) {
+  return (
+    <div className="flex flex-col gap-7">
+      <Link
+        href="/captures"
+        className="inline-flex w-fit items-center gap-1.5 text-sm text-base-content/60 transition-colors hover:text-neutral"
+      >
+        <ArrowRight size={16} className="rotate-180" />
+        Back to captures
+      </Link>
+      <section className="flex flex-col items-start gap-3 rounded-xl border border-dashed border-base-content/20 bg-base-100 px-6 py-8">
+        <span className="rounded-full bg-error/15 px-2.5 py-1 text-xs font-semibold text-error">
+          Off the grid
+        </span>
+        <h2 className="text-base font-semibold text-neutral">
+          We couldn&apos;t load this capture.
+        </h2>
+        <p className="max-w-xl text-sm text-base-content/65">
+          The capture service didn&apos;t respond. Refresh in a moment — if it keeps happening,
+          make sure you have an active organization or try again shortly.
+        </p>
+        <p className="text-xs text-base-content/40">{message}</p>
+      </section>
+    </div>
   );
 }
 
