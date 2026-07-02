@@ -49,11 +49,31 @@ export interface VisionBoundingBox {
   h: number;
 }
 
+export type FindingType =
+  | "plant"
+  | "disease"
+  | "pest"
+  | "weed"
+  | "nutrient"
+  | "irrigation"
+  | "soil"
+  | "damage"
+  | "growth_stage"
+  | "other";
+
+export type Severity = "low" | "medium" | "high";
+
 export interface VisionDetection {
   category: string | null;
   subcategory: string | null;
   confidence: number;
   bounding_box: VisionBoundingBox | null;
+  // Crop-intelligence domain. null is treated as 'plant' by the worker (the
+  // historical behavior for species/object detections).
+  finding_type: FindingType | null;
+  severity: Severity | null;
+  severity_pct: number | null;
+  segmentation: Record<string, unknown> | null;
   provenance: Record<string, string>;
   payload: Record<string, unknown>;
 }

@@ -336,6 +336,10 @@ export const scanDetectionV1 = envelopeBaseSchema.extend({
     scanId: z.string().uuid(),
     detectionId: z.string().uuid(),
     category: z.string(),
+    // Crop-intelligence domain of the detection (plant / disease / pest / …).
+    // Optional so pre-0024 consumers/producers stay valid. See
+    // docs/architecture/capture-analysis-intelligence.md.
+    findingType: z.string().optional(),
     confidence: z.number().min(0).max(1),
     location: z
       .object({

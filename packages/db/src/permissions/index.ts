@@ -78,6 +78,7 @@ export type PermissionKey =
   // analysis
   | "analysis.read"
   | "analysis.request"
+  | "analysis.annotate"
   | "analysis.delete"
   // telemetry
   | "telemetry.read"

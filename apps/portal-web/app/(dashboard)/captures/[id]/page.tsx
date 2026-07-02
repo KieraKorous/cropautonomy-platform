@@ -1,12 +1,19 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowRight, CameraIcon, StatusPill } from "@gaia/ui";
-import { ApiError, getCapture, type CaptureSummary } from "../../../../lib/api";
+import {
+  ApiError,
+  getCapture,
+  type Annotation,
+  type CaptureSummary,
+  type Finding
+} from "../../../../lib/api";
 import { DownloadButton } from "../../_components/DownloadButton";
 import { dateFormat, mediaLabel, statusDisplay } from "../captureDisplay";
 import { PlantName } from "../PlantName";
 import { AnalysisViewedTracker } from "./AnalysisViewedTracker";
 import { CaptureDetailsEditor } from "./CaptureDetailsEditor";
+import { CaptureFindings } from "./CaptureFindings";
 import { CaptureImage } from "./CaptureImage";
 
 // Per-capture detail page reached from the "See more" button in the captures
@@ -32,10 +39,16 @@ export default async function CaptureDetailPage({
 
   let capture: CaptureSummary;
   let related: CaptureSummary[] = [];
+  let findings: Finding[] = [];
+  let annotations: Annotation[] = [];
+  let canAnnotate = false;
   try {
     const result = await getCapture(id, { relatedLimit: 24 });
     capture = result.capture;
     related = result.related;
+    findings = result.findings;
+    annotations = result.annotations;
+    canAnnotate = result.canAnnotate;
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) notFound();
     throw err;
@@ -43,6 +56,10 @@ export default async function CaptureDetailPage({
 
   const display = statusDisplay(capture.status, capture.plantType);
   const size = formatSize(capture.sizeBytes);
+  // Issue findings (disease/pest/nutrient/…); 'plant' species/object detections
+  // are represented by the header/metadata, not the findings panel/overlay. The
+  // same array feeds the panel and the image overlay so their numbering agrees.
+  const issueFindings = findings.filter((f) => f.findingType !== "plant");
 
   return (
     <div className="flex flex-col gap-7">
@@ -80,8 +97,12 @@ export default async function CaptureDetailPage({
 
       {/* Image + sidebar */}
       <div className="flex flex-col gap-6 lg:flex-row">
-        {/* Image (with fullscreen zoom/pan viewer) */}
-        <CaptureImage imageUrl={capture.imageUrl} alt={capture.plantType ?? "Capture"} />
+        {/* Image (with fullscreen zoom/pan viewer + finding overlay) */}
+        <CaptureImage
+          imageUrl={capture.imageUrl}
+          alt={capture.plantType ?? "Capture"}
+          findings={issueFindings}
+        />
 
         {/* Description + metadata */}
         <div className="flex w-full flex-col gap-6 lg:w-2/5">
@@ -97,6 +118,16 @@ export default async function CaptureDetailPage({
               analyzed={capture.status === "analyzed"}
             />
           </section>
+
+          {/* Per-detection findings (issues), numbered to the image overlay,
+              with the confirm loop (confirm / reject / correct / add). */}
+          <CaptureFindings
+            captureId={capture.id}
+            findings={issueFindings}
+            annotations={annotations}
+            analyzed={capture.status === "analyzed"}
+            canAnnotate={canAnnotate}
+          />
 
           <section className="rounded-xl border border-base-content/10 bg-base-100 p-5">
             <div className="mb-3 flex items-center justify-between gap-3">

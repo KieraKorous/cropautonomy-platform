@@ -36,6 +36,7 @@ Those landing pages are only the starting point. The documentation in this folde
 - [Realtime Strategy](./architecture/realtime-strategy.md)
 - [`packages/realtime` Spec](./architecture/realtime-package-spec.md)
 - [Capture Pipeline](./architecture/capture-pipeline.md)
+- [Capture Analysis Intelligence](./architecture/capture-analysis-intelligence.md)
 - [Deployment Strategy](./architecture/deployment-strategy.md)
 - [Robotics and Edge Architecture](./architecture/robotics-and-edge-architecture.md)
 

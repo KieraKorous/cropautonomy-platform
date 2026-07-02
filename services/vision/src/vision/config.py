@@ -34,7 +34,9 @@ class Settings(BaseSettings):
     # fallback default.
     anthropic_api_key: str | None = None
     anthropic_summary_model: str = "claude-sonnet-4-6"
-    anthropic_summary_max_tokens: int = 200
+    # v2 returns the brief + a findings[] array, so it needs more room than the
+    # v1 brief-only 200. Overridable per pipeline_stages.config.max_tokens.
+    anthropic_summary_max_tokens: int = 700
 
     # Video summary stage (Claude multimodal over sampled frames). Shares the
     # ANTHROPIC_API_KEY; model + token budget + frame count overridable per
