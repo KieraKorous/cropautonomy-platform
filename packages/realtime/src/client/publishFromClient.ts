@@ -5,12 +5,12 @@
 // doesn't need a Supabase-authenticated JWT yet). When the Clerk->Supabase
 // JWT bridge lands, swap the transport via configurePublishFromClient.
 
-import { publishViaProxy, type ProxyTransportConfig } from "../transports/proxy.js";
+import { publishViaProxy, type ProxyTransportConfig } from "../transports/proxy";
 import {
   broadcastFromClient,
   type SupabaseTransportConfig
-} from "../transports/supabase.js";
-import type { RealtimeEventInput } from "../events.js";
+} from "../transports/supabase";
+import type { RealtimeEventInput } from "../events";
 
 export type ClientPublishTransport =
   | { kind: "proxy"; config: ProxyTransportConfig }
