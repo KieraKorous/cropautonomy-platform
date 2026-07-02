@@ -36,6 +36,24 @@ StageRole = Literal[
     "summary",
 ]
 
+# Domain of a finding. Superset of captures.observation_type plus 'plant' and
+# 'soil'. Mirrors the analysis_results.finding_type check constraint in
+# packages/db/migrations/0024_analysis_finding_type.sql.
+FindingType = Literal[
+    "plant",
+    "disease",
+    "pest",
+    "weed",
+    "nutrient",
+    "irrigation",
+    "soil",
+    "damage",
+    "growth_stage",
+    "other",
+]
+
+Severity = Literal["low", "medium", "high"]
+
 
 class BoundingBox(BaseModel):
     """Normalized 0..1 bounding box. None when the stage didn't produce one."""
@@ -63,6 +81,18 @@ class Detection(BaseModel):
     subcategory: str | None = None
     confidence: float = Field(ge=0.0, le=1.0)
     bounding_box: BoundingBox | None = None
+    # Which crop-intelligence domain this finding belongs to. None (the default)
+    # is treated as 'plant' by the worker — the historical behavior for
+    # detection/classification stages that only produce species/objects.
+    finding_type: FindingType | None = None
+    # Best-effort urgency + measured severity (% tissue affected). Set by
+    # findings-producing stages (agronomic_summary@v2 seed; segmentation model
+    # later); None for plain detections.
+    severity: Severity | None = None
+    severity_pct: float | None = Field(default=None, ge=0.0, le=100.0)
+    # Optional segmentation mask (normalized polygon / RLE, image space). None
+    # for bbox-only or whole-image findings; populated by the seg model later.
+    segmentation: dict[str, Any] | None = None
     provenance: dict[str, str] = Field(
         default_factory=dict,
         description="Per-field attribution, e.g. {'bbox_from': 'yolo@v1', 'class_from': 'plantnet_api@v2'}.",

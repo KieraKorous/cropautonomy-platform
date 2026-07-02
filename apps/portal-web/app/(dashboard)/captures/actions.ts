@@ -2,9 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import {
+  createAnnotation,
   discardCapture,
   reanalyzeCapture,
   updateCaptureDetails,
+  type AnnotationInput,
   type CaptureDetailsPatch
 } from "../../../lib/api";
 
@@ -30,6 +32,17 @@ export async function updateCaptureDetailsAction(
   patch: CaptureDetailsPatch
 ): Promise<void> {
   await updateCaptureDetails(id, patch);
+  revalidatePath(`/captures/${id}`);
+}
+
+// Confirm / reject / correct / add a finding on a capture. Appends a
+// capture_annotations row, then refreshes the detail page so the new review
+// state shows.
+export async function createAnnotationAction(
+  id: string,
+  input: AnnotationInput
+): Promise<void> {
+  await createAnnotation(id, input);
   revalidatePath(`/captures/${id}`);
 }
 

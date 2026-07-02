@@ -260,20 +260,34 @@ async function runOne(
     category: d.category ?? "unknown",
     subcategory: d.subcategory,
     confidence: d.confidence,
+    finding_type: d.finding_type ?? "plant",
+    severity: d.severity,
+    severity_pct: d.severity_pct,
     bounding_box: d.bounding_box,
+    segmentation: d.segmentation,
     payload: d.payload,
     provenance: d.provenance
   }));
 
-  let insertedResults: Array<{ id: string; category: string; confidence: number }> = [];
+  let insertedResults: Array<{
+    id: string;
+    category: string;
+    confidence: number;
+    finding_type: string;
+  }> = [];
   if (resultRows.length > 0) {
     const { data: inserted, error: resultsErr } = await supabase
       .from("analysis_results")
       .insert(resultRows)
-      .select("id, category, confidence");
+      .select("id, category, confidence, finding_type");
     if (resultsErr) throw resultsErr;
     insertedResults =
-      (inserted as Array<{ id: string; category: string; confidence: number }>) ?? [];
+      (inserted as Array<{
+        id: string;
+        category: string;
+        confidence: number;
+        finding_type: string;
+      }>) ?? [];
   }
 
   // 7. Publish a scan.detection event per result.
@@ -285,6 +299,7 @@ async function runOne(
         scanId: analysisJob.id,
         detectionId: result.id,
         category: result.category,
+        findingType: result.finding_type,
         confidence: result.confidence
       }
     });
@@ -301,9 +316,19 @@ async function runOne(
     inferred_details?: string;
     observation_type?: string;
     severity?: string;
+    finding_types?: string[];
+    top_findings?: Record<string, unknown>;
   } = {};
-  if (inference.detections.length > 0) {
-    const top = inference.detections.reduce((best, current) =>
+
+  // inferred_species is the top SPECIES detection — exclude the LLM issue
+  // findings (finding_type set), else a high-confidence 'powdery_mildew' finding
+  // would masquerade as the plant's species. Species/object detections leave
+  // finding_type null (the worker treats null as 'plant').
+  const speciesDetections = inference.detections.filter(
+    (d) => d.finding_type == null || d.finding_type === "plant"
+  );
+  if (speciesDetections.length > 0) {
+    const top = speciesDetections.reduce((best, current) =>
       current.confidence > best.confidence ? current : best
     );
     if (top.category) captureUpdate.inferred_species = top.category;
@@ -315,6 +340,36 @@ async function runOne(
       const first = commonNames[0].trim();
       if (first) captureUpdate.inferred_common_name = first;
     }
+  }
+
+  // Denormalized rollups for fast list filtering: which domains were found, and
+  // the top finding per domain. Computed over ALL detections (incl. findings).
+  if (inference.detections.length > 0) {
+    const findingTypes = new Set<string>();
+    const topByType: Record<
+      string,
+      {
+        category: string | null;
+        confidence: number;
+        severity: string | null;
+        severity_pct: number | null;
+      }
+    > = {};
+    for (const d of inference.detections) {
+      const ft = d.finding_type ?? "plant";
+      findingTypes.add(ft);
+      const existing = topByType[ft];
+      if (!existing || d.confidence > existing.confidence) {
+        topByType[ft] = {
+          category: d.category ?? null,
+          confidence: d.confidence,
+          severity: d.severity ?? null,
+          severity_pct: d.severity_pct ?? null
+        };
+      }
+    }
+    captureUpdate.finding_types = Array.from(findingTypes);
+    captureUpdate.top_findings = topByType;
   }
   if (inference.summary) captureUpdate.inferred_summary = inference.summary;
   if (inference.details) captureUpdate.inferred_details = inference.details;

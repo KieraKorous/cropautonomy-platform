@@ -113,10 +113,101 @@ export interface CaptureSummary {
   discardedAt: string | null;
 }
 
+// A finding domain — the crop-intelligence category of a detection. Superset of
+// ObservationType plus 'plant' and 'soil'. Mirrors analysis_results.finding_type.
+export type FindingType =
+  | "plant"
+  | "disease"
+  | "pest"
+  | "weed"
+  | "nutrient"
+  | "irrigation"
+  | "soil"
+  | "damage"
+  | "growth_stage"
+  | "other";
+
+// Normalized 0..1 bounding box in image space.
+export interface BoundingBox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+// One per-detection finding for a capture (from analysis_results). Issue
+// findings (disease/pest/…) come from the analysis pipeline's findings stage;
+// 'plant' findings are the species/object detections.
+export interface Finding {
+  id: string;
+  findingType: FindingType;
+  category: string;
+  subcategory: string | null;
+  confidence: number;
+  severity: Severity | null;
+  // Measured severity: % of tissue affected (0..100), or null when N/A.
+  severityPct: number | null;
+  boundingBox: BoundingBox | null;
+  segmentation: Record<string, unknown> | null;
+  provenance: Record<string, unknown>;
+  // Short model-authored reason (from the LLM findings stage), when present.
+  note: string | null;
+  createdAt: string;
+}
+
+// A human annotation event on a capture (the confirm loop's output).
+export type AnnotationSource =
+  | "human_confirmed_seed"
+  | "human_corrected_seed"
+  | "human_rejected_seed"
+  | "human_de_novo";
+
+export type ConfirmationLevel = "field_visual" | "expert_visual" | "lab_confirmed";
+
+export interface Annotation {
+  id: string;
+  // The model finding this acts on; null for de novo / negative annotations.
+  analysisResultId: string | null;
+  annotatorUserId: string;
+  source: AnnotationSource;
+  findingType: FindingType | null;
+  category: string | null;
+  subcategory: string | null;
+  boundingBox: BoundingBox | null;
+  isNegative: boolean;
+  annotatorConfidence: number | null;
+  confirmationLevel: ConfirmationLevel;
+  notes: string | null;
+  createdAt: string;
+}
+
+// Body for creating an annotation. For confirm/reject the server backfills
+// category/finding_type/bbox from the referenced result, so only source +
+// analysisResultId are needed.
+export interface AnnotationInput {
+  source: AnnotationSource;
+  analysisResultId?: string | null;
+  findingType?: FindingType | null;
+  category?: string | null;
+  subcategory?: string | null;
+  boundingBox?: BoundingBox | null;
+  severity?: Severity | null;
+  isNegative?: boolean;
+  confirmationLevel?: ConfirmationLevel;
+  annotatorConfidence?: number | null;
+  notes?: string | null;
+}
+
 export interface CaptureDetailResponse {
   capture: CaptureSummary;
   // Other captures sharing the same identified plant type (newest first).
   related: CaptureSummary[];
+  // Per-detection findings for this capture (issues + species/objects).
+  findings: Finding[];
+  // Human annotations on this capture (confirm/reject/correct/add), oldest first.
+  annotations: Annotation[];
+  // Whether the caller may annotate (drives the review controls).
+  canAnnotate: boolean;
 }
 
 interface ListCapturesResponse {
@@ -157,6 +248,20 @@ export function getCapture(
 ): Promise<CaptureDetailResponse> {
   const query = params.relatedLimit != null ? `?relatedLimit=${params.relatedLimit}` : "";
   return apiFetch<CaptureDetailResponse>(`/v1/captures/${id}${query}`);
+}
+
+// Create a human annotation on a capture (confirm / reject / correct / add).
+// Appends a capture_annotations row — the human-verified label feeding the
+// training corpus. Requires analysis.annotate.
+export function createAnnotation(
+  captureId: string,
+  input: AnnotationInput
+): Promise<{ annotation: Annotation }> {
+  return apiFetch(`/v1/captures/${captureId}/annotations`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input)
+  });
 }
 
 // Reviewer corrections to the AI-filled capture details. The analysis pipeline

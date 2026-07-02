@@ -2,21 +2,58 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CameraIcon } from "@gaia/ui";
+import type { Finding, Severity } from "../../../../lib/api";
 
 const MIN_SCALE = 1;
 const MAX_SCALE = 6;
 const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
 
+// Severity → box border color (gaia-field DaisyUI tokens). Matches the marker
+// colors in CaptureFindings so a box and its list row read as one thing.
+function boxBorder(severity: Severity | null): string {
+  switch (severity) {
+    case "high":
+      return "border-error";
+    case "medium":
+      return "border-warning";
+    case "low":
+      return "border-info";
+    default:
+      return "border-base-100";
+  }
+}
+function markerBg(severity: Severity | null): string {
+  switch (severity) {
+    case "high":
+      return "bg-error text-error-content";
+    case "medium":
+      return "bg-warning text-warning-content";
+    case "low":
+      return "bg-info text-info-content";
+    default:
+      return "bg-neutral text-base-100";
+  }
+}
+
 // The detail page's main image, with an expand-to-fullscreen viewer that mirrors
 // the captures lightbox: wheel / button / double-click zoom and drag-to-pan.
 // Self-contained (no prev/next) since the detail page shows a single capture.
+// `findings` (issue findings, in the same order as the CaptureFindings list) are
+// drawn as numbered boxes over the inline image; those without a bbox are skipped.
 export function CaptureImage({
   imageUrl,
-  alt
+  alt,
+  findings = []
 }: {
   imageUrl: string | null;
   alt: string;
+  findings?: Finding[];
 }) {
+  // Number matches the list row (1-based index into the full issue list); only
+  // findings with a bbox get a box.
+  const boxes = findings
+    .map((finding, i) => ({ finding, n: i + 1 }))
+    .filter((b) => b.finding.boundingBox != null);
   const [fullscreen, setFullscreen] = useState(false);
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
@@ -124,8 +161,41 @@ export function CaptureImage({
     <>
       <div className="relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-xl border border-base-content/10 bg-neutral/95 lg:w-3/5">
         {imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element -- signed Storage URL, not a static asset
-          <img alt={alt} className="max-h-[70vh] w-full object-contain" src={imageUrl} />
+          // Shrink-wrap the image so the overlay's inset-0 maps normalized 0..1
+          // bbox coords straight onto the rendered image box.
+          <div className="relative inline-flex max-h-full max-w-full">
+            {/* eslint-disable-next-line @next/next/no-img-element -- signed Storage URL, not a static asset */}
+            <img
+              alt={alt}
+              className="max-h-[70vh] w-auto max-w-full object-contain"
+              src={imageUrl}
+            />
+            {boxes.length > 0 ? (
+              <div className="pointer-events-none absolute inset-0">
+                {boxes.map(({ finding, n }) => {
+                  const box = finding.boundingBox!;
+                  return (
+                    <div
+                      key={finding.id}
+                      className={`absolute rounded-sm border-2 ${boxBorder(finding.severity)}`}
+                      style={{
+                        left: `${box.x * 100}%`,
+                        top: `${box.y * 100}%`,
+                        width: `${box.w * 100}%`,
+                        height: `${box.h * 100}%`
+                      }}
+                    >
+                      <span
+                        className={`absolute -left-2 -top-2 inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold shadow ${markerBg(finding.severity)}`}
+                      >
+                        {n}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
         ) : (
           <div className="flex h-full min-h-[40vh] w-full items-center justify-center text-base-100/30">
             <CameraIcon size={56} />
