@@ -256,7 +256,7 @@ Core per-capture confirm loop shipped (0025); review queue / taxonomy / adjudica
 - [ ] Uncertainty-sorted cross-capture review queue, filterable by domain — staged
 - [ ] Adjudication path for inter-annotator disagreement (schema already keeps every annotation as raw signal; needs a surface) — staged
 - [ ] Per-domain confirmed-label counts dashboard — staged
-- [ ] **Acceptance:** confirmed findings become `capture_annotations` with a confirmation tier — *code-complete + type-clean (api/workers/realtime/db green); pending a live run*
+- [ ] **Acceptance:** confirmed findings become `capture_annotations` with a confirmation tier — *code-complete; api + db type-clean, realtime clean, portal-web builds. (Realtime relative imports stay extensionless so Turbopack can build; api/workers keep the pre-existing NodeNext TS2835 until `@gaia/realtime` ships a built dist.) Pending a live run*
 
 ### Phase 4 — First trained model: disease + virus (segmentation + domain-shift-hardened)
 - [ ] Seed datasets ingested (PlantVillage / Roboflow disease sets); licenses recorded (permissive only)
