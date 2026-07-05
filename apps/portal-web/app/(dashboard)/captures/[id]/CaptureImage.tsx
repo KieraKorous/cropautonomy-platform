@@ -193,17 +193,18 @@ export function CaptureImage({
 
   return (
     <>
-      <div className="relative flex min-h-[50vh] w-full items-center justify-center overflow-hidden rounded-xl border border-base-content/10 bg-neutral/95 lg:w-3/5 lg:self-start lg:sticky lg:top-6">
+      <div className="relative w-full overflow-hidden rounded-xl border border-base-content/10 bg-neutral/95 lg:w-3/5 lg:self-start lg:sticky lg:top-6">
         {imageUrl ? (
-          // Shrink-wrap the image so the overlay's inset-0 maps normalized 0..1
-          // bbox coords straight onto the rendered image box.
-          <div className="relative inline-flex max-h-full max-w-full">
+          // Image fills the frame width by default; the wrapper hugs the rendered
+          // image box so the overlay's inset-0 maps normalized 0..1 bbox coords
+          // straight onto it. Tall portraits are height-capped and letterboxed.
+          <div className="relative w-full">
             {/* Click anywhere on the image to open the fullscreen zoom/pan viewer.
                 eslint-disable-next-line @next/next/no-img-element -- signed Storage URL, not a static asset */}
             <img
               alt={alt}
               onClick={() => setFullscreen(true)}
-              className="max-h-[82vh] w-auto max-w-full cursor-zoom-in object-contain"
+              className="block max-h-[82vh] w-full cursor-zoom-in object-contain"
               src={imageUrl}
             />
             {boxes.length > 0 ? (
@@ -233,7 +234,7 @@ export function CaptureImage({
             ) : null}
           </div>
         ) : (
-          <div className="flex h-full min-h-[40vh] w-full items-center justify-center text-base-100/30">
+          <div className="flex min-h-[50vh] w-full items-center justify-center text-base-100/30">
             <CameraIcon size={56} />
           </div>
         )}
