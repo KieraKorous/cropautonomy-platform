@@ -15,8 +15,10 @@ import fieldsRoutes from "./routes/fields.js";
 import healthRoutes from "./routes/health.js";
 import leadsRoutes from "./routes/leads.js";
 import meRoutes from "./routes/me.js";
+import membersRoutes from "./routes/members.js";
 import metaRoutes from "./routes/meta.js";
 import realtimeRoutes from "./routes/realtime.js";
+import teamsRoutes from "./routes/teams.js";
 import zonesRoutes from "./routes/zones.js";
 
 export async function buildServer(config: Config): Promise<FastifyInstance> {
@@ -49,6 +51,7 @@ export async function buildServer(config: Config): Promise<FastifyInstance> {
   await app.register(healthRoutes);
   await app.register(metaRoutes, { config });
   await app.register(meRoutes);
+  await app.register(membersRoutes);
   await app.register(leadsRoutes);
   await app.register(captureSessionsRoutes);
   await app.register(capturesRoutes);
@@ -56,6 +59,7 @@ export async function buildServer(config: Config): Promise<FastifyInstance> {
   await app.register(farmsRoutes);
   await app.register(fieldsRoutes);
   await app.register(zonesRoutes);
+  await app.register(teamsRoutes);
   await app.register(realtimeRoutes);
 
   // pg-boss producer: start during boot so the first enqueue doesn't pay

@@ -2,6 +2,11 @@ import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { getDb } from "../lib/db.js";
 import { badRequest, conflict, notFound } from "../lib/errors.js";
+import {
+  canSeeResource,
+  partitionVisibleIds,
+  resolveTeamScope
+} from "../lib/team-scope.js";
 
 const UUID_RE = /^[0-9a-f-]{36}$/i;
 
@@ -165,21 +170,45 @@ async function assertFarmInOrg(
 const fieldsRoutes: FastifyPluginAsync = async (app) => {
   // GET /v1/fields — the org's fields for the portal /fields page + the map
   // views. canManage lets the page render the New / edit / delete controls.
-  app.get("/v1/fields", { preHandler: app.requireAuth("fields.read") }, async (request, _reply) => {
-    const caller = request.auth!;
-    const supabase = getDb();
+  app.get<{ Querystring: { teamId?: string } }>(
+    "/v1/fields",
+    { preHandler: app.requireAuth("fields.read") },
+    async (request, _reply) => {
+      const caller = request.auth!;
+      const supabase = getDb();
 
-    const { data, error } = await supabase.rpc("list_org_fields", { p_org_id: caller.orgId });
-    if (error) throw error;
+      const { data, error } = await supabase.rpc("list_org_fields", { p_org_id: caller.orgId });
+      if (error) throw error;
 
-    const canManage = await request.permissions!.hasPermission(
-      { userId: caller.userId, orgId: caller.orgId },
-      "fields.update"
-    );
+      const canManage = await request.permissions!.hasPermission(
+        { userId: caller.userId, orgId: caller.orgId },
+        "fields.update"
+      );
 
-    const rows = (data ?? []) as FieldListRow[];
-    return { orgId: caller.orgId, canManage, fields: rows.map(toFieldSummary) };
-  });
+      let rows = (data ?? []) as FieldListRow[];
+
+      // Team access boundary (+ optional ?teamId= narrow). Post-filter the RPC
+      // rows in JS — org field lists are small. No-op for admins.
+      const scope = await resolveTeamScope(supabase, request.permissions!, {
+        userId: caller.userId,
+        orgId: caller.orgId
+      });
+      const teamId = request.query.teamId;
+      if (!scope.bypass || teamId) {
+        const visible = await partitionVisibleIds(
+          supabase,
+          caller.orgId,
+          "field",
+          scope,
+          rows.map((r) => r.id),
+          teamId
+        );
+        rows = rows.filter((r) => visible.has(r.id));
+      }
+
+      return { orgId: caller.orgId, canManage, fields: rows.map(toFieldSummary) };
+    }
+  );
 
   // POST /v1/fields — create a field under a farm in the caller's org.
   app.post("/v1/fields", { preHandler: app.requireAuth("fields.create") }, async (request, reply) => {
@@ -228,6 +257,15 @@ const fieldsRoutes: FastifyPluginAsync = async (app) => {
 
       const field = await loadFieldSummary(supabase, caller.orgId, id);
       if (!field) throw notFound("fields.not_found", "Field not found.");
+
+      // Team access boundary: a field on a team the caller isn't on is 404.
+      const scope = await resolveTeamScope(supabase, request.permissions!, {
+        userId: caller.userId,
+        orgId: caller.orgId
+      });
+      if (!(await canSeeResource(supabase, caller.orgId, "field", id, scope))) {
+        throw notFound("fields.not_found", "Field not found.");
+      }
       return field;
     }
   );

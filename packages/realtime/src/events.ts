@@ -394,6 +394,31 @@ export const captureChangedV1 = envelopeBaseSchema.extend({
 });
 
 // =============================================================================
+// Team feed (channel: orgTeams) — org-wide per-assignment fanout so open list
+// views + the Live wall re-fetch when an entity's team set changes (which may
+// change who can see it). Thin, like capture.changed: identity + what changed,
+// not the row. Consumers re-fetch the authoritative rows.
+// =============================================================================
+
+export const teamAssignmentChangedV1 = envelopeBaseSchema.extend({
+  type: z.literal("team.assignment.changed"),
+  version: z.literal(1),
+  payload: z.object({
+    orgId: z.string().uuid(),
+    teamId: z.string().uuid(),
+    resourceType: z.enum([
+      "farm",
+      "field",
+      "device",
+      "capture_session",
+      "capture"
+    ]),
+    resourceId: z.string().uuid(),
+    changeType: z.enum(["assigned", "unassigned"])
+  })
+});
+
+// =============================================================================
 // Registry — every event the platform knows about. Adding a new schema is the
 // one place that wires it into both publish-time and receive-time validation.
 // =============================================================================
@@ -427,7 +452,8 @@ const allSchemas = [
   scanDetectionV1,
   scanCompletedV1,
   scanFailedV1,
-  captureChangedV1
+  captureChangedV1,
+  teamAssignmentChangedV1
 ] as const;
 
 type AnyEventSchema = (typeof allSchemas)[number];
@@ -477,7 +503,8 @@ export type RealtimeEventInput =
   | Omit<z.infer<typeof scanDetectionV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string }
   | Omit<z.infer<typeof scanCompletedV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string }
   | Omit<z.infer<typeof scanFailedV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string }
-  | Omit<z.infer<typeof captureChangedV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string };
+  | Omit<z.infer<typeof captureChangedV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string }
+  | Omit<z.infer<typeof teamAssignmentChangedV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string };
 
 export function stampEnvelope(input: RealtimeEventInput): RealtimeEvent {
   return {

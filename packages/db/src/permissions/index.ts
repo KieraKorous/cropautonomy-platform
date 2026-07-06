@@ -85,7 +85,14 @@ export type PermissionKey =
   | "telemetry.ingest"
   // notifications
   | "notifications.read"
-  | "notifications.manage";
+  | "notifications.manage"
+  // teams
+  | "teams.read"
+  | "teams.create"
+  | "teams.update"
+  | "teams.delete"
+  | "teams.assign"
+  | "team_members.manage";
 
 export interface MembershipContext {
   /** Internal users.id uuid (not the Clerk user id). */

@@ -1,4 +1,12 @@
-import { ApiError, getMe, listCaptures, type CaptureSummary } from "../../../lib/api";
+import {
+  ApiError,
+  getMe,
+  listCaptures,
+  listMyTeams,
+  type CaptureSummary,
+  type MyTeam
+} from "../../../lib/api";
+import { TeamFilter } from "../_components/TeamFilter";
 import { CapturesView } from "./CapturesView";
 
 // Captures table — every observation the platform has ingested, newest first.
@@ -6,14 +14,21 @@ import { CapturesView } from "./CapturesView";
 // type lands. See docs/architecture/capture-pipeline.md.
 export const dynamic = "force-dynamic";
 
-export default async function CapturesPage() {
+export default async function CapturesPage({
+  searchParams
+}: {
+  searchParams: Promise<{ team?: string }>;
+}) {
+  const { team } = await searchParams;
+
   let captures: CaptureSummary[] = [];
   let orgId = "";
   let loadError: string | null = null;
+  let myTeams: MyTeam[] = [];
 
   try {
     // Session recordings live in their own Recordings section, not the grid.
-    const result = await listCaptures({ limit: 50, kind: "observation" });
+    const result = await listCaptures({ limit: 50, kind: "observation", teamId: team });
     captures = result.captures;
   } catch (err) {
     loadError =
@@ -30,6 +45,12 @@ export default async function CapturesPage() {
     orgId = "";
   }
 
+  try {
+    myTeams = (await listMyTeams()).teams;
+  } catch {
+    myTeams = [];
+  }
+
   return (
     <div className="flex flex-col gap-7">
       <header className="flex flex-wrap items-end justify-between gap-6 border-b border-base-content/10 pb-6">
@@ -40,11 +61,14 @@ export default async function CapturesPage() {
             connected devices.
           </p>
         </div>
-        {!loadError && captures.length > 0 ? (
-          <span className="text-sm text-base-content/55">
-            {captures.length} {captures.length === 1 ? "capture" : "captures"}
-          </span>
-        ) : null}
+        <div className="flex items-center gap-4">
+          <TeamFilter teams={myTeams} />
+          {!loadError && captures.length > 0 ? (
+            <span className="text-sm text-base-content/55">
+              {captures.length} {captures.length === 1 ? "capture" : "captures"}
+            </span>
+          ) : null}
+        </div>
       </header>
 
       {loadError ? (

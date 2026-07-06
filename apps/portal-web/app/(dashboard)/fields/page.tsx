@@ -2,11 +2,14 @@ import {
   ApiError,
   listFarms,
   listFields,
+  listMyTeams,
   listZones,
   type FarmSummary,
   type FieldSummary,
+  type MyTeam,
   type ZoneSummary
 } from "../../../lib/api";
+import { TeamFilter } from "../_components/TeamFilter";
 import { FieldsView } from "./FieldsView";
 
 // Fields — the working unit of the land hierarchy (org → farm → field → zone).
@@ -15,20 +18,27 @@ import { FieldsView } from "./FieldsView";
 // centroid pin; drawn boundaries land in a later slice.
 export const dynamic = "force-dynamic";
 
-export default async function FieldsPage() {
+export default async function FieldsPage({
+  searchParams
+}: {
+  searchParams: Promise<{ team?: string }>;
+}) {
+  const { team } = await searchParams;
+
   let fields: FieldSummary[] = [];
   let farms: FarmSummary[] = [];
   let zones: ZoneSummary[] = [];
   let canManage = false;
   let zonesCanManage = false;
   let loadError: string | null = null;
+  let myTeams: MyTeam[] = [];
 
   try {
     // Fields + farms are essential (a failure shows the error state). Zones are a
     // best-effort enrichment — caught so a hiccup (or a not-yet-applied migration)
     // never blocks the core list.
     const [fieldsResult, farmsResult, zonesResult] = await Promise.all([
-      listFields(),
+      listFields({ teamId: team }),
       listFarms(),
       listZones().catch(() => ({ orgId: "", canManage: false, zones: [] as ZoneSummary[] }))
     ]);
@@ -42,6 +52,12 @@ export default async function FieldsPage() {
       err instanceof ApiError ? err.message : "Could not reach the fields service.";
   }
 
+  try {
+    myTeams = (await listMyTeams()).teams;
+  } catch {
+    myTeams = [];
+  }
+
   return (
     <div className="flex flex-col gap-7">
       <header className="flex flex-wrap items-end justify-between gap-6 border-b border-base-content/10 pb-6">
@@ -52,11 +68,14 @@ export default async function FieldsPage() {
             acreage and a map pin; scans and zones hang off a field.
           </p>
         </div>
-        {!loadError && fields.length > 0 ? (
-          <span className="text-sm text-base-content/55">
-            {fields.length} {fields.length === 1 ? "field" : "fields"}
-          </span>
-        ) : null}
+        <div className="flex items-center gap-4">
+          <TeamFilter teams={myTeams} />
+          {!loadError && fields.length > 0 ? (
+            <span className="text-sm text-base-content/55">
+              {fields.length} {fields.length === 1 ? "field" : "fields"}
+            </span>
+          ) : null}
+        </div>
       </header>
 
       {loadError ? (

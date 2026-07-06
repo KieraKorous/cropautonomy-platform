@@ -10,6 +10,7 @@ export interface ActiveSession {
   farmId?: string;
   fieldId?: string;
   cropTypeId?: string;
+  teamId?: string;
   status: "live" | "paused";
 }
 
@@ -88,6 +89,7 @@ export function useActiveSession(): {
     farmId?: string;
     fieldId?: string;
     cropTypeId?: string;
+    teamId?: string;
     initialLocation?: { lat: number; lng: number; accuracyMeters?: number };
   }) => Promise<ActiveSession>;
   pause: () => Promise<void>;
@@ -102,6 +104,7 @@ export function useActiveSession(): {
       farmId: input.farmId ?? null,
       fieldId: input.fieldId ?? null,
       cropTypeId: input.cropTypeId ?? null,
+      teamId: input.teamId ?? null,
       initialLocation: input.initialLocation ?? null
     });
     const next: ActiveSession = {
@@ -111,6 +114,7 @@ export function useActiveSession(): {
       farmId: input.farmId,
       fieldId: input.fieldId,
       cropTypeId: input.cropTypeId,
+      teamId: input.teamId,
       status: "live"
     };
     await persistActiveSession(next);

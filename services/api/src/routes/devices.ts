@@ -5,6 +5,7 @@ import { z } from "zod";
 import { getDb } from "../lib/db.js";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.js";
 import { createLiveSession, ensureOrgScoped, publishBestEffort } from "../lib/live.js";
+import { applyTeamFilter, resolveTeamScope } from "../lib/team-scope.js";
 
 const UUID_RE = /^[0-9a-f-]{36}$/i;
 
@@ -304,7 +305,7 @@ const devicesRoutes: FastifyPluginAsync = async (app) => {
   // GET /v1/devices — the org's device registry for the portal grid. Hides
   // retired devices unless ?includeRetired=true. Returns the full per-device
   // shape so the detail modal needs no follow-up fetch.
-  app.get<{ Querystring: { includeRetired?: string } }>(
+  app.get<{ Querystring: { includeRetired?: string; teamId?: string } }>(
     "/v1/devices",
     { preHandler: app.requireAuth("devices.read") },
     async (request, _reply) => {
@@ -318,6 +319,17 @@ const devicesRoutes: FastifyPluginAsync = async (app) => {
         .eq("org_id", caller.orgId)
         .order("created_at", { ascending: false });
       if (!includeRetired) query = query.neq("status", "retired");
+
+      // Team access boundary (+ optional ?teamId= narrow). No-op for admins.
+      const scope = await resolveTeamScope(supabase, request.permissions!, {
+        userId: caller.userId,
+        orgId: caller.orgId
+      });
+      query = (
+        await applyTeamFilter(query, supabase, caller.orgId, "device", scope, {
+          teamId: request.query.teamId
+        })
+      ).query;
 
       const { data, error } = await query;
       if (error) throw error;

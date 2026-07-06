@@ -195,10 +195,49 @@ Examples:
 - technicians can create scans and view assigned field data
 - viewers can read data but not mutate operational records
 
+## Teams (sub-organization access boundary)
+
+An org can carve its entities into **teams** — a sub-org grouping that acts as a
+real access boundary, not just a label. See migration
+[`0026_teams.sql`](../../packages/db/migrations/0026_teams.sql) and
+[`services/api/src/routes/teams.ts`](../../services/api/src/routes/teams.ts).
+
+Model:
+- **`teams`** — a named group within one org.
+- **`team_memberships`** — user ↔ team, many-to-many. **No per-team role**: the
+  org role governs what you can *do*; the team only governs *which rows* you see.
+- **`team_assignments`** — a single polymorphic table (`resource_type`,
+  `resource_id`) linking teams to the five assignable entity types: `farm`,
+  `field`, `device`, `capture_session` (Live + Recordings), `capture`.
+  Many-to-many and per-entity — assignment does **not** cascade implicitly (an
+  explicit `cascade: 'farm_descendants'` bulk action is offered for convenience).
+
+Permissions (system-role grants seeded in `0026`): `teams.read` (all roles),
+`teams.assign` (manager+), `teams.create` / `teams.update` / `teams.delete` /
+`team_members.manage` (admin + owner).
+
+**Visibility rule** (canonical). A caller may see an entity row R iff **(A)** the
+caller holds `team_members.manage` (admin/owner org-wide bypass), OR **(B)** R has
+zero team assignments (unassigned = org-visible — makes rollout non-breaking,
+since all pre-existing rows have zero assignments), OR **(C)** R shares at least
+one team with the caller. Always AND-scoped by `org_id`.
+
+Enforcement is **primarily in the API query layer**
+([`services/api/src/lib/team-scope.ts`](../../services/api/src/lib/team-scope.ts)),
+with RLS mirroring rules (B)+(C) as the secondary net (the admin bypass lives only
+in app code — the JWT carries no permission claims). Technicians self-file
+captures/sessions under a team they belong to via an optional `teamId` on
+`POST /v1/captures` and `POST /v1/capture-sessions`; the field PWA picks the team
+at session start.
+
 ## Open Design Questions
 
 - Will users be allowed to create organizations freely, or will early accounts be invite-only?
-- Will organizations support sub-teams or locations?
+- ~~Will organizations support sub-teams or locations?~~ **Resolved** — teams are a
+  sub-org access boundary (see *Teams* above). Locations/hierarchy below the team
+  remain open.
+- Will teams ever need a per-team role (e.g. a "team lead" who manages that team's
+  roster without org-admin)? Deferred — `team_memberships` carries no role today.
 - Will research partners need special cross-organization access?
 - Will external collaborators need time-limited access to scans or reports?
 

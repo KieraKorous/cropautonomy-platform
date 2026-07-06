@@ -13,6 +13,11 @@ import { CAPTURES_BUCKET, capturePath } from "../lib/storage.js";
 import { publishBestEffort } from "../lib/live.js";
 import { channels } from "@gaia/realtime/channels";
 import { QUEUE_NAMES } from "@gaia/workers/queues";
+import {
+  applyTeamFilter,
+  canSeeResource,
+  resolveTeamScope
+} from "../lib/team-scope.js";
 
 // Operator observation taxonomy — kept in sync with the captures.observation_type
 // and captures.severity check constraints in
@@ -35,6 +40,9 @@ const reserveSchema = z.object({
   zoneId: z.string().uuid().nullable().optional(),
   cropTypeId: z.string().uuid().nullable().optional(),
   sessionId: z.string().uuid().nullable().optional(),
+  // Optional team to file this capture under. The caller must be a member of it
+  // (self-assignment only — gated in the handler, not by teams.assign).
+  teamId: z.string().uuid().nullable().optional(),
   // The device that produced this capture (e.g. the paired phone running the
   // field app). Recorded as captures.source_device_id so capture activity —
   // including capture-only sessions, which carry no started_by_device_id — is
@@ -178,7 +186,10 @@ const listQuerySchema = z.object({
   discarded: z.coerce.boolean().default(false),
   // Optional kind filter — the portal Recordings section passes
   // kind=session_recording; the captures grid defaults to observations.
-  kind: z.enum(["observation", "session_recording"]).optional()
+  kind: z.enum(["observation", "session_recording"]).optional(),
+  // Optional team narrow (portal TeamFilter). Restricts to captures assigned to
+  // this team, within the caller's already team-scoped visibility.
+  teamId: z.string().uuid().optional()
 });
 
 // Statuses whose storage object exists and can be signed for viewing.
@@ -360,7 +371,7 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
           issues: parsed.error.issues
         });
       }
-      const { limit, offset, discarded, kind } = parsed.data;
+      const { limit, offset, discarded, kind, teamId } = parsed.data;
       const supabase = getDb();
 
       let query = supabase
@@ -371,6 +382,17 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
         ? query.not("discarded_at", "is", null)
         : query.is("discarded_at", null);
       if (kind) query = query.eq("kind", kind);
+
+      // Team access boundary (+ optional ?teamId= narrow). No-op for admins.
+      const scope = await resolveTeamScope(supabase, request.permissions!, {
+        userId: caller.userId,
+        orgId: caller.orgId
+      });
+      query = (
+        await applyTeamFilter(query, supabase, caller.orgId, "capture", scope, {
+          teamId
+        })
+      ).query;
 
       const { data, error } = await query
         .order("captured_at", { ascending: false })
@@ -441,6 +463,16 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
       }
       const capture = row as CaptureListRow & { org_id: string };
 
+      // Team access boundary: a capture on a team the caller isn't on is 404,
+      // same as cross-tenant. No-op for admins.
+      const scope = await resolveTeamScope(supabase, request.permissions!, {
+        userId: caller.userId,
+        orgId: caller.orgId
+      });
+      if (!(await canSeeResource(supabase, caller.orgId, "capture", id, scope))) {
+        throw notFound("captures.not_found", "Capture not found.");
+      }
+
       // Same-species siblings (excluding self). Only fetch when this capture has
       // an identified species; otherwise there's nothing to relate it to.
       const relatedLimit = Math.min(
@@ -449,13 +481,18 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
       );
       let relatedRows: CaptureListRow[] = [];
       if (capture.inferred_species) {
-        const { data: rel, error: relErr } = await supabase
+        let relQuery = supabase
           .from("captures")
           .select(CAPTURE_SELECT)
           .eq("org_id", caller.orgId)
           .eq("inferred_species", capture.inferred_species)
           .neq("id", id)
-          .is("discarded_at", null)
+          .is("discarded_at", null);
+        // Related siblings honor the same team boundary as the list.
+        relQuery = (
+          await applyTeamFilter(relQuery, supabase, caller.orgId, "capture", scope)
+        ).query;
+        const { data: rel, error: relErr } = await relQuery
           .order("captured_at", { ascending: false })
           .limit(relatedLimit);
         if (relErr) throw relErr;
@@ -699,6 +736,24 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
 
       await validateOrgScoped(caller.orgId, body);
 
+      // A capture may only be self-filed under a team the operator belongs to.
+      if (body.teamId) {
+        const { data: mem, error: memErr } = await supabase
+          .from("team_memberships")
+          .select("team_id")
+          .eq("org_id", caller.orgId)
+          .eq("team_id", body.teamId)
+          .eq("user_id", caller.userId)
+          .maybeSingle();
+        if (memErr) throw memErr;
+        if (!mem) {
+          throw forbidden(
+            "captures.not_team_member",
+            "You can only file a capture under a team you belong to."
+          );
+        }
+      }
+
       const extension =
         mimeToExt[body.mimeType.toLowerCase()] ??
         body.mimeType.split("/")[1]?.toLowerCase() ??
@@ -746,6 +801,34 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
         .update({ storage_path: path })
         .eq("id", captureId);
       if (pathErr) throw pathErr;
+
+      // File under the chosen team (membership already verified above).
+      if (body.teamId) {
+        const { error: assignErr } = await supabase
+          .from("team_assignments")
+          .upsert(
+            {
+              team_id: body.teamId,
+              org_id: caller.orgId,
+              resource_type: "capture",
+              resource_id: captureId,
+              assigned_by_user_id: caller.userId
+            },
+            { onConflict: "team_id,resource_type,resource_id", ignoreDuplicates: true }
+          );
+        if (assignErr) throw assignErr;
+        await publishBestEffort(request.log, channels.orgTeams(caller.orgId), {
+          type: "team.assignment.changed",
+          version: 1,
+          payload: {
+            orgId: caller.orgId,
+            teamId: body.teamId,
+            resourceType: "capture",
+            resourceId: captureId,
+            changeType: "assigned"
+          }
+        });
+      }
 
       const { data: signed, error: signErr } = await supabase.storage
         .from(CAPTURES_BUCKET)

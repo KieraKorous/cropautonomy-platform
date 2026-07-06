@@ -4,9 +4,12 @@ import {
   ApiError,
   listLiveRequests,
   listLiveSessions,
+  listMyTeams,
   type LiveRequestSummary,
-  type LiveSessionSummary
+  type LiveSessionSummary,
+  type MyTeam
 } from "../../../lib/api";
+import { TeamFilter } from "../_components/TeamFilter";
 import { LiveWall } from "./LiveWall";
 import { PendingRequests } from "./PendingRequests";
 
@@ -15,15 +18,22 @@ import { PendingRequests } from "./PendingRequests";
 // channel. See docs/architecture/realtime-strategy.md (WebRTC live preview).
 export const dynamic = "force-dynamic";
 
-export default async function LivePage() {
+export default async function LivePage({
+  searchParams
+}: {
+  searchParams: Promise<{ team?: string }>;
+}) {
+  const { team } = await searchParams;
+
   let sessions: LiveSessionSummary[] = [];
   let pendingRequests: LiveRequestSummary[] = [];
   let orgId = "";
   let loadError: string | null = null;
+  let myTeams: MyTeam[] = [];
 
   try {
     const [sessionsResult, requestsResult] = await Promise.all([
-      listLiveSessions(),
+      listLiveSessions({ teamId: team }),
       listLiveRequests("pending").catch(() => null)
     ]);
     sessions = sessionsResult.sessions;
@@ -34,6 +44,12 @@ export default async function LivePage() {
       err instanceof ApiError
         ? err.message
         : "Could not reach the live service.";
+  }
+
+  try {
+    myTeams = (await listMyTeams()).teams;
+  } catch {
+    myTeams = [];
   }
 
   const { userId } = await auth();
@@ -48,6 +64,7 @@ export default async function LivePage() {
             strip below.
           </p>
         </div>
+        <TeamFilter teams={myTeams} />
       </header>
 
       {loadError ? (

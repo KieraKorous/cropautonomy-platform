@@ -222,6 +222,9 @@ export function listCaptures(
     offset?: number;
     discarded?: boolean;
     kind?: CaptureKind;
+    // Narrow to captures assigned to one team (the Team filter). Access is
+    // already team-scoped server-side; this only further filters the view.
+    teamId?: string;
   } = {}
 ): Promise<ListCapturesResponse> {
   const search = new URLSearchParams();
@@ -229,13 +232,14 @@ export function listCaptures(
   if (params.offset != null) search.set("offset", String(params.offset));
   if (params.discarded != null) search.set("discarded", String(params.discarded));
   if (params.kind != null) search.set("kind", params.kind);
+  if (params.teamId != null) search.set("teamId", params.teamId);
   const query = search.toString();
   return apiFetch<ListCapturesResponse>(`/v1/captures${query ? `?${query}` : ""}`);
 }
 
 // Session recordings (kind='session_recording') for the Recordings section.
 export function listRecordings(
-  params: { limit?: number; offset?: number } = {}
+  params: { limit?: number; offset?: number; teamId?: string } = {}
 ): Promise<ListCapturesResponse> {
   return listCaptures({ ...params, kind: "session_recording" });
 }
@@ -391,8 +395,11 @@ export interface ListLiveSessionsResponse {
   sessions: LiveSessionSummary[];
 }
 
-export function listLiveSessions(): Promise<ListLiveSessionsResponse> {
-  return apiFetch<ListLiveSessionsResponse>("/v1/capture-sessions/live");
+export function listLiveSessions(
+  params: { teamId?: string } = {}
+): Promise<ListLiveSessionsResponse> {
+  const query = params.teamId ? `?teamId=${params.teamId}` : "";
+  return apiFetch<ListLiveSessionsResponse>(`/v1/capture-sessions/live${query}`);
 }
 
 // Authoritative disconnect/reconnect — signals the publishing phone to stop or
@@ -497,10 +504,13 @@ interface ListDevicesResponse {
 // The org's device registry for the Devices grid. Retired devices are hidden
 // unless includeRetired is set.
 export function listDevices(
-  params: { includeRetired?: boolean } = {}
+  params: { includeRetired?: boolean; teamId?: string } = {}
 ): Promise<ListDevicesResponse> {
-  const query = params.includeRetired ? "?includeRetired=true" : "";
-  return apiFetch<ListDevicesResponse>(`/v1/devices${query}`);
+  const search = new URLSearchParams();
+  if (params.includeRetired) search.set("includeRetired", "true");
+  if (params.teamId != null) search.set("teamId", params.teamId);
+  const query = search.toString();
+  return apiFetch<ListDevicesResponse>(`/v1/devices${query ? `?${query}` : ""}`);
 }
 
 // Rename (name + nickname) and/or change status (retire → 'retired',
@@ -638,8 +648,11 @@ export interface FieldWrite {
 
 // The operator's org-scoped fields for the Overview map + acreage stats + the
 // /fields management page.
-export function listFields(): Promise<ListFieldsResponse> {
-  return apiFetch<ListFieldsResponse>("/v1/fields");
+export function listFields(
+  params: { teamId?: string } = {}
+): Promise<ListFieldsResponse> {
+  const query = params.teamId ? `?teamId=${params.teamId}` : "";
+  return apiFetch<ListFieldsResponse>(`/v1/fields${query}`);
 }
 
 // Create a field under a farm. Requires fields.create (manager+).
@@ -774,8 +787,11 @@ export interface FarmWrite {
 }
 
 // The org's farms for the /farms grid.
-export function listFarms(): Promise<ListFarmsResponse> {
-  return apiFetch<ListFarmsResponse>("/v1/farms");
+export function listFarms(
+  params: { teamId?: string } = {}
+): Promise<ListFarmsResponse> {
+  const query = params.teamId ? `?teamId=${params.teamId}` : "";
+  return apiFetch<ListFarmsResponse>(`/v1/farms${query}`);
 }
 
 // Create a farm. Requires farms.create (manager+).
@@ -801,4 +817,168 @@ export function updateFarm(id: string, patch: FarmWrite): Promise<FarmSummary> {
 // (owner only, per the current role grants).
 export function deleteFarm(id: string): Promise<{ farmId: string; deleted: boolean }> {
   return apiFetch(`/v1/farms/${id}`, { method: "DELETE" });
+}
+
+// --- Teams ----------------------------------------------------------------
+// A sub-org access boundary. Members see/act only on their teams' entities;
+// admins/owners see everything. Mirrors services/api/src/routes/teams.ts.
+
+// The five assignable entity types (Recordings + Live are both capture_sessions).
+export type TeamResourceType =
+  | "farm"
+  | "field"
+  | "device"
+  | "capture_session"
+  | "capture";
+
+export type TeamAssignmentCounts = Record<TeamResourceType, number>;
+
+export interface TeamSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  color: string | null;
+  memberCount: number;
+  assignmentCounts: TeamAssignmentCounts;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TeamMember {
+  userId: string;
+  displayName: string | null;
+  email: string | null;
+  avatarUrl: string | null;
+  addedAt: string;
+}
+
+// A team's assignments, grouped by resource type (arrays of resource ids).
+export type TeamAssignments = Record<TeamResourceType, string[]>;
+
+export interface TeamDetail {
+  team: TeamSummary;
+  members: TeamMember[];
+  assignments: TeamAssignments;
+}
+
+interface ListTeamsResponse {
+  orgId: string;
+  // Whether the caller may create/edit/delete teams + manage rosters (teams.create).
+  canManage: boolean;
+  teams: TeamSummary[];
+}
+
+export interface TeamWrite {
+  name?: string;
+  description?: string | null;
+  color?: string | null;
+}
+
+// An org member for the "add member" picker (services/api GET /v1/members).
+export interface OrgMember {
+  userId: string;
+  displayName: string | null;
+  email: string | null;
+  avatarUrl: string | null;
+  roleKey: string | null;
+  roleName: string | null;
+}
+
+interface ListMembersResponse {
+  orgId: string;
+  members: OrgMember[];
+}
+
+// The caller's own teams (services/api GET /v1/me/teams) — drives the Team
+// filter control and the field app's capture team picker.
+export interface MyTeam {
+  id: string;
+  name: string;
+  color: string | null;
+}
+
+export function listTeams(): Promise<ListTeamsResponse> {
+  return apiFetch<ListTeamsResponse>("/v1/teams");
+}
+
+export function getTeam(id: string): Promise<TeamDetail> {
+  return apiFetch<TeamDetail>(`/v1/teams/${id}`);
+}
+
+export function createTeam(body: TeamWrite & { name: string }): Promise<TeamSummary> {
+  return apiFetch<TeamSummary>("/v1/teams", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body)
+  });
+}
+
+export function updateTeam(id: string, patch: TeamWrite): Promise<TeamSummary> {
+  return apiFetch<TeamSummary>(`/v1/teams/${id}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(patch)
+  });
+}
+
+export function deleteTeam(id: string): Promise<{ teamId: string; deleted: boolean }> {
+  return apiFetch(`/v1/teams/${id}`, { method: "DELETE" });
+}
+
+export function addTeamMember(
+  teamId: string,
+  userId: string
+): Promise<{ teamId: string; userId: string; added: boolean }> {
+  return apiFetch(`/v1/teams/${teamId}/members`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ userId })
+  });
+}
+
+export function removeTeamMember(
+  teamId: string,
+  userId: string
+): Promise<{ teamId: string; userId: string; removed: boolean }> {
+  return apiFetch(`/v1/teams/${teamId}/members/${userId}`, { method: "DELETE" });
+}
+
+export interface AssignmentItem {
+  resourceType: TeamResourceType;
+  resourceId: string;
+}
+
+// Assign entities to a team. With cascade:'farm_descendants', each farm in the
+// list also pulls in its fields, sessions, and captures. Requires teams.assign.
+export function assignEntities(
+  teamId: string,
+  assignments: AssignmentItem[],
+  cascade?: "farm_descendants"
+): Promise<{ teamId: string; assigned: number }> {
+  return apiFetch(`/v1/teams/${teamId}/assignments`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(cascade ? { assignments, cascade } : { assignments })
+  });
+}
+
+export function unassignEntities(
+  teamId: string,
+  assignments: AssignmentItem[]
+): Promise<{ teamId: string; unassigned: number }> {
+  return apiFetch(`/v1/teams/${teamId}/assignments`, {
+    method: "DELETE",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ assignments })
+  });
+}
+
+// Active members of the caller's org (for the add-member picker).
+export function listMembers(): Promise<ListMembersResponse> {
+  return apiFetch<ListMembersResponse>("/v1/members");
+}
+
+// The caller's own team memberships.
+export function listMyTeams(): Promise<{ teams: MyTeam[] }> {
+  return apiFetch<{ teams: MyTeam[] }>("/v1/me/teams");
 }

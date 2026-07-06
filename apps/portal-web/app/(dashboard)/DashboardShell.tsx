@@ -127,7 +127,12 @@ export function DashboardShell({
       title: "Operations",
       items: [
         { label: "Today's scout list", href: "/scout-list", icon: <ChecklistIcon /> },
-        { label: "Team", href: "/team", icon: <UsersIcon size={16} /> },
+        {
+          label: "Team",
+          href: "/team",
+          icon: <UsersIcon size={16} />,
+          ...(counts.teams > 0 ? { meta: String(counts.teams) } : {})
+        },
         { label: "Settings", href: "/settings", icon: <CogIcon /> }
       ]
     }

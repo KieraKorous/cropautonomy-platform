@@ -4,11 +4,15 @@ import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.js";
 import { createLiveSession, ensureOrgScoped, publishBestEffort } from "../lib/live.js";
+import { applyTeamFilter, resolveTeamScope } from "../lib/team-scope.js";
 
 const startSchema = z.object({
   farmId: z.string().uuid().nullable().optional(),
   fieldId: z.string().uuid().nullable().optional(),
   cropTypeId: z.string().uuid().nullable().optional(),
+  // Optional team to file this session under. Self-assignment only — the
+  // operator must belong to the team (gated in the handler).
+  teamId: z.string().uuid().nullable().optional(),
   initialLocation: z
     .object({
       lat: z.number(),
@@ -71,14 +75,14 @@ const captureSessionsRoutes: FastifyPluginAsync = async (app) => {
   // request/accept gate — i.e. a device-backed session (started_by_device_id is
   // set by the accept handler). Capture-only / legacy sessions (no device) are
   // deliberately excluded: they capture but never appear as a live camera.
-  app.get(
+  app.get<{ Querystring: { teamId?: string } }>(
     "/v1/capture-sessions/live",
     { preHandler: app.requireAuth("capture_sessions.read") },
     async (request, _reply) => {
       const caller = request.auth!;
       const supabase = getDb();
 
-      const { data, error } = await supabase
+      let query = supabase
         .from("capture_sessions")
         .select(
           "id, status, started_at, live_disconnected_at, operator:users!started_by_user_id(clerk_user_id, display_name, email), device:devices!started_by_device_id(display_name), field:fields(name), farm:farms(name)"
@@ -91,8 +95,20 @@ const captureSessionsRoutes: FastifyPluginAsync = async (app) => {
         .is("live_disconnected_at", null)
         // Drop sessions whose phone stopped heartbeating — a camera that went
         // away leaves no live tile behind.
-        .gt("last_heartbeat_at", new Date(Date.now() - LIVE_STALE_MS).toISOString())
-        .order("started_at", { ascending: false });
+        .gt("last_heartbeat_at", new Date(Date.now() - LIVE_STALE_MS).toISOString());
+
+      // Team access boundary (+ optional ?teamId= narrow). No-op for admins.
+      const scope = await resolveTeamScope(supabase, request.permissions!, {
+        userId: caller.userId,
+        orgId: caller.orgId
+      });
+      query = (
+        await applyTeamFilter(query, supabase, caller.orgId, "capture_session", scope, {
+          teamId: request.query.teamId
+        })
+      ).query;
+
+      const { data, error } = await query.order("started_at", { ascending: false });
       if (error) throw error;
 
       const rows = (data ?? []) as unknown as LiveSessionRow[];
@@ -134,6 +150,25 @@ const captureSessionsRoutes: FastifyPluginAsync = async (app) => {
       if (body.cropTypeId)
         await ensureOrgScoped("crop_types", body.cropTypeId, caller.orgId);
 
+      // A session may only be self-filed under a team the operator belongs to.
+      if (body.teamId) {
+        const supabase = getDb();
+        const { data: mem, error: memErr } = await supabase
+          .from("team_memberships")
+          .select("team_id")
+          .eq("org_id", caller.orgId)
+          .eq("team_id", body.teamId)
+          .eq("user_id", caller.userId)
+          .maybeSingle();
+        if (memErr) throw memErr;
+        if (!mem) {
+          throw forbidden(
+            "capture_sessions.not_team_member",
+            "You can only file a session under a team you belong to."
+          );
+        }
+      }
+
       const { sessionId, startedAt } = await createLiveSession(request.log, {
         orgId: caller.orgId,
         operatorUserId: caller.userId,
@@ -144,6 +179,35 @@ const captureSessionsRoutes: FastifyPluginAsync = async (app) => {
         initialLocation: body.initialLocation,
         plannedDurationMinutes: body.plannedDurationMinutes
       });
+
+      // File the new session under the chosen team (membership verified above).
+      if (body.teamId) {
+        const supabase = getDb();
+        const { error: assignErr } = await supabase
+          .from("team_assignments")
+          .upsert(
+            {
+              team_id: body.teamId,
+              org_id: caller.orgId,
+              resource_type: "capture_session",
+              resource_id: sessionId,
+              assigned_by_user_id: caller.userId
+            },
+            { onConflict: "team_id,resource_type,resource_id", ignoreDuplicates: true }
+          );
+        if (assignErr) throw assignErr;
+        await publishBestEffort(request.log, channels.orgTeams(caller.orgId), {
+          type: "team.assignment.changed",
+          version: 1,
+          payload: {
+            orgId: caller.orgId,
+            teamId: body.teamId,
+            resourceType: "capture_session",
+            resourceId: sessionId,
+            changeType: "assigned"
+          }
+        });
+      }
 
       reply.status(201);
       return {

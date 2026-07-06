@@ -74,6 +74,7 @@ async function processOne(record: QueuedCaptureRecord) {
       fieldId: record.fieldId ?? null,
       cropTypeId: record.cropTypeId ?? null,
       sessionId: record.sessionId ?? null,
+      teamId: record.teamId ?? null,
       deviceId: pairedDevice?.deviceId ?? null,
       source: record.source,
       mediaType: record.mediaType,

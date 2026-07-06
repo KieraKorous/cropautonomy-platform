@@ -2,7 +2,7 @@ import { Link, Navigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 
 import { ChromeLayout } from "../components/ChromeLayout.js";
-import { api } from "../lib/api.js";
+import { api, type TeamRecord } from "../lib/api.js";
 import { blobToThumbnailDataUrl, nowIso } from "../lib/capture-camera.js";
 import { enqueueCapture, getPairedDevice, type PairedDevice } from "../lib/db.js";
 import { useLiveRequest } from "../lib/liveRequest.js";
@@ -21,6 +21,10 @@ export function SessionPickerPage() {
   const [uploadCount, setUploadCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [device, setDevice] = useState<PairedDevice | null>(null);
+  // The operator's own teams + their current pick. 0 teams: no picker. 1 team:
+  // read-only chip, that team is sent. 2+: a select (with a "No team" choice).
+  const [teams, setTeams] = useState<TeamRecord[]>([]);
+  const [teamId, setTeamId] = useState<string | undefined>(undefined);
   // Whether this device is configured to go live without watcher approval. Read
   // fresh on open so a portal toggle takes effect without re-pairing.
   const [autoLive, setAutoLive] = useState(false);
@@ -33,6 +37,26 @@ export function SessionPickerPage() {
 
   useEffect(() => {
     void getPairedDevice().then(setDevice);
+  }, []);
+
+  // Load the operator's teams. Default to their only team when they have exactly
+  // one; otherwise leave unassigned and let them pick (server also auto-defaults
+  // the single-team case, so this is belt-and-suspenders).
+  useEffect(() => {
+    let alive = true;
+    void api
+      .getMyTeams()
+      .then(({ teams: mine }) => {
+        if (!alive) return;
+        setTeams(mine);
+        if (mine.length === 1) setTeamId(mine[0].id);
+      })
+      .catch(() => {
+        /* no picker if teams can't be read — server still auto-defaults */
+      });
+    return () => {
+      alive = false;
+    };
   }, []);
 
   // Learn this device's auto-live config once it's known.
@@ -83,7 +107,7 @@ export function SessionPickerPage() {
     setError(null);
     try {
       const initialLocation = await tryGetLocation();
-      await start({ initialLocation });
+      await start({ initialLocation, teamId });
       // No need to navigate — the next render returns <Navigate to="/capture" />.
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not start session.");
@@ -117,6 +141,7 @@ export function SessionPickerPage() {
             : undefined;
         await enqueueCapture({
           id: crypto.randomUUID(),
+          teamId,
           source: "field_capture_pwa",
           mediaType: isVideo ? "video" : "photo",
           mimeType: file.type || (isVideo ? "video/mp4" : "image/jpeg"),
@@ -151,6 +176,42 @@ export function SessionPickerPage() {
             field later.
           </p>
         </div>
+
+        {teams.length === 1 && (
+          <div className="flex items-center gap-2 text-sm text-base-content/65">
+            <span className="font-medium text-base-content/50">Team</span>
+            <span
+              className="inline-flex items-center gap-1.5 rounded-full border border-base-content/15 bg-base-100 px-3 py-1 font-medium text-neutral"
+            >
+              {teams[0].color && (
+                <span
+                  className="h-2 w-2 rounded-full"
+                  style={{ backgroundColor: teams[0].color }}
+                  aria-hidden
+                />
+              )}
+              {teams[0].name}
+            </span>
+          </div>
+        )}
+
+        {teams.length > 1 && (
+          <label className="flex flex-col gap-1.5 text-sm text-base-content/65">
+            <span className="font-medium text-base-content/50">Team</span>
+            <select
+              value={teamId ?? ""}
+              onChange={(e) => setTeamId(e.currentTarget.value || undefined)}
+              className="rounded-md border border-base-content/15 bg-base-100 px-3 py-2 text-base font-medium text-neutral shadow-sm"
+            >
+              <option value="">No team</option>
+              {teams.map((team) => (
+                <option key={team.id} value={team.id}>
+                  {team.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
 
         {error && (
           <div className="rounded-md border border-error/30 bg-error/10 px-4 py-3 text-sm text-error">

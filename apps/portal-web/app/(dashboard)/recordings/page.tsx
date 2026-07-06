@@ -1,7 +1,14 @@
 import { StatusPill, type Tone } from "@gaia/ui";
 
-import { ApiError, listRecordings, type CaptureSummary } from "../../../lib/api";
+import {
+  ApiError,
+  listMyTeams,
+  listRecordings,
+  type CaptureSummary,
+  type MyTeam
+} from "../../../lib/api";
 import { DownloadButton } from "../_components/DownloadButton";
+import { TeamFilter } from "../_components/TeamFilter";
 import { dateFormat } from "../captures/captureDisplay";
 import { RecordingDiscardButton } from "./RecordingDiscardButton";
 
@@ -37,18 +44,31 @@ function formatSize(bytes: number | null): string | null {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export default async function RecordingsPage() {
+export default async function RecordingsPage({
+  searchParams
+}: {
+  searchParams: Promise<{ team?: string }>;
+}) {
+  const { team } = await searchParams;
+
   let recordings: CaptureSummary[] = [];
   let loadError: string | null = null;
+  let myTeams: MyTeam[] = [];
 
   try {
-    const result = await listRecordings({ limit: 50 });
+    const result = await listRecordings({ limit: 50, teamId: team });
     recordings = result.captures;
   } catch (err) {
     loadError =
       err instanceof ApiError
         ? err.message
         : "Could not reach the captures service.";
+  }
+
+  try {
+    myTeams = (await listMyTeams()).teams;
+  } catch {
+    myTeams = [];
   }
 
   return (
@@ -61,11 +81,14 @@ export default async function RecordingsPage() {
             recorded from the live wall.
           </p>
         </div>
-        {!loadError && recordings.length > 0 ? (
-          <span className="text-sm text-base-content/55">
-            {recordings.length} {recordings.length === 1 ? "recording" : "recordings"}
-          </span>
-        ) : null}
+        <div className="flex items-center gap-4">
+          <TeamFilter teams={myTeams} />
+          {!loadError && recordings.length > 0 ? (
+            <span className="text-sm text-base-content/55">
+              {recordings.length} {recordings.length === 1 ? "recording" : "recordings"}
+            </span>
+          ) : null}
+        </div>
       </header>
 
       {loadError ? (

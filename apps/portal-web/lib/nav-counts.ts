@@ -3,9 +3,11 @@ import {
   listFarms,
   listFields,
   listLiveSessions,
+  listTeams,
   type Device,
   type FarmSummary,
-  type LiveSessionSummary
+  type LiveSessionSummary,
+  type TeamSummary
 } from "./api";
 
 // Real, org-scoped counts for the sidebar nav badges + fleet pulse card. Every
@@ -18,6 +20,7 @@ export interface NavCounts {
   devicesActive: number;
   devicesTotal: number;
   devicesMaintenance: number;
+  teams: number;
 }
 
 export const EMPTY_NAV_COUNTS: NavCounts = {
@@ -26,20 +29,23 @@ export const EMPTY_NAV_COUNTS: NavCounts = {
   fields: 0,
   devicesActive: 0,
   devicesTotal: 0,
-  devicesMaintenance: 0
+  devicesMaintenance: 0,
+  teams: 0
 };
 
 export async function loadNavCounts(): Promise<NavCounts> {
-  const [live, farmsResult, fieldsResult, devicesResult] = await Promise.all([
+  const [live, farmsResult, fieldsResult, devicesResult, teamsResult] = await Promise.all([
     listLiveSessions().catch(() => ({ sessions: [] as LiveSessionSummary[], orgId: "" })),
     listFarms().catch(() => ({ farms: [] as FarmSummary[] })),
     listFields().catch(() => ({ fields: [] })),
-    listDevices().catch(() => ({ devices: [] as Device[] }))
+    listDevices().catch(() => ({ devices: [] as Device[] })),
+    listTeams().catch(() => ({ teams: [] as TeamSummary[] }))
   ]);
 
   const devices = devicesResult.devices;
   return {
     liveSessions: live.sessions.length,
+    teams: teamsResult.teams.length,
     // Count farms directly now that they're a managed entity — a farm with no
     // fields yet would be invisible if we still derived this from field.farmId.
     farms: farmsResult.farms.length,

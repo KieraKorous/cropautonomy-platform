@@ -38,7 +38,10 @@ export const channels = {
   // captures page) refresh live without subscribing per-scan.
   orgCaptures: (orgId: string) => `org.${orgId}.captures`,
   // Pending go-live requests — the Live screen's request panel watches this.
-  liveRequests: (orgId: string) => `org.${orgId}.live.requests`
+  liveRequests: (orgId: string) => `org.${orgId}.live.requests`,
+  // Org-wide team feed — every entity (un)assignment, so open list/Live views
+  // re-fetch when a row's team set changes and its visibility may have shifted.
+  orgTeams: (orgId: string) => `org.${orgId}.teams`
 } as const;
 
 export type ChannelName = string;

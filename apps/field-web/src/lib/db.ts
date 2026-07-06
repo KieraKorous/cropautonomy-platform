@@ -20,6 +20,9 @@ export interface QueuedCaptureRecord {
   farmId?: string;
   fieldId?: string;
   cropTypeId?: string;
+  // Team this capture is filed under. Optional — the server auto-defaults to
+  // the tech's only team when absent.
+  teamId?: string;
   source: "field_capture_pwa";
   mediaType: "photo" | "burst_frame" | "video";
   // 'observation' (default) vs a saved live-feed recording.
@@ -61,18 +64,27 @@ interface FieldDB extends DBSchema {
 }
 
 const DB_NAME = "gaia-field";
-const DB_VERSION = 1;
+// v2: additive `teamId` on QueuedCaptureRecord. No store/index change and no
+// migration of existing rows (the field is optional), just a version bump so
+// the app opens cleanly. Existing v1 databases upgrade in place.
+const DB_VERSION = 2;
 
 let dbPromise: Promise<IDBPDatabase<FieldDB>> | null = null;
 
 function getDb(): Promise<IDBPDatabase<FieldDB>> {
   if (!dbPromise) {
     dbPromise = openDB<FieldDB>(DB_NAME, DB_VERSION, {
+      // Runs for both a fresh install (oldVersion 0) and a v1→v2 upgrade. Guard
+      // store creation so re-running against an existing db doesn't throw.
       upgrade(db) {
-        const captures = db.createObjectStore("captures", { keyPath: "id" });
-        captures.createIndex("by-status", "status");
-        captures.createIndex("by-created", "createdAt");
-        db.createObjectStore("sessionState", { keyPath: "id" });
+        if (!db.objectStoreNames.contains("captures")) {
+          const captures = db.createObjectStore("captures", { keyPath: "id" });
+          captures.createIndex("by-status", "status");
+          captures.createIndex("by-created", "createdAt");
+        }
+        if (!db.objectStoreNames.contains("sessionState")) {
+          db.createObjectStore("sessionState", { keyPath: "id" });
+        }
       }
     });
   }

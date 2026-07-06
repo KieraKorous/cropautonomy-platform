@@ -7,6 +7,9 @@ export interface ReserveCaptureRequest {
   zoneId?: string | null;
   cropTypeId?: string | null;
   sessionId?: string | null;
+  // Team this capture is filed under. Optional: when omitted and the tech has
+  // exactly one team, the server auto-assigns it.
+  teamId?: string | null;
   // The paired device this capture came from, so the portal can attribute
   // activity (incl. capture-only sessions) to the device.
   deviceId?: string | null;
@@ -45,8 +48,21 @@ export interface SessionStartRequest {
   farmId?: string | null;
   fieldId?: string | null;
   cropTypeId?: string | null;
+  // Team this session (and its captures) is filed under. Optional: the server
+  // auto-assigns the tech's only team when omitted.
+  teamId?: string | null;
   initialLocation?: { lat: number; lng: number; accuracyMeters?: number } | null;
   plannedDurationMinutes?: number;
+}
+
+export interface TeamRecord {
+  id: string;
+  name: string;
+  color: string | null;
+}
+
+export interface MyTeamsResponse {
+  teams: TeamRecord[];
 }
 
 export interface SessionStartResponse {
@@ -168,6 +184,8 @@ export const api = {
       body: JSON.stringify(action)
     }),
   listFields: () => call<ListFieldsResponse>("/v1/fields", { method: "GET" }),
+  // The caller's own teams — drives the Field Capture team selector.
+  getMyTeams: () => call<MyTeamsResponse>("/v1/me/teams", { method: "GET" }),
   // Claim a pairing code minted by the portal — enrols this phone as a `phone`
   // device. Idempotent on (org, serial), so re-pairing the same phone is safe.
   claimPairing: (body: ClaimPairingRequest) =>

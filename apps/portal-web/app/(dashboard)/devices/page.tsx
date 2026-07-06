@@ -1,4 +1,11 @@
-import { ApiError, listDevices, type Device } from "../../../lib/api";
+import {
+  ApiError,
+  listDevices,
+  listMyTeams,
+  type Device,
+  type MyTeam
+} from "../../../lib/api";
+import { TeamFilter } from "../_components/TeamFilter";
 import { DevicesGrid } from "./DevicesGrid";
 
 // Devices — the GAIA fleet registry. Lists the org's registered devices (paired
@@ -6,18 +13,31 @@ import { DevicesGrid } from "./DevicesGrid";
 // deregister them. Adding a device keeps it on this page.
 export const dynamic = "force-dynamic";
 
-export default async function DevicesPage() {
+export default async function DevicesPage({
+  searchParams
+}: {
+  searchParams: Promise<{ team?: string }>;
+}) {
+  const { team } = await searchParams;
+
   let devices: Device[] = [];
   let canManage = false;
   let loadError: string | null = null;
+  let myTeams: MyTeam[] = [];
 
   try {
-    const result = await listDevices();
+    const result = await listDevices({ teamId: team });
     devices = result.devices;
     canManage = result.canManage;
   } catch (err) {
     loadError =
       err instanceof ApiError ? err.message : "Could not reach the devices service.";
+  }
+
+  try {
+    myTeams = (await listMyTeams()).teams;
+  } catch {
+    myTeams = [];
   }
 
   return (
@@ -30,11 +50,14 @@ export default async function DevicesPage() {
             fields.
           </p>
         </div>
-        {!loadError && devices.length > 0 ? (
-          <span className="text-sm text-base-content/55">
-            {devices.length} {devices.length === 1 ? "device" : "devices"}
-          </span>
-        ) : null}
+        <div className="flex items-center gap-4">
+          <TeamFilter teams={myTeams} />
+          {!loadError && devices.length > 0 ? (
+            <span className="text-sm text-base-content/55">
+              {devices.length} {devices.length === 1 ? "device" : "devices"}
+            </span>
+          ) : null}
+        </div>
       </header>
 
       {loadError ? (

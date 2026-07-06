@@ -2,9 +2,12 @@ import {
   ApiError,
   listFarms,
   listFields,
+  listMyTeams,
   type FarmSummary,
-  type FieldSummary
+  type FieldSummary,
+  type MyTeam
 } from "../../../lib/api";
+import { TeamFilter } from "../_components/TeamFilter";
 import { FarmsView } from "./FarmsView";
 
 // Farms — the top of the land hierarchy (org → farm → field → zone). Lists the
@@ -12,21 +15,37 @@ import { FarmsView } from "./FarmsView";
 // map preview of the farm's fields.
 export const dynamic = "force-dynamic";
 
-export default async function FarmsPage() {
+export default async function FarmsPage({
+  searchParams
+}: {
+  searchParams: Promise<{ team?: string }>;
+}) {
+  const { team } = await searchParams;
+
   let farms: FarmSummary[] = [];
   let fields: FieldSummary[] = [];
   let canManage = false;
   let loadError: string | null = null;
+  let myTeams: MyTeam[] = [];
 
   try {
     // Fields feed each farm card's map preview (drawn as gray outlines).
-    const [farmsResult, fieldsResult] = await Promise.all([listFarms(), listFields()]);
+    const [farmsResult, fieldsResult] = await Promise.all([
+      listFarms({ teamId: team }),
+      listFields({ teamId: team })
+    ]);
     farms = farmsResult.farms;
     canManage = farmsResult.canManage;
     fields = fieldsResult.fields;
   } catch (err) {
     loadError =
       err instanceof ApiError ? err.message : "Could not reach the farms service.";
+  }
+
+  try {
+    myTeams = (await listMyTeams()).teams;
+  } catch {
+    myTeams = [];
   }
 
   return (
@@ -39,11 +58,14 @@ export default async function FarmsPage() {
             zones live inside a farm.
           </p>
         </div>
-        {!loadError && farms.length > 0 ? (
-          <span className="text-sm text-base-content/55">
-            {farms.length} {farms.length === 1 ? "farm" : "farms"}
-          </span>
-        ) : null}
+        <div className="flex items-center gap-4">
+          <TeamFilter teams={myTeams} />
+          {!loadError && farms.length > 0 ? (
+            <span className="text-sm text-base-content/55">
+              {farms.length} {farms.length === 1 ? "farm" : "farms"}
+            </span>
+          ) : null}
+        </div>
       </header>
 
       {loadError ? (
