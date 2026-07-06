@@ -3,10 +3,12 @@ import {
   listFarms,
   listFields,
   listMyTeams,
+  listTeams,
   listZones,
   type FarmSummary,
   type FieldSummary,
   type MyTeam,
+  type TeamSummary,
   type ZoneSummary
 } from "../../../lib/api";
 import { TeamFilter } from "../_components/TeamFilter";
@@ -32,6 +34,9 @@ export default async function FieldsPage({
   let zonesCanManage = false;
   let loadError: string | null = null;
   let myTeams: MyTeam[] = [];
+  // All org teams for the field modal's team selector; canAssignTeams gates it.
+  let teams: TeamSummary[] = [];
+  let canAssignTeams = false;
 
   try {
     // Fields + farms are essential (a failure shows the error state). Zones are a
@@ -44,6 +49,7 @@ export default async function FieldsPage({
     ]);
     fields = fieldsResult.fields;
     canManage = fieldsResult.canManage;
+    canAssignTeams = fieldsResult.canAssignTeams ?? false;
     farms = farmsResult.farms;
     zones = zonesResult.zones;
     zonesCanManage = zonesResult.canManage;
@@ -56,6 +62,12 @@ export default async function FieldsPage({
     myTeams = (await listMyTeams()).teams;
   } catch {
     myTeams = [];
+  }
+
+  try {
+    teams = (await listTeams()).teams;
+  } catch {
+    teams = [];
   }
 
   return (
@@ -87,6 +99,8 @@ export default async function FieldsPage({
           zones={zones}
           canManage={canManage}
           zonesCanManage={zonesCanManage}
+          teams={teams}
+          canAssignTeams={canAssignTeams}
         />
       )}
     </div>

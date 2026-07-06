@@ -3,9 +3,11 @@ import {
   listFarms,
   listFields,
   listMyTeams,
+  listTeams,
   type FarmSummary,
   type FieldSummary,
-  type MyTeam
+  type MyTeam,
+  type TeamSummary
 } from "../../../lib/api";
 import { TeamFilter } from "../_components/TeamFilter";
 import { FarmsView } from "./FarmsView";
@@ -27,6 +29,9 @@ export default async function FarmsPage({
   let canManage = false;
   let loadError: string | null = null;
   let myTeams: MyTeam[] = [];
+  // All org teams for the farm modal's team selector; canAssignTeams gates it.
+  let teams: TeamSummary[] = [];
+  let canAssignTeams = false;
 
   try {
     // Fields feed each farm card's map preview (drawn as gray outlines).
@@ -36,6 +41,7 @@ export default async function FarmsPage({
     ]);
     farms = farmsResult.farms;
     canManage = farmsResult.canManage;
+    canAssignTeams = farmsResult.canAssignTeams ?? false;
     fields = fieldsResult.fields;
   } catch (err) {
     loadError =
@@ -46,6 +52,12 @@ export default async function FarmsPage({
     myTeams = (await listMyTeams()).teams;
   } catch {
     myTeams = [];
+  }
+
+  try {
+    teams = (await listTeams()).teams;
+  } catch {
+    teams = [];
   }
 
   return (
@@ -71,7 +83,13 @@ export default async function FarmsPage({
       {loadError ? (
         <ErrorState message={loadError} />
       ) : (
-        <FarmsView farms={farms} fields={fields} canManage={canManage} />
+        <FarmsView
+          farms={farms}
+          fields={fields}
+          canManage={canManage}
+          teams={teams}
+          canAssignTeams={canAssignTeams}
+        />
       )}
     </div>
   );

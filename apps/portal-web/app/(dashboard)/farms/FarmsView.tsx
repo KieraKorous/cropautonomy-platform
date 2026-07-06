@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { FarmIcon, MapPinIcon, PlusIcon } from "@gaia/ui";
-import type { FarmSummary, FieldSummary } from "../../../lib/api";
+import type { FarmSummary, FieldSummary, TeamSummary } from "../../../lib/api";
 import { FarmFormModal } from "./FarmFormModal";
 import { fitViewport, labelPoint, projectToPercent, type LngLat } from "./farmPreview";
 
@@ -16,11 +16,15 @@ const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 export function FarmsView({
   farms,
   fields,
-  canManage
+  canManage,
+  teams,
+  canAssignTeams
 }: {
   farms: FarmSummary[];
   fields: FieldSummary[];
   canManage: boolean;
+  teams: TeamSummary[];
+  canAssignTeams: boolean;
 }) {
   // null = closed; "new" = create; a string = the id of the farm being edited.
   const [editing, setEditing] = useState<string | "new" | null>(null);
@@ -37,6 +41,8 @@ export function FarmsView({
         <FarmFormModal
           open={editing !== null}
           farm={selected}
+          teams={teams}
+          canAssignTeams={canAssignTeams}
           onClose={() => setEditing(null)}
         />
       </>
@@ -72,6 +78,8 @@ export function FarmsView({
       <FarmFormModal
         open={editing !== null}
         farm={selected}
+        teams={teams}
+        canAssignTeams={canAssignTeams}
         onClose={() => setEditing(null)}
       />
     </>

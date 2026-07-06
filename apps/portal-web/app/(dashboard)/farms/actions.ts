@@ -3,8 +3,10 @@
 import { revalidatePath } from "next/cache";
 import tzlookup from "tz-lookup";
 import {
+  assignEntities,
   createFarm,
   deleteFarm,
+  unassignEntities,
   updateFarm,
   type FarmSummary,
   type FarmWrite
@@ -52,4 +54,17 @@ export async function deleteFarmAction(id: string): Promise<void> {
   await deleteFarm(id);
   revalidatePath("/farms");
   revalidatePath("/");
+}
+
+// Assign or unassign a farm to/from a single team (the farm modal's team
+// selector toggles these per team). Requires teams.assign (manager+).
+export async function setFarmTeamAction(
+  farmId: string,
+  teamId: string,
+  assigned: boolean
+): Promise<void> {
+  const item = [{ resourceType: "farm" as const, resourceId: farmId }];
+  if (assigned) await assignEntities(teamId, item);
+  else await unassignEntities(teamId, item);
+  revalidatePath("/farms");
 }

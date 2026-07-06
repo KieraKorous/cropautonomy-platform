@@ -1,7 +1,9 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import type { FarmSummary, FieldSummary, FieldWrite } from "../../../lib/api";
+import type { FarmSummary, FieldSummary, FieldWrite, TeamSummary } from "../../../lib/api";
+import { TeamMultiSelect } from "../_components/TeamMultiSelect";
 import { UnsavedChangesPrompt } from "../_components/UnsavedChangesPrompt";
 import {
   BoundaryBoxEditor,
@@ -10,7 +12,12 @@ import {
   type BoxValue,
   type ContextFeature
 } from "./BoundaryBoxEditor";
-import { createFieldAction, deleteFieldAction, updateFieldAction } from "./actions";
+import {
+  createFieldAction,
+  deleteFieldAction,
+  setFieldTeamAction,
+  updateFieldAction
+} from "./actions";
 import { dimensionsFromBoundary } from "./fieldGeometry";
 import { Field, inputClass } from "./formControls";
 
@@ -29,6 +36,8 @@ export function FieldFormModal({
   farms,
   fields,
   seededFarmId,
+  teams,
+  canAssignTeams,
   onClose
 }: {
   open: boolean;
@@ -36,8 +45,12 @@ export function FieldFormModal({
   farms: FarmSummary[];
   fields: FieldSummary[];
   seededFarmId: string | null;
+  // All org teams + whether the caller may file this field onto them (teams.assign).
+  teams: TeamSummary[];
+  canAssignTeams: boolean;
   onClose: () => void;
 }) {
+  const router = useRouter();
   const ref = useRef<HTMLDialogElement>(null);
   const isEdit = field != null;
 
@@ -57,6 +70,10 @@ export function FieldFormModal({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Team assignment (edit only; optimistic — each toggle persists immediately).
+  const [teamIds, setTeamIds] = useState<string[]>([]);
+  const [teamBusy, setTeamBusy] = useState<string | null>(null);
+  const [teamError, setTeamError] = useState<string | null>(null);
 
   // Tracks real user edits so closing with unsaved changes can prompt to save.
   const dirtyRef = useRef(false);
@@ -97,10 +114,32 @@ export function FieldFormModal({
     setDeleting(false);
     setError(null);
     setFlyTo(null);
+    setTeamIds(field?.teamIds ?? []);
+    setTeamBusy(null);
+    setTeamError(null);
     dirtyRef.current = false;
     setClosePrompt(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, fieldId, seededFarmId]);
+
+  // Toggle this field on/off one team. Optimistic; reverts on failure. Persists
+  // immediately (no Save needed) — separate from the form's fields.
+  async function onToggleTeam(teamId: string, assigned: boolean) {
+    if (!field) return;
+    const prev = teamIds;
+    setTeamBusy(teamId);
+    setTeamError(null);
+    setTeamIds(assigned ? [...prev, teamId] : prev.filter((t) => t !== teamId));
+    try {
+      await setFieldTeamAction(field.id, teamId, assigned);
+      router.refresh();
+    } catch (err) {
+      setTeamIds(prev);
+      setTeamError(err instanceof Error ? err.message : "Couldn't update the field's teams.");
+    } finally {
+      setTeamBusy(null);
+    }
+  }
 
   // Auto-place the box at the selected farm's location for a new field, following
   // the farm selector until the operator moves it themselves.
@@ -308,6 +347,22 @@ export function FieldFormModal({
               className={`${inputClass} resize-none`}
             />
           </Field>
+
+          {/* Teams — which crews this field belongs to (edit only; a field can be
+              on several). Each toggle persists immediately. */}
+          {isEdit && canAssignTeams ? (
+            <>
+              <TeamMultiSelect
+                teams={teams}
+                selectedIds={teamIds}
+                busyId={teamBusy}
+                subjectLabel="field"
+                inline
+                onToggle={onToggleTeam}
+              />
+              {teamError ? <p className="text-sm text-error">{teamError}</p> : null}
+            </>
+          ) : null}
 
           {error ? <p className="text-sm text-error">{error}</p> : null}
         </div>

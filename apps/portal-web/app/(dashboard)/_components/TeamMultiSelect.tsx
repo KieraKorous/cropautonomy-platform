@@ -11,6 +11,7 @@ export function TeamMultiSelect({
   selectedIds,
   busyId,
   subjectLabel,
+  inline = false,
   onToggle
 }: {
   teams: TeamSummary[];
@@ -19,6 +20,9 @@ export function TeamMultiSelect({
   busyId: string | null;
   // Singular noun for the copy, e.g. "device" or "capture".
   subjectLabel: string;
+  // Expand the options in-flow (pushing content down) instead of an absolute
+  // overlay. Use inside scroll-clipped containers (the farm/field form modals).
+  inline?: boolean;
   onToggle: (teamId: string, assigned: boolean) => void;
 }) {
   const summaryText =
@@ -36,7 +40,7 @@ export function TeamMultiSelect({
           No teams yet. Create one on the Team page to group this {subjectLabel}.
         </p>
       ) : (
-        <details className="group relative">
+        <details className={inline ? "group" : "group relative"}>
           <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-md border border-base-content/15 bg-base-100 px-3 py-2 text-sm text-neutral transition-colors hover:border-primary/40 [&::-webkit-details-marker]:hidden">
             <span className="truncate">{summaryText}</span>
             <svg
@@ -53,7 +57,13 @@ export function TeamMultiSelect({
               <path d="m6 9 6 6 6-6" />
             </svg>
           </summary>
-          <div className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-md border border-base-content/15 bg-base-100 p-1 shadow-lg">
+          <div
+            className={
+              inline
+                ? "mt-1 max-h-56 overflow-auto rounded-md border border-base-content/15 bg-base-100 p-1"
+                : "absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-md border border-base-content/15 bg-base-100 p-1 shadow-lg"
+            }
+          >
             {teams.map((t) => {
               const checked = selectedIds.includes(t.id);
               return (

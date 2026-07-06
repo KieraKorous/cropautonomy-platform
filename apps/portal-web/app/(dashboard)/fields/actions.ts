@@ -2,10 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import {
+  assignEntities,
   createField,
   createZone,
   deleteField,
   deleteZone,
+  unassignEntities,
   updateField,
   updateZone,
   type FieldSummary,
@@ -42,6 +44,19 @@ export async function deleteFieldAction(id: string): Promise<void> {
   await deleteField(id);
   revalidatePath("/fields");
   revalidatePath("/");
+}
+
+// Assign or unassign a field to/from a single team (the field modal's team
+// selector toggles these per team). Requires teams.assign (manager+).
+export async function setFieldTeamAction(
+  fieldId: string,
+  teamId: string,
+  assigned: boolean
+): Promise<void> {
+  const item = [{ resourceType: "field" as const, resourceId: fieldId }];
+  if (assigned) await assignEntities(teamId, item);
+  else await unassignEntities(teamId, item);
+  revalidatePath("/fields");
 }
 
 // --- Zones ----------------------------------------------------------------

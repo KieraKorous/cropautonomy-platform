@@ -1,13 +1,16 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { MarkerDragEvent } from "react-map-gl/mapbox";
 import { MapPanel, Marker, MapPinIcon } from "@gaia/ui";
-import type { FarmSummary, FarmWrite } from "../../../lib/api";
+import type { FarmSummary, FarmWrite, TeamSummary } from "../../../lib/api";
+import { TeamMultiSelect } from "../_components/TeamMultiSelect";
 import { UnsavedChangesPrompt } from "../_components/UnsavedChangesPrompt";
 import {
   createFarmAction,
   deleteFarmAction,
+  setFarmTeamAction,
   timezoneForCoordsAction,
   updateFarmAction
 } from "./actions";
@@ -54,12 +57,18 @@ type Coords = { lat: number; lng: number };
 export function FarmFormModal({
   open,
   farm,
+  teams,
+  canAssignTeams,
   onClose
 }: {
   open: boolean;
   farm: FarmSummary | null;
+  // All org teams + whether the caller may file this farm onto them (teams.assign).
+  teams: TeamSummary[];
+  canAssignTeams: boolean;
   onClose: () => void;
 }) {
+  const router = useRouter();
   const ref = useRef<HTMLDialogElement>(null);
   const isEdit = farm != null;
 
@@ -89,6 +98,10 @@ export function FarmFormModal({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Team assignment (edit only; optimistic — each toggle persists immediately).
+  const [teamIds, setTeamIds] = useState<string[]>([]);
+  const [teamBusy, setTeamBusy] = useState<string | null>(null);
+  const [teamError, setTeamError] = useState<string | null>(null);
 
   // Tracks real user edits (not programmatic seeding) so closing with unsaved
   // changes can prompt to save.
@@ -131,12 +144,34 @@ export function FarmFormModal({
     setError(null);
     setRecenter(null);
     setGeocoding(false);
+    setTeamIds(farm?.teamIds ?? []);
+    setTeamBusy(null);
+    setTeamError(null);
     addressDirtyRef.current = false;
     locationDirtyRef.current = false;
     dirtyRef.current = false;
     setClosePrompt(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, farmId]);
+
+  // Toggle this farm on/off one team. Optimistic; reverts on failure. Persists
+  // immediately (no Save needed) — separate from the form's fields.
+  async function onToggleTeam(teamId: string, assigned: boolean) {
+    if (!farm) return;
+    const prev = teamIds;
+    setTeamBusy(teamId);
+    setTeamError(null);
+    setTeamIds(assigned ? [...prev, teamId] : prev.filter((t) => t !== teamId));
+    try {
+      await setFarmTeamAction(farm.id, teamId, assigned);
+      router.refresh();
+    } catch (err) {
+      setTeamIds(prev);
+      setTeamError(err instanceof Error ? err.message : "Couldn't update the farm's teams.");
+    } finally {
+      setTeamBusy(null);
+    }
+  }
 
   // Move the pin from a user action (map click / drag / geocode) and flag it so
   // the timezone re-derives. Seeding an existing farm's pin uses setLocation
@@ -494,6 +529,22 @@ export function FarmFormModal({
               </p>
             )}
           </div>
+
+          {/* Teams — which crews this farm belongs to (edit only; a farm can be
+              on several). Each toggle persists immediately. */}
+          {isEdit && canAssignTeams ? (
+            <>
+              <TeamMultiSelect
+                teams={teams}
+                selectedIds={teamIds}
+                busyId={teamBusy}
+                subjectLabel="farm"
+                inline
+                onToggle={onToggleTeam}
+              />
+              {teamError ? <p className="text-sm text-error">{teamError}</p> : null}
+            </>
+          ) : null}
 
           {error ? <p className="text-sm text-error">{error}</p> : null}
         </div>

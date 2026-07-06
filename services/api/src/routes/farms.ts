@@ -5,7 +5,8 @@ import { badRequest, conflict, notFound } from "../lib/errors.js";
 import {
   canSeeResource,
   partitionVisibleIds,
-  resolveTeamScope
+  resolveTeamScope,
+  teamIdsByResource
 } from "../lib/team-scope.js";
 
 const UUID_RE = /^[0-9a-f-]{36}$/i;
@@ -176,7 +177,28 @@ const farmsRoutes: FastifyPluginAsync = async (app) => {
         rows = rows.filter((r) => visible.has(r.id));
       }
 
-      return { orgId: caller.orgId, canManage, farms: rows.map(toFarmSummary) };
+      // Team assignments per farm + whether the caller may edit them (drives the
+      // farm modal's team selector; teams.assign, manager+).
+      const teamsByFarm = await teamIdsByResource(
+        supabase,
+        caller.orgId,
+        "farm",
+        rows.map((r) => r.id)
+      );
+      const canAssignTeams = await request.permissions!.hasPermission(
+        { userId: caller.userId, orgId: caller.orgId },
+        "teams.assign"
+      );
+
+      return {
+        orgId: caller.orgId,
+        canManage,
+        canAssignTeams,
+        farms: rows.map((r) => ({
+          ...toFarmSummary(r),
+          teamIds: teamsByFarm.get(r.id) ?? []
+        }))
+      };
     }
   );
 

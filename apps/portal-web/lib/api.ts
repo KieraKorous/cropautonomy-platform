@@ -631,6 +631,9 @@ export interface FieldSummary {
   crop: string | null;
   createdAt: string;
   updatedAt: string;
+  // Ids of the teams this field is filed under (a field may be on several).
+  // Empty = unassigned (org-visible). Drives the field modal's team selector.
+  teamIds?: string[];
 }
 
 interface ListFieldsResponse {
@@ -638,6 +641,8 @@ interface ListFieldsResponse {
   // Whether the current user may create/edit/delete fields (fields.update).
   canManage: boolean;
   fields: FieldSummary[];
+  // Whether the caller may file fields onto teams (teams.assign, manager+).
+  canAssignTeams?: boolean;
 }
 
 // The fields a field create/edit form writes. The boundary is an axis-aligned
@@ -771,6 +776,9 @@ export interface FarmSummary {
   areaAcres: number | null;
   createdAt: string;
   updatedAt: string;
+  // Ids of the teams this farm is filed under (a farm may be on several).
+  // Empty = unassigned (org-visible). Drives the farm modal's team selector.
+  teamIds?: string[];
 }
 
 interface ListFarmsResponse {
@@ -778,6 +786,8 @@ interface ListFarmsResponse {
   // Whether the current user may create/edit/delete farms (farms.update).
   canManage: boolean;
   farms: FarmSummary[];
+  // Whether the caller may file farms onto teams (teams.assign, manager+).
+  canAssignTeams?: boolean;
 }
 
 // The fields a farm create/edit form writes. `location` is the centroid set via

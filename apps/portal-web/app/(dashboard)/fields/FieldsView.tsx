@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { FarmIcon, GridIcon, MapPinIcon, PlusIcon, RowsIcon } from "@gaia/ui";
-import type { FarmSummary, FieldSummary, ZoneSummary } from "../../../lib/api";
+import type { FarmSummary, FieldSummary, TeamSummary, ZoneSummary } from "../../../lib/api";
 import { FieldFormModal } from "./FieldFormModal";
 import { ZonesModal } from "./ZonesModal";
 
@@ -21,13 +21,17 @@ export function FieldsView({
   farms,
   zones,
   canManage,
-  zonesCanManage
+  zonesCanManage,
+  teams,
+  canAssignTeams
 }: {
   fields: FieldSummary[];
   farms: FarmSummary[];
   zones: ZoneSummary[];
   canManage: boolean;
   zonesCanManage: boolean;
+  teams: TeamSummary[];
+  canAssignTeams: boolean;
 }) {
   const [modal, setModal] = useState<ModalState>(null);
   const [zonesFieldId, setZonesFieldId] = useState<string | null>(null);
@@ -119,6 +123,8 @@ export function FieldsView({
         farms={farms}
         fields={fields}
         seededFarmId={seededFarmId}
+        teams={teams}
+        canAssignTeams={canAssignTeams}
         onClose={() => setModal(null)}
       />
 

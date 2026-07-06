@@ -214,6 +214,34 @@ export async function canSeeResource(
 }
 
 /**
+ * Team ids grouped by resource id, for attaching a `teamIds` array to entity
+ * summaries (farms, fields, captures, …) so a detail view can show + edit which
+ * teams the row belongs to.
+ */
+export async function teamIdsByResource(
+  supabase: SupabaseClient,
+  orgId: string,
+  type: TeamResourceType,
+  ids: string[]
+): Promise<Map<string, string[]>> {
+  const map = new Map<string, string[]>();
+  if (ids.length === 0) return map;
+  const { data, error } = await supabase
+    .from("team_assignments")
+    .select("resource_id, team_id")
+    .eq("org_id", orgId)
+    .eq("resource_type", type)
+    .in("resource_id", ids);
+  if (error) throw error;
+  for (const r of (data ?? []) as Array<{ resource_id: string; team_id: string }>) {
+    const list = map.get(r.resource_id) ?? [];
+    list.push(r.team_id);
+    map.set(r.resource_id, list);
+  }
+  return map;
+}
+
+/**
  * Given a set of candidate resource ids, return the subset the caller may see.
  * For routes that fetch rows through an RPC (e.g. farms via list_org_farms) and
  * post-filter in JS rather than chaining onto a query builder.
