@@ -482,7 +482,7 @@ function AssignSection({
           {assignedIds.map((id) => (
             <span
               key={id}
-              className="inline-flex items-center gap-1.5 rounded-full bg-neutral py-1 pl-2.5 pr-1.5 text-xs font-medium text-neutral-content"
+              className="inline-flex items-center gap-1.5 rounded-full border border-base-content/40 bg-base-content/[0.03] py-1 pl-2.5 pr-1.5 text-xs text-neutral"
             >
               <span className="max-w-[10rem] truncate">{nameById.get(id) ?? id}</span>
               {canManage ? (
@@ -491,7 +491,7 @@ function AssignSection({
                   onClick={() => onUnassign(type, id)}
                   disabled={busy}
                   aria-label={`Unassign ${nameById.get(id) ?? id}`}
-                  className="rounded-full p-0.5 text-neutral-content/60 transition-colors hover:bg-error hover:text-error-content disabled:opacity-50"
+                  className="rounded-full p-0.5 text-base-content/45 transition-colors hover:bg-error/10 hover:text-error disabled:opacity-50"
                 >
                   <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
                     <path d="M18 6 6 18M6 6l12 12" />
