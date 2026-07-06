@@ -300,9 +300,11 @@ const teamsRoutes: FastifyPluginAsync = async (app) => {
       const team = await loadTeam(supabase, caller.orgId, id);
 
       const [membersResult, assignmentsResult] = await Promise.all([
+        // Disambiguate the users embed: team_memberships has TWO FKs to users
+        // (user_id + added_by_user_id), so PostgREST needs the column hint.
         supabase
           .from("team_memberships")
-          .select("user_id, created_at, user:users!inner ( id, display_name, email, avatar_url )")
+          .select("user_id, created_at, user:users!user_id ( id, display_name, email, avatar_url )")
           .eq("org_id", caller.orgId)
           .eq("team_id", id),
         supabase

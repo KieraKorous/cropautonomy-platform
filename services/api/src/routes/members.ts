@@ -20,10 +20,12 @@ const membersRoutes: FastifyPluginAsync = async (app) => {
     const caller = request.auth!;
     const supabase = getDb();
 
+    // Disambiguate the users embed: organization_memberships has TWO FKs to
+    // users (user_id + invited_by_user_id), so PostgREST needs the column hint.
     const { data, error } = await supabase
       .from("organization_memberships")
       .select(
-        "user_id, role:roles!inner ( key, name ), user:users!inner ( id, display_name, email, avatar_url )"
+        "user_id, role:roles!inner ( key, name ), user:users!user_id ( id, display_name, email, avatar_url )"
       )
       .eq("org_id", caller.orgId)
       .eq("status", "active");
