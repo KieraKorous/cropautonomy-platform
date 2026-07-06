@@ -111,6 +111,9 @@ export interface CaptureSummary {
   videoDurationMs: number | null;
   analysisJobId: string | null;
   discardedAt: string | null;
+  // Ids of the teams this capture is filed under (a capture may be on several).
+  // Empty = unassigned (org-visible). Drives the detail modal's team selector.
+  teamIds: string[];
 }
 
 // A finding domain — the crop-intelligence category of a detection. Superset of
@@ -214,6 +217,10 @@ interface ListCapturesResponse {
   captures: CaptureSummary[];
   limit: number;
   offset: number;
+  // Whether the caller may file captures onto teams (teams.assign, manager+).
+  // Drives the detail modal's team selector. Optional so pre-change callers and
+  // the detail endpoint (which omits it) stay valid.
+  canAssignTeams?: boolean;
 }
 
 export function listCaptures(
@@ -492,6 +499,9 @@ export interface Device {
   // active capture session with a fresh heartbeat). Drives the Active/Inactive
   // activity status in the portal.
   live: boolean;
+  // Ids of the teams this device is assigned to (a device may be on several).
+  // Empty = unassigned (org-visible). Drives the detail modal's team selector.
+  teamIds: string[];
 }
 
 interface ListDevicesResponse {

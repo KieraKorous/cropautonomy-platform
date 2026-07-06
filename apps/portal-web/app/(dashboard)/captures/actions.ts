@@ -2,9 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import {
+  assignEntities,
   createAnnotation,
   discardCapture,
   reanalyzeCapture,
+  unassignEntities,
   updateCaptureDetails,
   type AnnotationInput,
   type CaptureDetailsPatch
@@ -44,5 +46,19 @@ export async function createAnnotationAction(
 ): Promise<void> {
   await createAnnotation(id, input);
   revalidatePath(`/captures/${id}`);
+}
+
+// Assign or unassign a capture to/from a single team (the detail modal's team
+// selector toggles these per team). Requires teams.assign (manager+).
+export async function setCaptureTeamAction(
+  captureId: string,
+  teamId: string,
+  assigned: boolean
+): Promise<void> {
+  const item = [{ resourceType: "capture" as const, resourceId: captureId }];
+  if (assigned) await assignEntities(teamId, item);
+  else await unassignEntities(teamId, item);
+  revalidatePath("/captures");
+  revalidatePath("/recordings");
 }
 

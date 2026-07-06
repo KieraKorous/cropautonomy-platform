@@ -4,13 +4,16 @@ import {
   ApiError,
   listMyTeams,
   listRecordings,
+  listTeams,
   type CaptureSummary,
-  type MyTeam
+  type MyTeam,
+  type TeamSummary
 } from "../../../lib/api";
 import { DownloadButton } from "../_components/DownloadButton";
 import { TeamFilter } from "../_components/TeamFilter";
 import { dateFormat } from "../captures/captureDisplay";
 import { RecordingDiscardButton } from "./RecordingDiscardButton";
+import { RecordingTeams } from "./RecordingTeams";
 
 // Title-case an enum value ("growth_stage" → "Growth stage") for display.
 function titleCase(value: string): string {
@@ -54,10 +57,14 @@ export default async function RecordingsPage({
   let recordings: CaptureSummary[] = [];
   let loadError: string | null = null;
   let myTeams: MyTeam[] = [];
+  // All org teams for the per-card team selector; canAssignTeams gates it.
+  let teams: TeamSummary[] = [];
+  let canAssignTeams = false;
 
   try {
     const result = await listRecordings({ limit: 50, teamId: team });
     recordings = result.captures;
+    canAssignTeams = result.canAssignTeams ?? false;
   } catch (err) {
     loadError =
       err instanceof ApiError
@@ -69,6 +76,12 @@ export default async function RecordingsPage({
     myTeams = (await listMyTeams()).teams;
   } catch {
     myTeams = [];
+  }
+
+  try {
+    teams = (await listTeams()).teams;
+  } catch {
+    teams = [];
   }
 
   return (
@@ -98,7 +111,12 @@ export default async function RecordingsPage({
       ) : (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           {recordings.map((rec) => (
-            <RecordingCard key={rec.id} recording={rec} />
+            <RecordingCard
+              key={rec.id}
+              recording={rec}
+              teams={teams}
+              canAssignTeams={canAssignTeams}
+            />
           ))}
         </div>
       )}
@@ -106,14 +124,24 @@ export default async function RecordingsPage({
   );
 }
 
-function RecordingCard({ recording }: { recording: CaptureSummary }) {
+function RecordingCard({
+  recording,
+  teams,
+  canAssignTeams
+}: {
+  recording: CaptureSummary;
+  teams: TeamSummary[];
+  canAssignTeams: boolean;
+}) {
   const duration = formatDuration(recording.videoDurationMs);
   const size = formatSize(recording.sizeBytes);
   const ready = recording.imageUrl != null;
 
+  // No overflow-hidden on the card itself — the team dropdown needs to spill
+  // past the bottom edge. The video rounds its own top corners instead.
   return (
-    <article className="flex flex-col overflow-hidden rounded-xl border border-base-content/10 bg-base-100">
-      <div className="relative aspect-video bg-neutral">
+    <article className="flex flex-col rounded-xl border border-base-content/10 bg-base-100">
+      <div className="relative aspect-video overflow-hidden rounded-t-xl bg-neutral">
         {ready ? (
           // eslint-disable-next-line jsx-a11y/media-has-caption -- field recording, no caption track
           <video
@@ -174,6 +202,15 @@ function RecordingCard({ recording }: { recording: CaptureSummary }) {
             </p>
           ) : null}
         </div>
+      ) : null}
+
+      {/* Which crews this recording is filed under. Managers+ only. */}
+      {canAssignTeams ? (
+        <RecordingTeams
+          recordingId={recording.id}
+          teamIds={recording.teamIds}
+          teams={teams}
+        />
       ) : null}
     </article>
   );

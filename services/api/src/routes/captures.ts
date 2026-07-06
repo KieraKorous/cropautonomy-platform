@@ -359,6 +359,31 @@ const UUID_RE = /^[0-9a-f-]{36}$/i;
 const isRealPath = (path: string | null): path is string =>
   !!path && path !== "pending";
 
+// Team ids grouped by capture id, for attaching to capture summaries so the
+// detail modal can show + edit which teams a capture belongs to.
+async function loadTeamIdsByResource(
+  supabase: ReturnType<typeof getDb>,
+  orgId: string,
+  type: string,
+  ids: string[]
+): Promise<Map<string, string[]>> {
+  const map = new Map<string, string[]>();
+  if (ids.length === 0) return map;
+  const { data, error } = await supabase
+    .from("team_assignments")
+    .select("resource_id, team_id")
+    .eq("org_id", orgId)
+    .eq("resource_type", type)
+    .in("resource_id", ids);
+  if (error) throw error;
+  for (const r of (data ?? []) as Array<{ resource_id: string; team_id: string }>) {
+    const list = map.get(r.resource_id) ?? [];
+    list.push(r.team_id);
+    map.set(r.resource_id, list);
+  }
+  return map;
+}
+
 const capturesRoutes: FastifyPluginAsync = async (app) => {
   app.get(
     "/v1/captures",
@@ -426,13 +451,30 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
         }
       }
 
+      // Team assignments for these captures (drives the detail modal's team
+      // selector) + whether the caller may edit them (teams.assign, manager+).
+      const teamsByCapture = await loadTeamIdsByResource(
+        supabase,
+        caller.orgId,
+        "capture",
+        rows.map((r) => r.id)
+      );
+      const canAssignTeams = await request.permissions!.hasPermission(
+        { userId: caller.userId, orgId: caller.orgId },
+        "teams.assign"
+      );
+
       return {
         captures: rows.map((row) => {
           const path = pathByRow.get(row.id);
-          return toCaptureSummary(row, path ? (signedByPath.get(path) ?? null) : null);
+          return {
+            ...toCaptureSummary(row, path ? (signedByPath.get(path) ?? null) : null),
+            teamIds: teamsByCapture.get(row.id) ?? []
+          };
         }),
         limit,
-        offset
+        offset,
+        canAssignTeams
       };
     }
   );
@@ -559,9 +601,24 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
         "analysis.annotate"
       );
 
+      // Team assignments for this capture + its related siblings, so their
+      // summaries carry teamIds like the list endpoint does.
+      const teamsByCapture = await loadTeamIdsByResource(
+        supabase,
+        caller.orgId,
+        "capture",
+        [capture.id, ...relatedRows.map((r) => r.id)]
+      );
+
       return {
-        capture: toCaptureSummary(capture, sign(capture.id)),
-        related: relatedRows.map((rel) => toCaptureSummary(rel, sign(rel.id))),
+        capture: {
+          ...toCaptureSummary(capture, sign(capture.id)),
+          teamIds: teamsByCapture.get(capture.id) ?? []
+        },
+        related: relatedRows.map((rel) => ({
+          ...toCaptureSummary(rel, sign(rel.id)),
+          teamIds: teamsByCapture.get(rel.id) ?? []
+        })),
         findings,
         annotations,
         canAnnotate

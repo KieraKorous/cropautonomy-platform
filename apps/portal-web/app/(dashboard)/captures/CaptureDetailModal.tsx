@@ -1,10 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowRight, CameraIcon, StatusPill } from "@gaia/ui";
-import type { CaptureSummary } from "../../../lib/api";
+import type { CaptureSummary, TeamSummary } from "../../../lib/api";
 import { DownloadButton } from "../_components/DownloadButton";
+import { TeamMultiSelect } from "../_components/TeamMultiSelect";
+import { setCaptureTeamAction } from "./actions";
 import { dateFormat, mediaLabel, statusDisplay } from "./captureDisplay";
 import { PlantName } from "./PlantName";
 import { RetryButton } from "./RetryButton";
@@ -31,14 +34,20 @@ function formatSize(bytes: number | null): string | null {
 export function CaptureDetailModal({
   captures,
   index,
+  teams,
+  canAssignTeams,
   onClose,
   onNavigate
 }: {
   captures: CaptureSummary[];
   index: number | null;
+  // All org teams + whether the caller may file captures onto them (teams.assign).
+  teams: TeamSummary[];
+  canAssignTeams: boolean;
   onClose: () => void;
   onNavigate: (nextIndex: number) => void;
 }) {
+  const router = useRouter();
   const ref = useRef<HTMLDialogElement>(null);
 
   // Fullscreen zoom/pan state. scale/offset also live in refs so the wheel and
@@ -51,6 +60,12 @@ export function CaptureDetailModal({
   const offsetRef = useRef({ x: 0, y: 0 });
   const stageRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
+
+  // Team assignment for the shown capture (optimistic; each toggle persists like
+  // the device modal). teamBusy holds the team id round-tripping.
+  const [teamIds, setTeamIds] = useState<string[]>([]);
+  const [teamBusy, setTeamBusy] = useState<string | null>(null);
+  const [teamError, setTeamError] = useState<string | null>(null);
 
   const open = index != null;
   const capture = open ? captures[index] : null;
@@ -70,6 +85,34 @@ export function CaptureDetailModal({
     if (open && !dialog.open) dialog.showModal();
     if (!open && dialog.open) dialog.close();
   }, [open]);
+
+  // Re-seed the team selector whenever a different capture is shown (open or
+  // prev/next navigation). Keyed on the capture id only.
+  const captureId = capture?.id;
+  useEffect(() => {
+    setTeamIds(capture?.teamIds ?? []);
+    setTeamBusy(null);
+    setTeamError(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [captureId]);
+
+  // Toggle the shown capture on/off one team. Optimistic; reverts on failure.
+  async function onToggleTeam(teamId: string, assigned: boolean) {
+    if (!capture) return;
+    const prev = teamIds;
+    setTeamBusy(teamId);
+    setTeamError(null);
+    setTeamIds(assigned ? [...prev, teamId] : prev.filter((t) => t !== teamId));
+    try {
+      await setCaptureTeamAction(capture.id, teamId, assigned);
+      router.refresh();
+    } catch (err) {
+      setTeamIds(prev);
+      setTeamError(err instanceof Error ? err.message : "Couldn't update the capture's teams.");
+    } finally {
+      setTeamBusy(null);
+    }
+  }
 
   const resetZoom = useCallback(() => {
     setScale(1);
@@ -349,6 +392,19 @@ export function CaptureDetailModal({
                 </p>
               </div>
             ) : null}
+
+            {/* Teams — which crews this capture is filed under (a capture may be
+                on several). Each toggle persists immediately. */}
+            {canAssignTeams ? (
+              <TeamMultiSelect
+                teams={teams}
+                selectedIds={teamIds}
+                busyId={teamBusy}
+                subjectLabel="capture"
+                onToggle={onToggleTeam}
+              />
+            ) : null}
+            {teamError ? <p className="text-sm text-error">{teamError}</p> : null}
 
             {/* Jump to the full detail page for this capture (description,
                 same-plant gallery), or save the original media. */}

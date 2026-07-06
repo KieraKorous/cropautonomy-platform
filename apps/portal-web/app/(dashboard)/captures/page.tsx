@@ -3,8 +3,10 @@ import {
   getMe,
   listCaptures,
   listMyTeams,
+  listTeams,
   type CaptureSummary,
-  type MyTeam
+  type MyTeam,
+  type TeamSummary
 } from "../../../lib/api";
 import { TeamFilter } from "../_components/TeamFilter";
 import { CapturesView } from "./CapturesView";
@@ -25,16 +27,26 @@ export default async function CapturesPage({
   let orgId = "";
   let loadError: string | null = null;
   let myTeams: MyTeam[] = [];
+  // All org teams for the detail modal's team selector; canAssignTeams gates it.
+  let teams: TeamSummary[] = [];
+  let canAssignTeams = false;
 
   try {
     // Session recordings live in their own Recordings section, not the grid.
     const result = await listCaptures({ limit: 50, kind: "observation", teamId: team });
     captures = result.captures;
+    canAssignTeams = result.canAssignTeams ?? false;
   } catch (err) {
     loadError =
       err instanceof ApiError
         ? err.message
         : "Could not reach the captures service.";
+  }
+
+  try {
+    teams = (await listTeams()).teams;
+  } catch {
+    teams = [];
   }
 
   // orgId scopes the live capture feed. Non-fatal if it fails — the list still
@@ -74,7 +86,12 @@ export default async function CapturesPage({
       {loadError ? (
         <ErrorState message={loadError} />
       ) : (
-        <CapturesView captures={captures} orgId={orgId} />
+        <CapturesView
+          captures={captures}
+          orgId={orgId}
+          teams={teams}
+          canAssignTeams={canAssignTeams}
+        />
       )}
     </div>
   );

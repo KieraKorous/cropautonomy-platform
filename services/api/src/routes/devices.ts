@@ -359,12 +359,33 @@ const devicesRoutes: FastifyPluginAsync = async (app) => {
       }
 
       const rows = (data ?? []) as unknown as DeviceRow[];
+
+      // Team assignments for these devices, so the detail modal can show + edit
+      // which teams each device belongs to (a device may be on several teams).
+      const teamsByDevice = new Map<string, string[]>();
+      const deviceIds = rows.map((r) => r.id);
+      if (deviceIds.length > 0) {
+        const { data: assignmentRows, error: assignErr } = await supabase
+          .from("team_assignments")
+          .select("resource_id, team_id")
+          .eq("org_id", caller.orgId)
+          .eq("resource_type", "device")
+          .in("resource_id", deviceIds);
+        if (assignErr) throw assignErr;
+        for (const r of (assignmentRows ?? []) as Array<{ resource_id: string; team_id: string }>) {
+          const list = teamsByDevice.get(r.resource_id) ?? [];
+          list.push(r.team_id);
+          teamsByDevice.set(r.resource_id, list);
+        }
+      }
+
       const devices = rows.map((row) => {
         const act = activity.get(row.id);
         return {
           ...toDeviceSummary(row),
           lastUsedAt: act?.lastUsedAt ?? null,
-          live: act?.live ?? false
+          live: act?.live ?? false,
+          teamIds: teamsByDevice.get(row.id) ?? []
         };
       });
       return { orgId: caller.orgId, canManage, devices };

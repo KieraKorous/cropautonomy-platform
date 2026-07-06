@@ -2,8 +2,10 @@ import {
   ApiError,
   listDevices,
   listMyTeams,
+  listTeams,
   type Device,
-  type MyTeam
+  type MyTeam,
+  type TeamSummary
 } from "../../../lib/api";
 import { TeamFilter } from "../_components/TeamFilter";
 import { DevicesGrid } from "./DevicesGrid";
@@ -24,6 +26,9 @@ export default async function DevicesPage({
   let canManage = false;
   let loadError: string | null = null;
   let myTeams: MyTeam[] = [];
+  // All org teams — the pool the device modal's team selector assigns from
+  // (assigners may file a device onto any team, not just their own).
+  let teams: TeamSummary[] = [];
 
   try {
     const result = await listDevices({ teamId: team });
@@ -38,6 +43,12 @@ export default async function DevicesPage({
     myTeams = (await listMyTeams()).teams;
   } catch {
     myTeams = [];
+  }
+
+  try {
+    teams = (await listTeams()).teams;
+  } catch {
+    teams = [];
   }
 
   return (
@@ -63,7 +74,7 @@ export default async function DevicesPage({
       {loadError ? (
         <ErrorState message={loadError} />
       ) : (
-        <DevicesGrid devices={devices} canManage={canManage} />
+        <DevicesGrid devices={devices} canManage={canManage} teams={teams} />
       )}
     </div>
   );

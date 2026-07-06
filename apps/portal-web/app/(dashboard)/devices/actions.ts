@@ -2,9 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import {
+  assignEntities,
   createDevicePairing,
   deleteDevice,
   getDevicePairing,
+  unassignEntities,
   updateDevice,
   type CreateDevicePairingResponse,
   type Device,
@@ -46,5 +48,18 @@ export async function updateDeviceAction(
 // Permanently deregister a device, then refresh the grid (the card drops out).
 export async function deleteDeviceAction(id: string): Promise<void> {
   await deleteDevice(id);
+  revalidatePath("/devices");
+}
+
+// Assign or unassign a device to/from a single team (the detail modal's team
+// selector toggles these per team). Requires teams.assign (manager+).
+export async function setDeviceTeamAction(
+  deviceId: string,
+  teamId: string,
+  assigned: boolean
+): Promise<void> {
+  const item = [{ resourceType: "device" as const, resourceId: deviceId }];
+  if (assigned) await assignEntities(teamId, item);
+  else await unassignEntities(teamId, item);
   revalidatePath("/devices");
 }

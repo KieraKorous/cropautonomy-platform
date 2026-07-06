@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { PlusIcon, StatusPill } from "@gaia/ui";
-import type { Device } from "../../../lib/api";
+import type { Device, TeamSummary } from "../../../lib/api";
 import { AddDeviceDialog } from "./AddDeviceDialog";
 import { DeviceDetailModal } from "./DeviceDetailModal";
 import {
@@ -21,10 +21,12 @@ import {
 // in, so opening a modal never re-hits the API.
 export function DevicesGrid({
   devices,
-  canManage
+  canManage,
+  teams
 }: {
   devices: Device[];
   canManage: boolean;
+  teams: TeamSummary[];
 }) {
   const router = useRouter();
   const [addOpen, setAddOpen] = useState(false);
@@ -64,6 +66,7 @@ export function DevicesGrid({
       <DeviceDetailModal
         device={selected}
         canManage={canManage}
+        teams={teams}
         onClose={() => setSelectedId(null)}
       />
     </>

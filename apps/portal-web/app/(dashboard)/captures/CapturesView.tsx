@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { channels } from "@gaia/realtime/channels";
 import { useRealtimeChannel } from "@gaia/realtime/client";
 import { GridIcon, RowsIcon } from "@gaia/ui";
-import type { CaptureStatus, CaptureSummary } from "../../../lib/api";
+import type { CaptureStatus, CaptureSummary, TeamSummary } from "../../../lib/api";
 import { CaptureRow } from "./CaptureRow";
 import { CaptureCard } from "./CaptureCard";
 import { CaptureDetailModal } from "./CaptureDetailModal";
@@ -58,7 +58,17 @@ function compareCaptures(a: CaptureSummary, b: CaptureSummary, key: SortKey): nu
 // views never re-hits the API. Subscribes to the org-wide capture feed and
 // re-runs the server fetch (router.refresh) when captures appear or change
 // status, so the list stays live without a manual refresh.
-export function CapturesView({ captures, orgId }: { captures: CaptureSummary[]; orgId: string }) {
+export function CapturesView({
+  captures,
+  orgId,
+  teams,
+  canAssignTeams
+}: {
+  captures: CaptureSummary[];
+  orgId: string;
+  teams: TeamSummary[];
+  canAssignTeams: boolean;
+}) {
   const router = useRouter();
 
   // Live capture feed: a new photo finalizing, or a capture finishing analysis,
@@ -188,6 +198,8 @@ export function CapturesView({ captures, orgId }: { captures: CaptureSummary[]; 
       <CaptureDetailModal
         captures={sorted}
         index={selectedIndex}
+        teams={teams}
+        canAssignTeams={canAssignTeams}
         onClose={() => setSelectedIndex(null)}
         onNavigate={setSelectedIndex}
       />

@@ -4,8 +4,9 @@ import { capture } from "@gaia/analytics";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { StatusPill } from "@gaia/ui";
-import type { Device, DeviceAppearance } from "../../../lib/api";
-import { deleteDeviceAction, updateDeviceAction } from "./actions";
+import type { Device, DeviceAppearance, TeamSummary } from "../../../lib/api";
+import { TeamMultiSelect } from "../_components/TeamMultiSelect";
+import { deleteDeviceAction, setDeviceTeamAction, updateDeviceAction } from "./actions";
 import {
   APPEARANCE_COLORS,
   APPEARANCE_ICONS,
@@ -55,11 +56,14 @@ async function fileToSquareDataUrl(file: File, size = 384): Promise<string> {
 export function DeviceDetailModal({
   device,
   canManage,
+  teams,
   onClose
 }: {
   device: Device | null;
   // Whether the current user may rename / retire / delete and toggle auto-live.
   canManage: boolean;
+  // All org teams — the pool the team selector assigns this device to/from.
+  teams: TeamSummary[];
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -84,6 +88,11 @@ export function DeviceDetailModal({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Teams this device is assigned to (optimistic). Seeded from the device prop;
+  // each toggle persists immediately (like the auto-live switch). teamBusy holds
+  // the team id currently round-tripping so its checkbox disables.
+  const [teamIds, setTeamIds] = useState<string[]>([]);
+  const [teamBusy, setTeamBusy] = useState<string | null>(null);
 
   useEffect(() => {
     const dialog = ref.current;
@@ -107,6 +116,8 @@ export function DeviceDetailModal({
     setSaveState("idle");
     setConfirmingDelete(false);
     setAutoLiveOverride(null);
+    setTeamIds(device.teamIds ?? []);
+    setTeamBusy(null);
     setError(null);
     // Intentionally keyed on the device id only — re-seeding on every prop change
     // would clobber edits the user is making mid-session.
@@ -243,6 +254,25 @@ export function DeviceDetailModal({
     }
   }
 
+  // Toggle this device on/off one team. Optimistic; reverts on failure. Persists
+  // immediately so a device can sit on several teams without a separate Save.
+  async function onToggleTeam(teamId: string, assigned: boolean) {
+    if (!device) return;
+    const prev = teamIds;
+    setTeamBusy(teamId);
+    setError(null);
+    setTeamIds(assigned ? [...prev, teamId] : prev.filter((t) => t !== teamId));
+    try {
+      await setDeviceTeamAction(device.id, teamId, assigned);
+      router.refresh();
+    } catch (err) {
+      setTeamIds(prev);
+      setError(err instanceof Error ? err.message : "Couldn't update the device's teams.");
+    } finally {
+      setTeamBusy(null);
+    }
+  }
+
   return (
     <dialog
       ref={ref}
@@ -315,6 +345,16 @@ export function DeviceDetailModal({
 
         {canManage ? (
         <>
+        {/* Teams — which crews this device belongs to. A device can be on several;
+            each toggle persists immediately. Empty = visible org-wide. */}
+        <TeamMultiSelect
+          teams={teams}
+          selectedIds={teamIds}
+          busyId={teamBusy}
+          subjectLabel="device"
+          onToggle={onToggleTeam}
+        />
+
         {/* Appearance — pick a glyph + color, or upload an image. Fills the card. */}
         <div className="flex flex-col gap-3">
           <span className="text-xs font-medium text-base-content/65">Appearance</span>
