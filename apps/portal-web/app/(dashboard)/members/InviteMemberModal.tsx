@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { inviteMemberAction } from "./actions";
 import { ASSIGNABLE_ROLES } from "./roles";
 
 // Invite an email to the org at a chosen role. Native <dialog> (Escape +
 // backdrop close), driven by the `open` flag from MembersView. Submitting goes
-// through a server action that revalidates /members; Clerk sends the email.
+// through a server action; on success we router.refresh() so the pending-invite
+// list updates. Clerk sends the email.
 export function InviteMemberModal({
   open,
   onClose
@@ -15,6 +17,7 @@ export function InviteMemberModal({
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("technician");
   const [saving, setSaving] = useState(false);
@@ -51,6 +54,7 @@ export function InviteMemberModal({
     if (result.ok) {
       setSent(trimmed);
       setEmail("");
+      router.refresh();
     } else {
       setError(result.error);
     }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { PlusIcon, TrashIcon, UsersIcon } from "@gaia/ui";
 import type { MemberInvitation, OrgMember } from "../../../lib/api";
 import { MemberDetailModal } from "./MemberDetailModal";
@@ -198,6 +199,7 @@ function InvitationRow({
   invitation: MemberInvitation;
   canInvite: boolean;
 }) {
+  const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -206,7 +208,9 @@ function InvitationRow({
     setBusy(true);
     setError(null);
     const result = await revokeInvitationAction(invitation.id);
-    if (!result.ok) {
+    if (result.ok) {
+      router.refresh();
+    } else {
       setBusy(false);
       setError(result.error);
     }

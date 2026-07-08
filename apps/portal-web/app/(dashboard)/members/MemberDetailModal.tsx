@@ -1,16 +1,17 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { OrgMember } from "../../../lib/api";
 import { initials, RoleBadge, StatusBadge } from "./MembersView";
 import { removeMemberAction, updateMemberAction } from "./actions";
 import { ASSIGNABLE_ROLES } from "./roles";
 
 // Member detail: profile + role/status controls + removal. Opened for a selected
-// member; every mutation goes through a server action that revalidates /members,
-// so the roster behind the modal refreshes. Guards (can't touch yourself, keep
-// one owner) are enforced by the API — the modal surfaces those errors and also
-// hides the controls for your own row.
+// member; on a successful mutation we close and router.refresh() so the roster
+// behind the modal updates. Guards (can't touch yourself, keep one owner) are
+// enforced by the API — the modal surfaces those errors and also hides the
+// controls for your own row.
 export function MemberDetailModal({
   open,
   member,
@@ -23,6 +24,7 @@ export function MemberDetailModal({
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
@@ -66,6 +68,7 @@ export function MemberDetailModal({
     const result = await fn();
     if (result.ok) {
       onClose();
+      router.refresh();
     } else {
       setBusy(false);
       setError(result.error);

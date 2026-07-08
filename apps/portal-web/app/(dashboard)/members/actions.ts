@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import {
   ApiError,
   inviteMember,
@@ -14,6 +13,13 @@ import {
 // scrubs the message off any error a server action throws (replacing it with an
 // opaque digest), so a thrown failure reaches the UI as "an error occurred" with
 // no cause. Returning the error as data keeps the real message intact.
+//
+// These deliberately do NOT call revalidatePath(): revalidating inside a server
+// action forces a re-render of the route *within the action's execution scope*,
+// which runs outside Clerk's middleware async-context — so the re-render's
+// auth() call throws "can't detect clerkMiddleware()". Callers instead invoke
+// router.refresh() on the client after a successful result, which re-fetches the
+// route through middleware normally. See proxy.ts.
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
 function toError(err: unknown): string {
@@ -22,27 +28,23 @@ function toError(err: unknown): string {
   return "Something went wrong.";
 }
 
-// Change a member's role and/or status, then refresh the roster + layout counts.
+// Change a member's role and/or status.
 export async function updateMemberAction(
   userId: string,
   patch: { roleKey?: string; status?: "active" | "suspended" }
 ): Promise<ActionResult> {
   try {
     await updateMember(userId, patch);
-    revalidatePath("/members");
-    revalidatePath("/");
     return { ok: true };
   } catch (err) {
     return { ok: false, error: toError(err) };
   }
 }
 
-// Soft-remove a member from the org, then refresh.
+// Soft-remove a member from the org.
 export async function removeMemberAction(userId: string): Promise<ActionResult> {
   try {
     await removeMember(userId);
-    revalidatePath("/members");
-    revalidatePath("/");
     return { ok: true };
   } catch (err) {
     return { ok: false, error: toError(err) };
@@ -61,18 +63,16 @@ export async function inviteMemberAction(
 ): Promise<InviteResult> {
   try {
     const invitation = await inviteMember(email, roleKey);
-    revalidatePath("/members");
     return { ok: true, invitation };
   } catch (err) {
     return { ok: false, error: toError(err) };
   }
 }
 
-// Revoke a pending invitation, then refresh.
+// Revoke a pending invitation.
 export async function revokeInvitationAction(id: string): Promise<ActionResult> {
   try {
     await revokeInvitation(id);
-    revalidatePath("/members");
     return { ok: true };
   } catch (err) {
     return { ok: false, error: toError(err) };
