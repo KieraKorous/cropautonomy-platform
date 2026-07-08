@@ -192,7 +192,7 @@ Examples:
 - owners can manage billing and delete organizations when that exists
 - admins can invite users and manage farms
 - managers can edit fields and assign work
-- technicians can create scans and view assigned field data
+- technicians can create scans, add and edit zones, and view assigned field data (but cannot create/edit/delete farms or fields)
 - viewers can read data but not mutate operational records
 
 ## Teams (sub-organization access boundary)
