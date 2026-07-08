@@ -1010,7 +1010,7 @@ export function listMyTeams(): Promise<{ teams: MyTeam[] }> {
 // services/api/src/routes/scout-tasks.ts.
 
 export type ScoutTaskStatus = "open" | "in_progress" | "done";
-export type ScoutTaskPriority = "low" | "normal" | "high";
+export type ScoutTaskPriority = "low" | "normal" | "high" | "immediate";
 
 // The assignee's resolved display fields, or null when the task is unassigned.
 export interface ScoutTaskAssignee {

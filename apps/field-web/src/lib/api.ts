@@ -139,7 +139,7 @@ export interface ScoutTaskRecord {
   title: string;
   details: string | null;
   status: "open" | "in_progress" | "done";
-  priority: "low" | "normal" | "high" | null;
+  priority: "low" | "normal" | "high" | "immediate" | null;
   fieldId: string | null;
   farmId: string | null;
   dueOn: string | null;

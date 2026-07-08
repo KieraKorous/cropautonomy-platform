@@ -20,7 +20,7 @@ import {
 const UUID_RE = /^[0-9a-f-]{36}$/i;
 
 const STATUS = z.enum(["open", "in_progress", "done"]);
-const PRIORITY = z.enum(["low", "normal", "high"]);
+const PRIORITY = z.enum(["low", "normal", "high", "immediate"]);
 
 const SCOUT_TASK_SELECT =
   "id, org_id, title, details, status, priority, assignee_user_id, farm_id, field_id, zone_id, due_on, origin_type, origin_capture_id, created_by_user_id, completed_by_user_id, completed_at, created_at, updated_at";
@@ -72,7 +72,7 @@ interface ScoutTaskRow {
   title: string;
   details: string | null;
   status: "open" | "in_progress" | "done";
-  priority: "low" | "normal" | "high" | null;
+  priority: "low" | "normal" | "high" | "immediate" | null;
   assignee_user_id: string | null;
   farm_id: string | null;
   field_id: string | null;

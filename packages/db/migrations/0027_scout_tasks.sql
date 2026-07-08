@@ -45,7 +45,9 @@ create table public.scout_tasks (
                           'in_progress',
                           'done'
                         )),
-  priority              text check (priority in ('low', 'normal', 'high')),
+  -- 'immediate' is the top tier: it floats to the top of the board and renders
+  -- with a red border. 'low' < 'normal' < 'high' < 'immediate'.
+  priority              text check (priority in ('low', 'normal', 'high', 'immediate')),
 
   -- Person responsible. NULL = assigned to the team(s) at large, no individual.
   assignee_user_id      uuid references public.users(id) on delete set null,

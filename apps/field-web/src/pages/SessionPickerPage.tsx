@@ -68,7 +68,13 @@ export function SessionPickerPage() {
     void api
       .getMyScoutTasks()
       .then(({ tasks: mine }) => {
-        if (alive) setTasks(mine);
+        if (!alive) return;
+        // Float immediate tasks to the top of "My tasks".
+        const sorted = [...mine].sort(
+          (a, b) =>
+            (b.priority === "immediate" ? 1 : 0) - (a.priority === "immediate" ? 1 : 0)
+        );
+        setTasks(sorted);
       })
       .catch(() => {
         /* no task list if it can't be read — the plain start flow still works */
@@ -274,7 +280,11 @@ export function SessionPickerPage() {
               {tasks.map((task) => (
                 <li
                   key={task.id}
-                  className="flex items-start gap-2 rounded-md border border-base-content/15 bg-base-100 px-3 py-3 shadow-sm"
+                  className={`flex items-start gap-2 rounded-md bg-base-100 px-3 py-3 shadow-sm ${
+                    task.priority === "immediate"
+                      ? "border-2 border-error"
+                      : "border border-base-content/15"
+                  }`}
                 >
                   <button
                     type="button"
@@ -293,13 +303,16 @@ export function SessionPickerPage() {
                   >
                     <span
                       className={`mt-0.5 h-2.5 w-2.5 flex-shrink-0 rounded-full ${
-                        task.priority === "high" ? "bg-error" : "bg-primary"
+                        task.priority === "immediate" || task.priority === "high"
+                          ? "bg-error"
+                          : "bg-primary"
                       }`}
                       aria-hidden
                     />
                     <span className="flex min-w-0 flex-1 flex-col">
                       <span className="text-sm font-medium text-neutral">{task.title}</span>
                       <span className="mt-0.5 text-xs text-base-content/55">
+                        {task.priority === "immediate" ? "Immediate · " : ""}
                         {task.status === "in_progress" ? "In progress · " : ""}
                         {task.dueOn ? `Due ${task.dueOn}` : "No date"}
                         {task.captureCount > 0

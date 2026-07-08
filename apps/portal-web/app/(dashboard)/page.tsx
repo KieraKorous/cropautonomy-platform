@@ -306,8 +306,15 @@ function ScoutListCard({
         <p className="px-5 py-6 text-sm text-base-content/55">Nothing on the board today.</p>
       ) : (
         <ul>
-          {tasks.map((task, idx) => {
+          {[...tasks]
+            .sort(
+              (a, b) =>
+                (b.status !== "done" && b.priority === "immediate" ? 1 : 0) -
+                (a.status !== "done" && a.priority === "immediate" ? 1 : 0)
+            )
+            .map((task, idx, sorted) => {
             const done = task.status === "done";
+            const immediate = task.priority === "immediate" && !done;
             const due = scoutDue(task);
             const meta = [
               task.assignee?.displayName ?? "Unassigned",
@@ -317,8 +324,12 @@ function ScoutListCard({
               .join(" · ");
             return (
               <li
-                className={`flex items-center gap-3.5 px-5 py-3.5 ${
-                  idx === tasks.length - 1 ? "" : "border-b border-base-content/6"
+                className={`flex items-center gap-3.5 py-3.5 pr-5 ${
+                  idx === sorted.length - 1 ? "" : "border-b border-base-content/6"
+                } ${
+                  immediate
+                    ? "border-l-4 border-l-error bg-error/[0.03] pl-4"
+                    : "border-l-4 border-l-transparent pl-4"
                 }`}
                 key={task.id}
               >
