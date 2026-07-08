@@ -226,12 +226,15 @@ create trigger organization_memberships_set_updated_at
 -- Seed: system roles
 ------------------------------------------------------------------------
 
+-- Display names are agriculture-flavored; the `key` stays stable because every
+-- permission grant, API guard, and zod enum keys off it (see 0029 for the
+-- rename applied to already-provisioned databases).
 insert into public.roles (key, name, description, is_system) values
-  ('owner',      'Owner',      'Full control over the organization, including billing and deletion.', true),
-  ('admin',      'Admin',      'Manage members, farms, fields, devices, captures and analysis. Cannot manage billing or delete the org.', true),
-  ('manager',    'Manager',    'Plan and edit farms, fields, crop plantings, captures, and analysis. No member or device administration.', true),
-  ('technician', 'Technician', 'Field operator: create captures, run sessions, request analysis, view operational data.', true),
-  ('viewer',     'Viewer',     'Read-only access to operational data. Cannot mutate, invite, or administer.', true);
+  ('owner',      'Owner',        'Full control over the operation, including billing and deletion.', true),
+  ('admin',      'Farm Manager', 'Run the operation: manage members, farms, fields, devices, captures and analysis. Cannot manage billing or delete the org.', true),
+  ('manager',    'Agronomist',   'Plan and edit farms, fields, crop plantings, captures, and analysis. No member or device administration.', true),
+  ('technician', 'Field Scout',  'Field operator: create captures, run sessions, request analysis, view operational data.', true),
+  ('viewer',     'Observer',     'Read-only access to operational data. Cannot mutate, invite, or administer.', true);
 
 ------------------------------------------------------------------------
 -- Seed: permissions
