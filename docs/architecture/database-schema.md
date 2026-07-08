@@ -58,6 +58,11 @@ Apply with `pnpm --filter @gaia/db db:reset` against a local Supabase stack, or 
 - **`analysis_jobs`** — one job per capture. Unique index restricts a single in-flight job per capture; historical jobs are unconstrained so re-analysis is possible.
 - **`analysis_results`** — **one row per detection** (decision: high-cardinality relational shape, not jsonb array). Reasoning: the primary read pattern is "all `<category>` detections in this field this season" — a relational filter, not a jsonb unnest. Per-detection rows also give us stable ids that realtime detection events can reference.
 
+### Scout tasks
+
+- **`scout_tasks`** (`0027`) — the day's field-work to-dos (walk-outs, checks). `assignee_user_id` is the person **responsible** (drives the avatar/name), not a visibility control — visibility is team-scoped via `team_assignments` (`resource_type = 'scout_task'`), the same boundary as every other assignable entity. Status ∈ `open` / `in_progress` / `done`; optional `priority`, `field_id`/`farm_id`/`zone_id` context, and `due_on` (drives the Today / This week grouping). `origin_type` (`manual` / `analysis_finding`) + `origin_capture_id` are reserved for a future worker that spawns a "go confirm" task from a detection — v1 is always `manual`.
+- **`captures.scout_task_id`** (`0027`) — links a capture back to the task it was collected against, so the portal can show "N captures collected" and the field PWA can flip a task `open → in_progress` on the first capture. Nullable FK (`on delete set null`).
+
 ### Telemetry, notifications, audit
 
 - **`telemetry_events`** — append-first. `recorded_at` (device clock) and `ingested_at` (server clock) are split because device clocks drift and offline replay is real. Indexes target the live device-detail and org-wide health views; historical analytics go to a downstream store later.

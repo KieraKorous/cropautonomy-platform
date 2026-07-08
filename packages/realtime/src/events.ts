@@ -411,10 +411,28 @@ export const teamAssignmentChangedV1 = envelopeBaseSchema.extend({
       "field",
       "device",
       "capture_session",
-      "capture"
+      "capture",
+      "scout_task"
     ]),
     resourceId: z.string().uuid(),
     changeType: z.enum(["assigned", "unassigned"])
+  })
+});
+
+// =============================================================================
+// Scout-task feed (channel: orgScoutTasks) — org-wide per-task fanout so the
+// scout list refreshes live. Thin, like capture.changed: identity + status +
+// why it changed. Consumers re-fetch the authoritative task(s).
+// =============================================================================
+
+export const scoutTaskChangedV1 = envelopeBaseSchema.extend({
+  type: z.literal("scout.task.changed"),
+  version: z.literal(1),
+  payload: z.object({
+    taskId: z.string().uuid(),
+    orgId: z.string().uuid(),
+    status: z.enum(["open", "in_progress", "done"]),
+    changeType: z.enum(["created", "updated", "status_changed", "deleted"])
   })
 });
 
@@ -453,7 +471,8 @@ const allSchemas = [
   scanCompletedV1,
   scanFailedV1,
   captureChangedV1,
-  teamAssignmentChangedV1
+  teamAssignmentChangedV1,
+  scoutTaskChangedV1
 ] as const;
 
 type AnyEventSchema = (typeof allSchemas)[number];
@@ -504,7 +523,8 @@ export type RealtimeEventInput =
   | Omit<z.infer<typeof scanCompletedV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string }
   | Omit<z.infer<typeof scanFailedV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string }
   | Omit<z.infer<typeof captureChangedV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string }
-  | Omit<z.infer<typeof teamAssignmentChangedV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string };
+  | Omit<z.infer<typeof teamAssignmentChangedV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string }
+  | Omit<z.infer<typeof scoutTaskChangedV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string };
 
 export function stampEnvelope(input: RealtimeEventInput): RealtimeEvent {
   return {

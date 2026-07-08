@@ -26,7 +26,8 @@ const EMPTY_ASSIGNMENTS: TeamAssignments = {
   field: [],
   device: [],
   capture_session: [],
-  capture: []
+  capture: [],
+  scout_task: []
 };
 
 // Two-word initials for the avatar fallback.

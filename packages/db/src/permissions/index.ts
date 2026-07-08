@@ -92,7 +92,13 @@ export type PermissionKey =
   | "teams.update"
   | "teams.delete"
   | "teams.assign"
-  | "team_members.manage";
+  | "team_members.manage"
+  // scout tasks
+  | "scout_tasks.read"
+  | "scout_tasks.create"
+  | "scout_tasks.update"
+  | "scout_tasks.complete"
+  | "scout_tasks.delete";
 
 export interface MembershipContext {
   /** Internal users.id uuid (not the Clerk user id). */

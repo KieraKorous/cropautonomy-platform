@@ -23,6 +23,9 @@ export interface QueuedCaptureRecord {
   // Team this capture is filed under. Optional — the server auto-defaults to
   // the tech's only team when absent.
   teamId?: string;
+  // Scout task this capture was collected against, if any. Passed to reserve so
+  // the server tags captures.scout_task_id and advances the task to in_progress.
+  scoutTaskId?: string;
   source: "field_capture_pwa";
   mediaType: "photo" | "burst_frame" | "video";
   // 'observation' (default) vs a saved live-feed recording.

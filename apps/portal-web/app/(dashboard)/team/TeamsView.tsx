@@ -28,6 +28,7 @@ function countSummary(counts: TeamAssignmentCounts): string {
   add(counts.device, "device", "devices");
   add(counts.capture_session, "live/recording", "live/recordings");
   add(counts.capture, "capture", "captures");
+  add(counts.scout_task, "scout task", "scout tasks");
   return parts.join(" · ");
 }
 

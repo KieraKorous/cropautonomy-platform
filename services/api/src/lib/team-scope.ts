@@ -19,7 +19,8 @@ export type TeamResourceType =
   | "field"
   | "device"
   | "capture_session"
-  | "capture";
+  | "capture"
+  | "scout_task";
 
 export interface TeamScope {
   /** Caller holds team_members.manage → sees every org row (admin/owner). */

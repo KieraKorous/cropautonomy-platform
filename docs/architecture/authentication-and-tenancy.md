@@ -207,14 +207,18 @@ Model:
 - **`team_memberships`** — user ↔ team, many-to-many. **No per-team role**: the
   org role governs what you can *do*; the team only governs *which rows* you see.
 - **`team_assignments`** — a single polymorphic table (`resource_type`,
-  `resource_id`) linking teams to the five assignable entity types: `farm`,
-  `field`, `device`, `capture_session` (Live + Recordings), `capture`.
-  Many-to-many and per-entity — assignment does **not** cascade implicitly (an
-  explicit `cascade: 'farm_descendants'` bulk action is offered for convenience).
+  `resource_id`) linking teams to the six assignable entity types: `farm`,
+  `field`, `device`, `capture_session` (Live + Recordings), `capture`, and
+  `scout_task` (added in `0027`). Many-to-many and per-entity — assignment does
+  **not** cascade implicitly (an explicit `cascade: 'farm_descendants'` bulk
+  action is offered for convenience).
 
 Permissions (system-role grants seeded in `0026`): `teams.read` (all roles),
 `teams.assign` (manager+), `teams.create` / `teams.update` / `teams.delete` /
-`team_members.manage` (admin + owner).
+`team_members.manage` (admin + owner). Scout-task grants (seeded in `0027`):
+`scout_tasks.read` (all roles), `scout_tasks.create` / `.update` / `.delete`
+(manager + admin + owner), `scout_tasks.complete` (also technician, so a scout
+can check off their own walk-out).
 
 **Visibility rule** (canonical). A caller may see an entity row R iff **(A)** the
 caller holds `team_members.manage` (admin/owner org-wide bypass), OR **(B)** R has

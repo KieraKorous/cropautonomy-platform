@@ -12,6 +12,8 @@ import {
 } from "@gaia/ui";
 import type { ReactNode } from "react";
 
+import Link from "next/link";
+
 import {
   getMe,
   listCaptures,
@@ -19,11 +21,13 @@ import {
   listFarms,
   listFields,
   listLiveSessions,
+  listScoutTasks,
   listZones,
   type CaptureSummary,
   type Device,
   type FarmSummary,
   type FieldSummary,
+  type ScoutTaskSummary,
   type ZoneSummary
 } from "../../lib/api";
 import { FieldMapExplorer } from "./overview/FieldMapExplorer";
@@ -48,7 +52,8 @@ export default async function Overview() {
     farmsResult,
     fieldsResult,
     zonesResult,
-    liveResult
+    liveResult,
+    scoutTasksResult
   ] = await Promise.all([
     currentUser(),
     getMe().catch(() => null),
@@ -57,7 +62,8 @@ export default async function Overview() {
     listFarms().catch(() => ({ farms: [] as FarmSummary[] })),
     listFields().catch(() => ({ fields: [] as FieldSummary[] })),
     listZones().catch(() => ({ zones: [] as ZoneSummary[] })),
-    listLiveSessions().catch(() => ({ sessions: [], orgId: "" }))
+    listLiveSessions().catch(() => ({ sessions: [], orgId: "" })),
+    listScoutTasks({ limit: 6 }).catch(() => null)
   ]);
 
   const orgId = me?.orgId ?? liveResult.orgId ?? "";
@@ -130,7 +136,10 @@ export default async function Overview() {
               orgId={orgId}
             />
           ) : null}
-          <ScoutListCard />
+          <ScoutListCard
+            tasks={scoutTasksResult?.tasks ?? []}
+            fieldNames={fieldNames}
+          />
         </div>
         <div className="flex flex-col gap-5">
           <FieldConditionsCard />
@@ -241,77 +250,106 @@ function MapSection({ mapData }: { mapData: FieldMapData }) {
   );
 }
 
-// --- Scout list (sample) --------------------------------------------------
+// --- Scout list -----------------------------------------------------------
+// The day's walk-outs, live from the scout_tasks table. Full board + create
+// lives at /scout-list; this is the at-a-glance top slice.
 
-const scoutTasks = [
-  {
-    id: "task-1",
-    assignee: { initials: "JM", color: "bg-secondary text-secondary-content" },
-    title: "Walk Doniphan F-22 and confirm the tar spot pattern.",
-    meta: "Joaquin Mendez · before four this afternoon",
-    due: { label: "Due today", tone: "accent" as const },
-    done: false
-  },
-  {
-    id: "task-2",
-    assignee: { initials: "TW", color: "bg-primary text-primary-content" },
-    title: "Clean up volunteer corn in the Nemaha F-04 headlands.",
-    meta: "Tomas Whitlow · anytime this week",
-    due: { label: "This week" },
-    done: false
-  },
-  {
-    id: "task-3",
-    assignee: { initials: "MK", color: "bg-accent text-accent-content" },
-    title: "Book a battery cell test for Drone 01 before Sunday.",
-    meta: "Maya Kapoor · ground service",
-    due: { label: "Done" },
-    done: true
-  }
+const SCOUT_AVATAR_COLORS = [
+  "bg-primary text-primary-content",
+  "bg-secondary text-secondary-content",
+  "bg-accent text-accent-content"
 ];
 
-function ScoutListCard() {
+function scoutInitials(name: string | null): string {
+  if (!name) return "—";
+  const parts = name.trim().split(/\s+/).slice(0, 2);
+  return parts.map((p) => p[0]?.toUpperCase() ?? "").join("") || "—";
+}
+
+function scoutAvatarColor(userId: string | null): string {
+  if (!userId) return "bg-base-content/10 text-base-content/60";
+  let hash = 0;
+  for (let i = 0; i < userId.length; i++)
+    hash = (hash + userId.charCodeAt(i)) % SCOUT_AVATAR_COLORS.length;
+  return SCOUT_AVATAR_COLORS[hash];
+}
+
+function scoutDue(task: ScoutTaskSummary): { label: string; tone?: "accent" | "primary" } {
+  if (task.status === "done") return { label: "Done" };
+  if (!task.dueOn) return { label: "No date" };
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = new Date(`${task.dueOn}T00:00:00`);
+  const days = Math.round((due.getTime() - today.getTime()) / 86_400_000);
+  if (days < 0) return { label: "Overdue", tone: "accent" };
+  if (days === 0) return { label: "Due today", tone: "accent" };
+  if (days <= 6) return { label: "This week", tone: "primary" };
+  return { label: "Later" };
+}
+
+function ScoutListCard({
+  tasks,
+  fieldNames
+}: {
+  tasks: ScoutTaskSummary[];
+  fieldNames: Record<string, string>;
+}) {
   return (
     <section className="overflow-hidden rounded-xl border border-base-content/10 bg-base-100">
       <header className="flex items-center justify-between border-b border-base-content/10 px-5 py-4">
-        <div className="flex items-center gap-2.5">
-          <h2 className="text-base font-semibold text-neutral">Today's scout list</h2>
-          <SampleTag />
-        </div>
-        <button className="text-sm font-medium text-primary" type="button">
-          + New task
-        </button>
+        <h2 className="text-base font-semibold text-neutral">Today's scout list</h2>
+        <Link className="text-sm font-medium text-primary" href="/scout-list">
+          View all
+        </Link>
       </header>
-      <ul>
-        {scoutTasks.map((task, idx) => (
-          <li
-            className={`flex items-center gap-3.5 px-5 py-3.5 ${
-              idx === scoutTasks.length - 1 ? "" : "border-b border-base-content/6"
-            }`}
-            key={task.id}
-          >
-            <ScoutCheckbox done={task.done} />
-            <span className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-xs font-semibold ${task.assignee.color}`}>
-              {task.assignee.initials}
-            </span>
-            <div className="flex min-w-0 flex-1 flex-col">
-              <span
-                className={`text-sm font-medium ${
-                  task.done ? "text-base-content/55 line-through" : "text-neutral"
+      {tasks.length === 0 ? (
+        <p className="px-5 py-6 text-sm text-base-content/55">Nothing on the board today.</p>
+      ) : (
+        <ul>
+          {tasks.map((task, idx) => {
+            const done = task.status === "done";
+            const due = scoutDue(task);
+            const meta = [
+              task.assignee?.displayName ?? "Unassigned",
+              task.fieldId ? fieldNames[task.fieldId] : null
+            ]
+              .filter(Boolean)
+              .join(" · ");
+            return (
+              <li
+                className={`flex items-center gap-3.5 px-5 py-3.5 ${
+                  idx === tasks.length - 1 ? "" : "border-b border-base-content/6"
                 }`}
+                key={task.id}
               >
-                {task.title}
-              </span>
-              <span className="text-xs text-base-content/55">{task.meta}</span>
-            </div>
-            {task.due.tone ? (
-              <StatusPill label={task.due.label} tone={task.due.tone} />
-            ) : (
-              <span className="text-xs text-base-content/55">{task.due.label}</span>
-            )}
-          </li>
-        ))}
-      </ul>
+                <ScoutCheckbox done={done} />
+                <span
+                  className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-xs font-semibold ${scoutAvatarColor(
+                    task.assignee?.userId ?? null
+                  )}`}
+                >
+                  {scoutInitials(task.assignee?.displayName ?? null)}
+                </span>
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <span
+                    className={`truncate text-sm font-medium ${
+                      done ? "text-base-content/55 line-through" : "text-neutral"
+                    }`}
+                  >
+                    {task.title}
+                  </span>
+                  {meta ? <span className="text-xs text-base-content/55">{meta}</span> : null}
+                </div>
+                {due.tone ? (
+                  <StatusPill label={due.label} tone={due.tone} />
+                ) : (
+                  <span className="text-xs text-base-content/55">{due.label}</span>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </section>
   );
 }

@@ -41,7 +41,10 @@ export const channels = {
   liveRequests: (orgId: string) => `org.${orgId}.live.requests`,
   // Org-wide team feed — every entity (un)assignment, so open list/Live views
   // re-fetch when a row's team set changes and its visibility may have shifted.
-  orgTeams: (orgId: string) => `org.${orgId}.teams`
+  orgTeams: (orgId: string) => `org.${orgId}.teams`,
+  // Org-wide scout-task feed — every task create/update/complete, so the scout
+  // list refreshes live without subscribing per task.
+  orgScoutTasks: (orgId: string) => `org.${orgId}.scout_tasks`
 } as const;
 
 export type ChannelName = string;

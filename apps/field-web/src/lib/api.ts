@@ -13,6 +13,9 @@ export interface ReserveCaptureRequest {
   // The paired device this capture came from, so the portal can attribute
   // activity (incl. capture-only sessions) to the device.
   deviceId?: string | null;
+  // The scout task this capture was collected against, if any. Tags the capture
+  // (captures.scout_task_id) and flips the task to in_progress on first capture.
+  scoutTaskId?: string | null;
   source: "field_capture_pwa";
   mediaType: "photo" | "burst_frame" | "video";
   // 'observation' (default) vs a saved live-feed recording.
@@ -130,6 +133,23 @@ export interface ListFieldsResponse {
   fields: FieldRecord[];
 }
 
+// A scout task assigned to the signed-in operator — a walk-out / check to do.
+export interface ScoutTaskRecord {
+  id: string;
+  title: string;
+  details: string | null;
+  status: "open" | "in_progress" | "done";
+  priority: "low" | "normal" | "high" | null;
+  fieldId: string | null;
+  farmId: string | null;
+  dueOn: string | null;
+  captureCount: number;
+}
+
+export interface MyScoutTasksResponse {
+  tasks: ScoutTaskRecord[];
+}
+
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   const url = `${env.apiBase}${path}`;
   const token = await getApiToken();
@@ -186,6 +206,18 @@ export const api = {
   listFields: () => call<ListFieldsResponse>("/v1/fields", { method: "GET" }),
   // The caller's own teams — drives the Field Capture team selector.
   getMyTeams: () => call<MyTeamsResponse>("/v1/me/teams", { method: "GET" }),
+  // The operator's own open/in-progress scout tasks — the "My tasks" list on the
+  // start screen. Tapping one scopes the session + tags its captures.
+  getMyScoutTasks: () =>
+    call<MyScoutTasksResponse>("/v1/scout-tasks?assignee=me&status=open,in_progress", {
+      method: "GET"
+    }),
+  // Change a scout task's status (the operator marking their own task done).
+  completeScoutTask: (id: string, status: "open" | "in_progress" | "done") =>
+    call<{ task: ScoutTaskRecord }>(`/v1/scout-tasks/${id}/complete`, {
+      method: "POST",
+      body: JSON.stringify({ status })
+    }),
   // Claim a pairing code minted by the portal — enrols this phone as a `phone`
   // device. Idempotent on (org, serial), so re-pairing the same phone is safe.
   claimPairing: (body: ClaimPairingRequest) =>

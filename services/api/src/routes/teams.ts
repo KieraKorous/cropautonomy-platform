@@ -15,7 +15,8 @@ const RESOURCE_TABLE: Record<TeamResourceType, string> = {
   field: "fields",
   device: "devices",
   capture_session: "capture_sessions",
-  capture: "captures"
+  capture: "captures",
+  scout_task: "scout_tasks"
 };
 const RESOURCE_TYPES = Object.keys(RESOURCE_TABLE) as TeamResourceType[];
 
@@ -38,7 +39,14 @@ const updateTeamSchema = z
 const addMemberSchema = z.object({ userId: z.string().uuid() });
 
 const assignmentItemSchema = z.object({
-  resourceType: z.enum(["farm", "field", "device", "capture_session", "capture"]),
+  resourceType: z.enum([
+    "farm",
+    "field",
+    "device",
+    "capture_session",
+    "capture",
+    "scout_task"
+  ]),
   resourceId: z.string().uuid()
 });
 
@@ -79,7 +87,7 @@ function toTeamSummary(
 }
 
 function emptyCounts(): Record<TeamResourceType, number> {
-  return { farm: 0, field: 0, device: 0, capture_session: 0, capture: 0 };
+  return { farm: 0, field: 0, device: 0, capture_session: 0, capture: 0, scout_task: 0 };
 }
 
 // Load a team scoped to the caller's org, or throw 404 across tenants.
@@ -338,7 +346,8 @@ const teamsRoutes: FastifyPluginAsync = async (app) => {
         field: [],
         device: [],
         capture_session: [],
-        capture: []
+        capture: [],
+        scout_task: []
       };
       for (const r of (assignmentsResult.data ?? []) as Array<{
         resource_type: TeamResourceType;

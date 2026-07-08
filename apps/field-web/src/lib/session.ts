@@ -11,6 +11,9 @@ export interface ActiveSession {
   fieldId?: string;
   cropTypeId?: string;
   teamId?: string;
+  // The scout task this session was started against, if any. Captures collected
+  // during the session are tagged with it (captures.scout_task_id).
+  scoutTaskId?: string;
   status: "live" | "paused";
 }
 
@@ -90,6 +93,7 @@ export function useActiveSession(): {
     fieldId?: string;
     cropTypeId?: string;
     teamId?: string;
+    scoutTaskId?: string;
     initialLocation?: { lat: number; lng: number; accuracyMeters?: number };
   }) => Promise<ActiveSession>;
   pause: () => Promise<void>;
@@ -115,6 +119,7 @@ export function useActiveSession(): {
       fieldId: input.fieldId,
       cropTypeId: input.cropTypeId,
       teamId: input.teamId,
+      scoutTaskId: input.scoutTaskId,
       status: "live"
     };
     await persistActiveSession(next);

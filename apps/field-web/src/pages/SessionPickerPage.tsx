@@ -2,7 +2,7 @@ import { Link, Navigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 
 import { ChromeLayout } from "../components/ChromeLayout.js";
-import { api, type TeamRecord } from "../lib/api.js";
+import { api, type ScoutTaskRecord, type TeamRecord } from "../lib/api.js";
 import { blobToThumbnailDataUrl, nowIso } from "../lib/capture-camera.js";
 import { enqueueCapture, getPairedDevice, type PairedDevice } from "../lib/db.js";
 import { useLiveRequest } from "../lib/liveRequest.js";
@@ -25,6 +25,9 @@ export function SessionPickerPage() {
   // read-only chip, that team is sent. 2+: a select (with a "No team" choice).
   const [teams, setTeams] = useState<TeamRecord[]>([]);
   const [teamId, setTeamId] = useState<string | undefined>(undefined);
+  // The operator's open/in-progress scout tasks — walk-outs to do. Tapping one
+  // starts a session scoped to that task so its captures link back.
+  const [tasks, setTasks] = useState<ScoutTaskRecord[]>([]);
   // Whether this device is configured to go live without watcher approval. Read
   // fresh on open so a portal toggle takes effect without re-pairing.
   const [autoLive, setAutoLive] = useState(false);
@@ -53,6 +56,22 @@ export function SessionPickerPage() {
       })
       .catch(() => {
         /* no picker if teams can't be read — server still auto-defaults */
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Load the operator's own open/in-progress scout tasks for the "My tasks" list.
+  useEffect(() => {
+    let alive = true;
+    void api
+      .getMyScoutTasks()
+      .then(({ tasks: mine }) => {
+        if (alive) setTasks(mine);
+      })
+      .catch(() => {
+        /* no task list if it can't be read — the plain start flow still works */
       });
     return () => {
       alive = false;
@@ -113,6 +132,41 @@ export function SessionPickerPage() {
       setError(err instanceof Error ? err.message : "Could not start session.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  // Start a session scoped to a scout task: pre-fill farm/field from the task and
+  // carry its id so captures collected during the session tag captures.scout_task_id
+  // (and flip the task to in_progress on the first one).
+  async function handleStartTask(task: ScoutTaskRecord) {
+    setBusy(true);
+    setError(null);
+    try {
+      const initialLocation = await tryGetLocation();
+      await start({
+        initialLocation,
+        teamId,
+        scoutTaskId: task.id,
+        farmId: task.farmId ?? undefined,
+        fieldId: task.fieldId ?? undefined
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not start session.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Mark a task done straight from the list (e.g. after a walk-out, back at the
+  // picker). Optimistically drops it from "My tasks".
+  async function handleCompleteTask(task: ScoutTaskRecord) {
+    setError(null);
+    setTasks((prev) => prev.filter((t) => t.id !== task.id));
+    try {
+      await api.completeScoutTask(task.id, "done");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update the task.");
+      setTasks((prev) => [task, ...prev]); // put it back on failure
     }
   }
 
@@ -211,6 +265,54 @@ export function SessionPickerPage() {
               ))}
             </select>
           </label>
+        )}
+
+        {tasks.length > 0 && (
+          <section className="flex flex-col gap-2">
+            <h3 className="text-sm font-semibold text-base-content/50">My tasks today</h3>
+            <ul className="flex flex-col gap-2">
+              {tasks.map((task) => (
+                <li
+                  key={task.id}
+                  className="flex items-start gap-2 rounded-md border border-base-content/15 bg-base-100 px-3 py-3 shadow-sm"
+                >
+                  <button
+                    type="button"
+                    onClick={() => void handleCompleteTask(task)}
+                    disabled={busy || uploading}
+                    aria-label="Mark task done"
+                    className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded border-[1.5px] border-base-content/30 transition-colors hover:border-success hover:bg-success/10 disabled:opacity-60"
+                  >
+                    <span className="sr-only">Done</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleStartTask(task)}
+                    disabled={busy || uploading}
+                    className="flex min-w-0 flex-1 items-start gap-3 text-left transition-opacity disabled:opacity-60"
+                  >
+                    <span
+                      className={`mt-0.5 h-2.5 w-2.5 flex-shrink-0 rounded-full ${
+                        task.priority === "high" ? "bg-error" : "bg-primary"
+                      }`}
+                      aria-hidden
+                    />
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <span className="text-sm font-medium text-neutral">{task.title}</span>
+                      <span className="mt-0.5 text-xs text-base-content/55">
+                        {task.status === "in_progress" ? "In progress · " : ""}
+                        {task.dueOn ? `Due ${task.dueOn}` : "No date"}
+                        {task.captureCount > 0
+                          ? ` · ${task.captureCount} ${task.captureCount === 1 ? "capture" : "captures"}`
+                          : ""}
+                      </span>
+                    </span>
+                    <span className="mt-0.5 text-xs font-semibold text-primary">Start →</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
         )}
 
         {error && (

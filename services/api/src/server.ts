@@ -18,6 +18,7 @@ import meRoutes from "./routes/me.js";
 import membersRoutes from "./routes/members.js";
 import metaRoutes from "./routes/meta.js";
 import realtimeRoutes from "./routes/realtime.js";
+import scoutTasksRoutes from "./routes/scout-tasks.js";
 import teamsRoutes from "./routes/teams.js";
 import zonesRoutes from "./routes/zones.js";
 
@@ -60,6 +61,7 @@ export async function buildServer(config: Config): Promise<FastifyInstance> {
   await app.register(fieldsRoutes);
   await app.register(zonesRoutes);
   await app.register(teamsRoutes);
+  await app.register(scoutTasksRoutes);
   await app.register(realtimeRoutes);
 
   // pg-boss producer: start during boot so the first enqueue doesn't pay

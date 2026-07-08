@@ -843,13 +843,14 @@ export function deleteFarm(id: string): Promise<{ farmId: string; deleted: boole
 // A sub-org access boundary. Members see/act only on their teams' entities;
 // admins/owners see everything. Mirrors services/api/src/routes/teams.ts.
 
-// The five assignable entity types (Recordings + Live are both capture_sessions).
+// The six assignable entity types (Recordings + Live are both capture_sessions).
 export type TeamResourceType =
   | "farm"
   | "field"
   | "device"
   | "capture_session"
-  | "capture";
+  | "capture"
+  | "scout_task";
 
 export type TeamAssignmentCounts = Record<TeamResourceType, number>;
 
@@ -1001,4 +1002,140 @@ export function listMembers(): Promise<ListMembersResponse> {
 // The caller's own team memberships.
 export function listMyTeams(): Promise<{ teams: MyTeam[] }> {
   return apiFetch<{ teams: MyTeam[] }>("/v1/me/teams");
+}
+
+// --- Scout tasks ----------------------------------------------------------
+// The day's field-work to-dos. Team-scoped like every other assignable entity
+// (assignee is the person responsible, not a visibility control). Mirrors
+// services/api/src/routes/scout-tasks.ts.
+
+export type ScoutTaskStatus = "open" | "in_progress" | "done";
+export type ScoutTaskPriority = "low" | "normal" | "high";
+
+// The assignee's resolved display fields, or null when the task is unassigned.
+export interface ScoutTaskAssignee {
+  userId: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+}
+
+export interface ScoutTaskSummary {
+  id: string;
+  title: string;
+  details: string | null;
+  status: ScoutTaskStatus;
+  priority: ScoutTaskPriority | null;
+  assignee: ScoutTaskAssignee | null;
+  farmId: string | null;
+  fieldId: string | null;
+  zoneId: string | null;
+  dueOn: string | null; // YYYY-MM-DD
+  originType: "manual" | "analysis_finding";
+  originCaptureId: string | null;
+  createdByUserId: string | null;
+  completedByUserId: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  teamIds: string[];
+  captureCount: number;
+}
+
+export interface ListScoutTasksResponse {
+  tasks: ScoutTaskSummary[];
+  limit: number;
+  offset: number;
+  // Whether the caller may edit which teams a task belongs to (teams.assign).
+  canAssignTeams: boolean;
+  // Whether the caller may create/edit/delete tasks (scout_tasks.create).
+  canManage: boolean;
+  // Whether the caller may change a task's status (scout_tasks.complete).
+  canComplete: boolean;
+}
+
+export interface ScoutTaskWrite {
+  title?: string;
+  details?: string | null;
+  priority?: ScoutTaskPriority | null;
+  assigneeUserId?: string | null;
+  farmId?: string | null;
+  fieldId?: string | null;
+  zoneId?: string | null;
+  dueOn?: string | null;
+}
+
+export function listScoutTasks(params: {
+  status?: string;
+  assignee?: string;
+  due?: "today" | "week" | "overdue";
+  teamId?: string;
+  limit?: number;
+  offset?: number;
+} = {}): Promise<ListScoutTasksResponse> {
+  const q = new URLSearchParams();
+  if (params.status) q.set("status", params.status);
+  if (params.assignee) q.set("assignee", params.assignee);
+  if (params.due) q.set("due", params.due);
+  if (params.teamId) q.set("teamId", params.teamId);
+  if (params.limit != null) q.set("limit", String(params.limit));
+  if (params.offset != null) q.set("offset", String(params.offset));
+  const query = q.toString();
+  return apiFetch<ListScoutTasksResponse>(
+    `/v1/scout-tasks${query ? `?${query}` : ""}`
+  );
+}
+
+export interface ScoutTaskDetailResponse {
+  task: ScoutTaskSummary;
+  captures: Array<{
+    id: string;
+    media_type: string;
+    status: string;
+    thumbnail_path: string | null;
+    captured_at: string;
+    captured_by_user_id: string | null;
+  }>;
+  canAssignTeams: boolean;
+}
+
+export function getScoutTask(id: string): Promise<ScoutTaskDetailResponse> {
+  return apiFetch<ScoutTaskDetailResponse>(`/v1/scout-tasks/${id}`);
+}
+
+export function createScoutTask(
+  body: ScoutTaskWrite & { title: string; teamIds?: string[] }
+): Promise<{ task: ScoutTaskSummary }> {
+  return apiFetch<{ task: ScoutTaskSummary }>("/v1/scout-tasks", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body)
+  });
+}
+
+export function updateScoutTask(
+  id: string,
+  patch: ScoutTaskWrite
+): Promise<{ task: ScoutTaskSummary }> {
+  return apiFetch<{ task: ScoutTaskSummary }>(`/v1/scout-tasks/${id}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(patch)
+  });
+}
+
+export function completeScoutTask(
+  id: string,
+  status: ScoutTaskStatus
+): Promise<{ task: ScoutTaskSummary }> {
+  return apiFetch<{ task: ScoutTaskSummary }>(`/v1/scout-tasks/${id}/complete`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ status })
+  });
+}
+
+export function deleteScoutTask(
+  id: string
+): Promise<{ scoutTaskId: string; deleted: boolean }> {
+  return apiFetch(`/v1/scout-tasks/${id}`, { method: "DELETE" });
 }

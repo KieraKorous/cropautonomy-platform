@@ -48,6 +48,9 @@ const reserveSchema = z.object({
   // including capture-only sessions, which carry no started_by_device_id — is
   // attributable to a device. See org_device_activity (migration 0022).
   deviceId: z.string().uuid().nullable().optional(),
+  // The scout task this capture was collected against. Tags captures.scout_task_id
+  // and advances the task open → in_progress on first capture. See 0027_scout_tasks.sql.
+  scoutTaskId: z.string().uuid().nullable().optional(),
   source: z.enum([
     "field_capture_pwa",
     "bulk_upload",
@@ -826,6 +829,7 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
           crop_type_id: body.cropTypeId ?? null,
           session_id: body.sessionId ?? null,
           source_device_id: body.deviceId ?? null,
+          scout_task_id: body.scoutTaskId ?? null,
           source: body.source,
           kind: body.kind ?? "observation",
           captured_by_user_id: caller.userId,
@@ -858,6 +862,34 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
         .update({ storage_path: path })
         .eq("id", captureId);
       if (pathErr) throw pathErr;
+
+      // First capture against a scout task advances it open → in_progress. Only
+      // touches 'open' tasks (never resurrects a done task); best-effort — a
+      // failure here must not fail the reservation the client is waiting on.
+      if (body.scoutTaskId) {
+        const { data: advanced, error: advErr } = await supabase
+          .from("scout_tasks")
+          .update({ status: "in_progress" })
+          .eq("id", body.scoutTaskId)
+          .eq("org_id", caller.orgId)
+          .eq("status", "open")
+          .select("id")
+          .maybeSingle();
+        if (advErr) {
+          request.log.warn({ err: advErr, scoutTaskId: body.scoutTaskId }, "scout task advance failed (non-fatal)");
+        } else if (advanced) {
+          await publishBestEffort(request.log, channels.orgScoutTasks(caller.orgId), {
+            type: "scout.task.changed",
+            version: 1,
+            payload: {
+              taskId: body.scoutTaskId,
+              orgId: caller.orgId,
+              status: "in_progress",
+              changeType: "status_changed"
+            }
+          });
+        }
+      }
 
       // File under the chosen team (membership already verified above).
       if (body.teamId) {
@@ -1326,6 +1358,8 @@ async function validateOrgScoped(
     });
   if (body.deviceId)
     checks.push({ table: "devices", id: body.deviceId, label: "device" });
+  if (body.scoutTaskId)
+    checks.push({ table: "scout_tasks", id: body.scoutTaskId, label: "scout task" });
   if (checks.length === 0) return;
 
   const supabase = getDb();
