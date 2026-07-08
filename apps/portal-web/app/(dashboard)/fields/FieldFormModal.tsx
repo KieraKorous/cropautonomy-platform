@@ -287,6 +287,36 @@ export function FieldFormModal({
             />
           </Field>
 
+          {/* Teams — which crews this field belongs to (edit only; a field can be
+              on several). Each toggle persists immediately. */}
+          {isEdit && canAssignTeams ? (
+            <>
+              <TeamMultiSelect
+                teams={teams}
+                selectedIds={teamIds}
+                busyId={teamBusy}
+                subjectLabel="field"
+                inline
+                onToggle={onToggleTeam}
+              />
+              {teamError ? <p className="text-sm text-error">{teamError}</p> : null}
+            </>
+          ) : null}
+
+          <Field label="Description">
+            <textarea
+              value={description}
+              maxLength={2000}
+              rows={2}
+              onChange={(e) => {
+                setDescription(e.target.value);
+                markDirty();
+              }}
+              placeholder="Optional notes about this field"
+              className={`${inputClass} resize-none`}
+            />
+          </Field>
+
           <Field label="Farm" required>
             <select
               value={farmId}
@@ -307,19 +337,6 @@ export function FieldFormModal({
             </select>
           </Field>
 
-          {open ? (
-            <BoundaryBoxEditor
-              value={box}
-              onChange={onBoxChange}
-              contextFeatures={contextFeatures}
-              initialView={initialView}
-              mapKey={fieldId ?? `new-${seededFarmId ?? "none"}`}
-              flyTo={flyTo}
-              label="Boundary"
-              tone="field"
-            />
-          ) : null}
-
           <Field label="Crop">
             <input
               type="text"
@@ -334,34 +351,18 @@ export function FieldFormModal({
             />
           </Field>
 
-          <Field label="Description">
-            <textarea
-              value={description}
-              maxLength={2000}
-              rows={2}
-              onChange={(e) => {
-                setDescription(e.target.value);
-                markDirty();
-              }}
-              placeholder="Optional notes about this field"
-              className={`${inputClass} resize-none`}
+          {/* Boundary map stays at the very bottom of the form. */}
+          {open ? (
+            <BoundaryBoxEditor
+              value={box}
+              onChange={onBoxChange}
+              contextFeatures={contextFeatures}
+              initialView={initialView}
+              mapKey={fieldId ?? `new-${seededFarmId ?? "none"}`}
+              flyTo={flyTo}
+              label="Boundary"
+              tone="field"
             />
-          </Field>
-
-          {/* Teams — which crews this field belongs to (edit only; a field can be
-              on several). Each toggle persists immediately. */}
-          {isEdit && canAssignTeams ? (
-            <>
-              <TeamMultiSelect
-                teams={teams}
-                selectedIds={teamIds}
-                busyId={teamBusy}
-                subjectLabel="field"
-                inline
-                onToggle={onToggleTeam}
-              />
-              {teamError ? <p className="text-sm text-error">{teamError}</p> : null}
-            </>
           ) : null}
 
           {error ? <p className="text-sm text-error">{error}</p> : null}

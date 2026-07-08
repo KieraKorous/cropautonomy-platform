@@ -353,6 +353,22 @@ export function FarmFormModal({
             />
           </Field>
 
+          {/* Teams — which crews this farm belongs to (edit only; a farm can be
+              on several). Each toggle persists immediately. */}
+          {isEdit && canAssignTeams ? (
+            <>
+              <TeamMultiSelect
+                teams={teams}
+                selectedIds={teamIds}
+                busyId={teamBusy}
+                subjectLabel="farm"
+                inline
+                onToggle={onToggleTeam}
+              />
+              {teamError ? <p className="text-sm text-error">{teamError}</p> : null}
+            </>
+          ) : null}
+
           <Field label="Description">
             <textarea
               value={description}
@@ -529,22 +545,6 @@ export function FarmFormModal({
               </p>
             )}
           </div>
-
-          {/* Teams — which crews this farm belongs to (edit only; a farm can be
-              on several). Each toggle persists immediately. */}
-          {isEdit && canAssignTeams ? (
-            <>
-              <TeamMultiSelect
-                teams={teams}
-                selectedIds={teamIds}
-                busyId={teamBusy}
-                subjectLabel="farm"
-                inline
-                onToggle={onToggleTeam}
-              />
-              {teamError ? <p className="text-sm text-error">{teamError}</p> : null}
-            </>
-          ) : null}
 
           {error ? <p className="text-sm text-error">{error}</p> : null}
         </div>
