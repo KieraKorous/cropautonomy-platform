@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ASSIGNABLE_ROLES, type OrgMember } from "../../../lib/api";
+import type { OrgMember } from "../../../lib/api";
 import { initials, RoleBadge, StatusBadge } from "./MembersView";
 import { removeMemberAction, updateMemberAction } from "./actions";
+import { ASSIGNABLE_ROLES } from "./roles";
 
 // Member detail: profile + role/status controls + removal. Opened for a selected
 // member; every mutation goes through a server action that revalidates /members,

@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ASSIGNABLE_ROLES } from "../../../lib/api";
 import { inviteMemberAction } from "./actions";
+import { ASSIGNABLE_ROLES } from "./roles";
 
 // Invite an email to the org at a chosen role. Native <dialog> (Escape +
 // backdrop close), driven by the `open` flag from MembersView. Submitting goes

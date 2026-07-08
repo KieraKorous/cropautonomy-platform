@@ -934,16 +934,6 @@ export interface ListInvitationsResponse {
   invitations: MemberInvitation[];
 }
 
-// The system roles a member can be assigned. `owner` is assignable only by an
-// owner (the API enforces it). Shared by the invite + role-change controls.
-export const ASSIGNABLE_ROLES: Array<{ key: string; name: string }> = [
-  { key: "owner", name: "Owner" },
-  { key: "admin", name: "Admin" },
-  { key: "manager", name: "Manager" },
-  { key: "technician", name: "Technician" },
-  { key: "viewer", name: "Viewer" }
-];
-
 // The caller's own teams (services/api GET /v1/me/teams) — drives the Team
 // filter control and the field app's capture team picker.
 export interface MyTeam {
