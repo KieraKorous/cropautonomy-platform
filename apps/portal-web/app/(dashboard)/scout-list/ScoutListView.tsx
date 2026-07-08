@@ -271,20 +271,31 @@ export function ScoutListView({
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <label className="flex items-center gap-2 text-xs text-base-content/55">
-          <span className="whitespace-nowrap font-medium">Sort by</span>
-          <select
-            value={sortMode}
-            onChange={(e) => setSortMode(e.target.value as SortMode)}
-            className="rounded-md border border-base-content/15 bg-base-100 px-2.5 py-1.5 text-sm text-neutral outline-none transition-colors focus:border-primary/50"
-          >
-            {(Object.keys(SORT_LABELS) as SortMode[]).map((m) => (
-              <option key={m} value={m}>
-                {SORT_LABELS[m]}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="flex items-center gap-2.5">
+          <span className="whitespace-nowrap text-xs font-medium text-base-content/55">
+            Sort by
+          </span>
+          <div className="inline-flex items-center gap-1 rounded-lg border border-base-content/10 bg-base-200/60 p-1">
+            {(Object.keys(SORT_LABELS) as SortMode[]).map((m) => {
+              const active = sortMode === m;
+              return (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setSortMode(m)}
+                  aria-pressed={active}
+                  className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                    active
+                      ? "bg-base-100 text-neutral shadow-sm"
+                      : "text-base-content/60 hover:text-neutral"
+                  }`}
+                >
+                  {SORT_LABELS[m]}
+                </button>
+              );
+            })}
+          </div>
+        </div>
         {canManage ? (
           <button
             type="button"
