@@ -22,7 +22,7 @@ export default async function MembersPage() {
 
   try {
     const membersResult = await listMembers();
-    members = membersResult.members;
+    members = membersResult.members ?? [];
     canInvite = membersResult.canInvite ?? false;
     canManageMembers = membersResult.canManageMembers ?? false;
 
@@ -32,7 +32,7 @@ export default async function MembersPage() {
       const inviteResult = await listMemberInvitations().catch(() => ({
         invitations: [] as MemberInvitation[]
       }));
-      invitations = inviteResult.invitations;
+      invitations = inviteResult.invitations ?? [];
     }
   } catch (err) {
     loadError =

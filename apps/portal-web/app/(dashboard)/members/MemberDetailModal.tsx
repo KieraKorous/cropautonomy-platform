@@ -59,16 +59,16 @@ export function MemberDetailModal({
   const manageable = canManageMembers && !member.isSelf;
   const suspended = member.status === "suspended";
 
-  async function run(fn: () => Promise<void>) {
+  async function run(fn: () => Promise<{ ok: true } | { ok: false; error: string }>) {
     if (busy) return;
     setBusy(true);
     setError(null);
-    try {
-      await fn();
+    const result = await fn();
+    if (result.ok) {
       onClose();
-    } catch (err) {
+    } else {
       setBusy(false);
-      setError(err instanceof Error ? err.message : "Something went wrong.");
+      setError(result.error);
     }
   }
 

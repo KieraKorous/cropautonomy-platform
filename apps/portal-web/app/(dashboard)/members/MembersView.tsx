@@ -205,11 +205,10 @@ function InvitationRow({
     if (busy) return;
     setBusy(true);
     setError(null);
-    try {
-      await revokeInvitationAction(invitation.id);
-    } catch (err) {
+    const result = await revokeInvitationAction(invitation.id);
+    if (!result.ok) {
       setBusy(false);
-      setError(err instanceof Error ? err.message : "Couldn't revoke.");
+      setError(result.error);
     }
   }
 

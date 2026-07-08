@@ -46,14 +46,13 @@ export function InviteMemberModal({
     }
     setSaving(true);
     setError(null);
-    try {
-      await inviteMemberAction(trimmed, role);
+    const result = await inviteMemberAction(trimmed, role);
+    setSaving(false);
+    if (result.ok) {
       setSent(trimmed);
       setEmail("");
-      setSaving(false);
-    } catch (err) {
-      setSaving(false);
-      setError(err instanceof Error ? err.message : "Couldn't send the invitation.");
+    } else {
+      setError(result.error);
     }
   }
 

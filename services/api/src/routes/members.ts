@@ -390,15 +390,25 @@ const membersRoutes: FastifyPluginAsync = async (app) => {
           createdAt: new Date(invitation.createdAt).toISOString()
         };
       } catch (err) {
-        // Clerk 422s a duplicate pending invitation / already-a-member email.
+        // Surface Clerk's real reason instead of an opaque 500. Clerk backend
+        // errors carry a `.status` and an `.errors[]` with human messages.
         const status = (err as { status?: number }).status;
-        if (status === 422 || status === 400) {
+        const clerkErrors = (err as {
+          errors?: Array<{ message?: string; longMessage?: string }>;
+        }).errors;
+        const detail = clerkErrors?.[0]?.longMessage || clerkErrors?.[0]?.message;
+        if (status === 422 || status === 409) {
           throw conflict(
             "members.invite_exists",
-            "That email already has a pending invitation or is already a member."
+            detail || "That email already has a pending invitation or is already a member."
           );
         }
-        throw err;
+        // 400 (bad redirect url / restricted), 401/403 (key/config), etc. —
+        // pass the actual message through so the operator can act on it.
+        throw badRequest(
+          "members.invite_failed",
+          detail || (err instanceof Error ? err.message : "Could not send the invitation.")
+        );
       }
     }
   );
