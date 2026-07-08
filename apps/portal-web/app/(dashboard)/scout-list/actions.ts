@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import {
+  ApiError,
   assignEntities,
   completeScoutTask,
   createScoutTask,
@@ -12,12 +13,30 @@ import {
   type ScoutTaskWrite
 } from "../../../lib/api";
 
+// A throw inside a server action is masked by Next in production ("An error
+// occurred in the Server Components render…"), which hides the real cause. So
+// actions that a form surfaces to the user RETURN the error instead of throwing.
+export type ActionResult = { ok: true } | { ok: false; error: string };
+
+function toActionError(err: unknown): string {
+  if (err instanceof ApiError) {
+    // Include the API's code + request id so a masked 500 is still traceable.
+    return err.code ? `${err.message} (${err.code})` : err.message;
+  }
+  return err instanceof Error ? err.message : "Unknown error.";
+}
+
 // Create a scout task, then refresh the board. Managers+ only (server-enforced).
 export async function createScoutTaskAction(
   body: ScoutTaskWrite & { title: string; teamIds?: string[] }
-): Promise<void> {
-  await createScoutTask(body);
+): Promise<ActionResult> {
+  try {
+    await createScoutTask(body);
+  } catch (err) {
+    return { ok: false, error: toActionError(err) };
+  }
   revalidatePath("/scout-list");
+  return { ok: true };
 }
 
 // Edit a task's body/assignee/field/due/priority, then refresh.

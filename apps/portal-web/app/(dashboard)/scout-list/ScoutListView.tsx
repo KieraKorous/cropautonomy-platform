@@ -581,20 +581,17 @@ function NewTaskForm({
     }
     setError(null);
     startTransition(async () => {
-      try {
-        await createScoutTaskAction({
-          title: title.trim(),
-          details: details.trim() || null,
-          assigneeUserId: assigneeUserId || null,
-          fieldId: fieldId || null,
-          dueOn: dueOn || null,
-          priority,
-          teamIds: teamIds.length ? teamIds : undefined
-        });
-        onDone();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Could not create the task.");
-      }
+      const result = await createScoutTaskAction({
+        title: title.trim(),
+        details: details.trim() || null,
+        assigneeUserId: assigneeUserId || null,
+        fieldId: fieldId || null,
+        dueOn: dueOn || null,
+        priority,
+        teamIds: teamIds.length ? teamIds : undefined
+      });
+      if (result.ok) onDone();
+      else setError(result.error);
     });
   }
 
