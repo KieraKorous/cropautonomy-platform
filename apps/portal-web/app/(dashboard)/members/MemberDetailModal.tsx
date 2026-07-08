@@ -83,17 +83,26 @@ export function MemberDetailModal({
   const availableTeams = teams.filter((t) => !onTeamIds.has(t.id));
 
   // Org-level action: close the modal + refresh the roster behind it.
+  // The catch matters: a server action can *reject* (an RSC/network failure
+  // invoking it, or an unexpected server throw) instead of returning
+  // {ok:false}. Without it, `busy` never clears and the button sticks on
+  // "Saving…" forever with no feedback. finally guarantees the reset.
   async function run(fn: () => Promise<ActionResult>) {
     if (busy) return;
     setBusy(true);
     setError(null);
-    const result = await fn();
-    if (result.ok) {
-      onClose();
-      router.refresh();
-    } else {
+    try {
+      const result = await fn();
+      if (result.ok) {
+        onClose();
+        router.refresh();
+      } else {
+        setError(result.error);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
       setBusy(false);
-      setError(result.error);
     }
   }
 
@@ -102,12 +111,17 @@ export function MemberDetailModal({
     if (busy) return;
     setBusy(true);
     setError(null);
-    const result = await fn();
-    setBusy(false);
-    if (result.ok) {
-      router.refresh();
-    } else {
-      setError(result.error);
+    try {
+      const result = await fn();
+      if (result.ok) {
+        router.refresh();
+      } else {
+        setError(result.error);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setBusy(false);
     }
   }
 

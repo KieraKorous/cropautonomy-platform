@@ -32,10 +32,19 @@ async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   headers.set("accept", "application/json");
   if (token) headers.set("authorization", `Bearer ${token}`);
 
+  // Timeout so a black-holed request surfaces as an error instead of hanging
+  // the caller forever (a stuck server action leaves the UI spinning with no
+  // feedback). These are all lightweight JSON calls; binary uploads use upload.ts.
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers,
-    cache: "no-store"
+    cache: "no-store",
+    signal: init.signal ?? AbortSignal.timeout(30_000)
+  }).catch((err: unknown) => {
+    if (err instanceof DOMException && err.name === "TimeoutError") {
+      throw new ApiError(504, "The request timed out. Try again.", "api.timeout");
+    }
+    throw err;
   });
 
   if (!response.ok) {
