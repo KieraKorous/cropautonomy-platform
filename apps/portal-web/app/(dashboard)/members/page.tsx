@@ -2,8 +2,10 @@ import {
   ApiError,
   listMemberInvitations,
   listMembers,
+  listTeams,
   type MemberInvitation,
-  type OrgMember
+  type OrgMember,
+  type TeamSummary
 } from "../../../lib/api";
 import { MembersView } from "./MembersView";
 
@@ -16,15 +18,26 @@ export const dynamic = "force-dynamic";
 export default async function MembersPage() {
   let members: OrgMember[] = [];
   let invitations: MemberInvitation[] = [];
+  let teams: TeamSummary[] = [];
   let canInvite = false;
   let canManageMembers = false;
+  let canManageTeams = false;
   let loadError: string | null = null;
 
   try {
-    const membersResult = await listMembers();
+    const [membersResult, teamsResult] = await Promise.all([
+      listMembers(),
+      // Teams feed the "add to team" picker in the member detail. Tolerate a
+      // failure so the roster still renders.
+      listTeams().catch(() => ({ teams: [] as TeamSummary[], canManage: false }))
+    ]);
     members = membersResult.members ?? [];
     canInvite = membersResult.canInvite ?? false;
     canManageMembers = membersResult.canManageMembers ?? false;
+    teams = teamsResult.teams ?? [];
+    // team_members.manage isn't in the teams response; managing members (admin/
+    // owner) is the same tier that manages team rosters, so reuse that flag.
+    canManageTeams = canManageMembers;
 
     // Pending invitations live in Clerk and only load for members.invite holders;
     // tolerate a failure so the roster still renders for everyone else.
@@ -65,8 +78,10 @@ export default async function MembersPage() {
         <MembersView
           members={members}
           invitations={invitations}
+          teams={teams}
           canInvite={canInvite}
           canManageMembers={canManageMembers}
+          canManageTeams={canManageTeams}
         />
       )}
     </div>

@@ -1,12 +1,15 @@
 "use server";
 
 import {
+  addMemberToTeam,
   ApiError,
   inviteMember,
   removeMember,
+  removeMemberFromTeam,
   revokeInvitation,
   updateMember,
-  type MemberInvitation
+  updateMemberTeamRole,
+  type InviteOutcome
 } from "../../../lib/api";
 
 // Server actions RETURN their outcome instead of throwing. In production Next
@@ -51,10 +54,11 @@ export async function removeMemberAction(userId: string): Promise<ActionResult> 
   }
 }
 
-// Invite an email at a role. Returns the invitation on success, or the real
-// failure reason (Clerk/config/permission) so the modal can show it.
+// Invite an email at a role. Returns the outcome (emailed a new invite, or added
+// an existing user directly) on success, or the real failure reason so the modal
+// can show it.
 export type InviteResult =
-  | { ok: true; invitation: MemberInvitation }
+  | { ok: true; outcome: InviteOutcome }
   | { ok: false; error: string };
 
 export async function inviteMemberAction(
@@ -62,8 +66,8 @@ export async function inviteMemberAction(
   roleKey: string
 ): Promise<InviteResult> {
   try {
-    const invitation = await inviteMember(email, roleKey);
-    return { ok: true, invitation };
+    const outcome = await inviteMember(email, roleKey);
+    return { ok: true, outcome };
   } catch (err) {
     return { ok: false, error: toError(err) };
   }
@@ -73,6 +77,47 @@ export async function inviteMemberAction(
 export async function revokeInvitationAction(id: string): Promise<ActionResult> {
   try {
     await revokeInvitation(id);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: toError(err) };
+  }
+}
+
+// Add a member to a team with a role.
+export async function addMemberToTeamAction(
+  userId: string,
+  teamId: string,
+  roleKey: string
+): Promise<ActionResult> {
+  try {
+    await addMemberToTeam(userId, teamId, roleKey);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: toError(err) };
+  }
+}
+
+// Change a member's role on a team.
+export async function updateMemberTeamRoleAction(
+  userId: string,
+  teamId: string,
+  roleKey: string
+): Promise<ActionResult> {
+  try {
+    await updateMemberTeamRole(userId, teamId, roleKey);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: toError(err) };
+  }
+}
+
+// Remove a member from a team.
+export async function removeMemberFromTeamAction(
+  userId: string,
+  teamId: string
+): Promise<ActionResult> {
+  try {
+    await removeMemberFromTeam(userId, teamId);
     return { ok: true };
   } catch (err) {
     return { ok: false, error: toError(err) };

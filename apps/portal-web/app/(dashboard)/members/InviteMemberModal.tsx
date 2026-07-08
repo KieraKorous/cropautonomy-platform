@@ -23,6 +23,9 @@ export function InviteMemberModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState<string | null>(null);
+  // "invited" = emailed a new person; "added" = existing user joined directly.
+  const [sentKind, setSentKind] = useState<"invited" | "added">("invited");
+  const defaultRole = "technician";
 
   useEffect(() => {
     const dialog = ref.current;
@@ -34,7 +37,7 @@ export function InviteMemberModal({
   useEffect(() => {
     if (!open) return;
     setEmail("");
-    setRole("technician");
+    setRole(defaultRole);
     setSaving(false);
     setError(null);
     setSent(null);
@@ -53,6 +56,7 @@ export function InviteMemberModal({
     setSaving(false);
     if (result.ok) {
       setSent(trimmed);
+      setSentKind(result.outcome.kind);
       setEmail("");
       router.refresh();
     } else {
@@ -123,7 +127,11 @@ export function InviteMemberModal({
           </label>
 
           {sent ? (
-            <p className="text-sm text-success">Invitation sent to {sent}.</p>
+            <p className="text-sm text-success">
+              {sentKind === "added"
+                ? `${sent} already has an account — added to your organization. Assign them to teams from their profile.`
+                : `Invitation sent to ${sent}.`}
+            </p>
           ) : null}
           {error ? <p className="text-sm text-error">{error}</p> : null}
         </div>

@@ -115,42 +115,81 @@ export class PermissionResolver {
   /**
    * Resolve the full permission set for (userId, orgId) and cache it on this
    * resolver. Returns null if the user has no active membership in the org.
+   *
+   * Effective permissions are the UNION of the member's org base role and every
+   * team role they hold in the org (team_memberships.role_id). Roles live at the
+   * team level now (see migration 0030); the org role remains the administrative
+   * base so owners/admins aren't team-gated. Union is additive — a member never
+   * loses a permission by being on a team.
    */
   async load(ctx: MembershipContext): Promise<ReadonlySet<string> | null> {
     const key = cacheKey(ctx);
     const cached = this.cache.get(key);
     if (cached) return cached;
 
-    // Single round trip: membership -> role_permissions -> permissions.
-    const { data, error } = await this.supabase
-      .from("organization_memberships")
-      .select(
-        `
-          status,
-          role:roles!inner (
-            id,
-            role_permissions (
-              permission:permissions!inner ( key )
+    const [orgResult, teamResult] = await Promise.all([
+      // Org base role -> role_permissions -> permissions. Gates access: no active
+      // org membership means no permissions at all.
+      this.supabase
+        .from("organization_memberships")
+        .select(
+          `
+            status,
+            role:roles!inner (
+              id,
+              role_permissions (
+                permission:permissions!inner ( key )
+              )
             )
-          )
-        `
-      )
-      .eq("org_id", ctx.orgId)
-      .eq("user_id", ctx.userId)
-      .eq("status", "active")
-      .maybeSingle();
+          `
+        )
+        .eq("org_id", ctx.orgId)
+        .eq("user_id", ctx.userId)
+        .eq("status", "active")
+        .maybeSingle(),
+      // Every team role the member holds in this org. Inner join on role skips
+      // memberships with no role_id (they still grant visibility, not permissions).
+      this.supabase
+        .from("team_memberships")
+        .select(
+          `
+            role:roles!inner (
+              role_permissions (
+                permission:permissions!inner ( key )
+              )
+            )
+          `
+        )
+        .eq("org_id", ctx.orgId)
+        .eq("user_id", ctx.userId)
+    ]);
 
-    if (error) throw error;
-    if (!data) return null;
+    if (orgResult.error) throw orgResult.error;
+    if (!orgResult.data) return null;
+    if (teamResult.error) throw teamResult.error;
 
-    const permissions = new Set<string>();
     // The joined shape is awkward to type without generated types in place;
     // narrow it here so callers see clean strings.
-    const rolePermissions = (data as unknown as {
-      role: { role_permissions: Array<{ permission: { key: string } }> };
-    }).role.role_permissions;
-    for (const rp of rolePermissions ?? []) {
-      if (rp?.permission?.key) permissions.add(rp.permission.key);
+    const permissions = new Set<string>();
+    const addPerms = (
+      rolePermissions: Array<{ permission: { key: string } }> | null | undefined
+    ) => {
+      for (const rp of rolePermissions ?? []) {
+        if (rp?.permission?.key) permissions.add(rp.permission.key);
+      }
+    };
+
+    addPerms(
+      (orgResult.data as unknown as {
+        role: { role_permissions: Array<{ permission: { key: string } }> };
+      }).role.role_permissions
+    );
+
+    const teamRows = (teamResult.data ?? []) as unknown as Array<{
+      role: { role_permissions: Array<{ permission: { key: string } }> } | null;
+    }>;
+    for (const row of teamRows) {
+      addPerms(row.role?.role_permissions);
     }
 
     this.cache.set(key, permissions);

@@ -36,6 +36,13 @@ const updateMemberSchema = z
     message: "Provide roleKey and/or status."
   });
 
+// Per-team role assignment (member's side).
+const teamRoleSchema = z.object({ roleKey: z.enum(SYSTEM_ROLE_KEYS) });
+const addTeamRoleSchema = z.object({
+  teamId: z.string().uuid(),
+  roleKey: z.enum(SYSTEM_ROLE_KEYS)
+});
+
 interface MemberRow {
   id: string;
   user_id: string;
@@ -125,7 +132,9 @@ const membersRoutes: FastifyPluginAsync = async (app) => {
         .in("status", ["active", "suspended"]),
       supabase
         .from("team_memberships")
-        .select("user_id, team:teams!inner ( id, name, color )")
+        .select(
+          "user_id, role:roles ( key, name ), team:teams!inner ( id, name, color )"
+        )
         .eq("org_id", caller.orgId),
       request.permissions!.hasPermission(ctx, "members.invite"),
       request.permissions!.hasPermission(ctx, "members.update"),
@@ -134,15 +143,29 @@ const membersRoutes: FastifyPluginAsync = async (app) => {
     if (membersResult.error) throw membersResult.error;
     if (teamRowsResult.error) throw teamRowsResult.error;
 
-    // Group each member's teams by user for the detail view.
-    const teamsByUser = new Map<string, Array<{ id: string; name: string; color: string | null }>>();
+    // Group each member's teams (with their per-team role) by user for the detail view.
+    type MemberTeam = {
+      id: string;
+      name: string;
+      color: string | null;
+      roleKey: string | null;
+      roleName: string | null;
+    };
+    const teamsByUser = new Map<string, MemberTeam[]>();
     for (const r of (teamRowsResult.data ?? []) as unknown as Array<{
       user_id: string;
+      role: { key: string; name: string } | null;
       team: { id: string; name: string; color: string | null } | null;
     }>) {
       if (!r.team) continue;
       const list = teamsByUser.get(r.user_id) ?? [];
-      list.push(r.team);
+      list.push({
+        id: r.team.id,
+        name: r.team.name,
+        color: r.team.color,
+        roleKey: r.role?.key ?? null,
+        roleName: r.role?.name ?? null
+      });
       teamsByUser.set(r.user_id, list);
     }
 
@@ -366,6 +389,83 @@ const membersRoutes: FastifyPluginAsync = async (app) => {
         }
       }
 
+      // An invite is to JOIN THIS ORG, not just to create a site account. If the
+      // email already belongs to a platform user (Clerk would reject it as
+      // "taken"), add them to this org directly instead of emailing them.
+      const { data: existing, error: existingErr } = await supabase
+        .from("users")
+        .select("id, clerk_user_id, active_organization_id")
+        .eq("email", parsed.data.email)
+        .maybeSingle();
+      if (existingErr) throw existingErr;
+
+      if (existing) {
+        const existingUser = existing as {
+          id: string;
+          clerk_user_id: string | null;
+          active_organization_id: string | null;
+        };
+        const roleId = await systemRoleId(supabase, parsed.data.roleKey);
+
+        // Reactivate a prior membership, or create a fresh one. Already-active →
+        // conflict so the caller knows there's nothing to do.
+        const { data: prior, error: priorErr } = await supabase
+          .from("organization_memberships")
+          .select("id, status")
+          .eq("org_id", caller.orgId)
+          .eq("user_id", existingUser.id)
+          .maybeSingle();
+        if (priorErr) throw priorErr;
+
+        if (prior && (prior as { status: string }).status === "active") {
+          throw conflict("members.already_member", "That user is already a member of this org.");
+        }
+        if (prior) {
+          const { error: reErr } = await supabase
+            .from("organization_memberships")
+            .update({ status: "active", role_id: roleId })
+            .eq("id", (prior as { id: string }).id);
+          if (reErr) throw reErr;
+        } else {
+          const { error: insErr } = await supabase.from("organization_memberships").insert({
+            org_id: caller.orgId,
+            user_id: existingUser.id,
+            role_id: roleId,
+            status: "active",
+            invited_by_user_id: caller.userId,
+            joined_at: new Date().toISOString()
+          });
+          if (insErr) throw insErr;
+        }
+
+        // Give them an active org if they have none yet, so their next request
+        // lands in this org. Don't clobber an existing selection.
+        if (!existingUser.active_organization_id) {
+          const { error: aoErr } = await supabase
+            .from("users")
+            .update({ active_organization_id: caller.orgId })
+            .eq("id", existingUser.id);
+          if (aoErr) throw aoErr;
+          if (existingUser.clerk_user_id) {
+            try {
+              await clerk.users.updateUserMetadata(existingUser.clerk_user_id, {
+                publicMetadata: { active_org_id: caller.orgId, platform_user_id: existingUser.id }
+              });
+            } catch (err) {
+              request.log.warn({ err }, "members: failed to set Clerk active_org_id for added user");
+            }
+          }
+        }
+
+        reply.status(201);
+        return {
+          kind: "added" as const,
+          userId: existingUser.id,
+          email: parsed.data.email,
+          roleKey: parsed.data.roleKey
+        };
+      }
+
       const redirectUrl = process.env.PORTAL_BASE_URL
         ? `${process.env.PORTAL_BASE_URL.replace(/\/$/, "")}/sign-up`
         : undefined;
@@ -383,6 +483,7 @@ const membersRoutes: FastifyPluginAsync = async (app) => {
 
         reply.status(201);
         return {
+          kind: "invited" as const,
           id: invitation.id,
           email: invitation.emailAddress,
           roleKey: parsed.data.roleKey,
@@ -442,6 +543,146 @@ const membersRoutes: FastifyPluginAsync = async (app) => {
 
       await clerk.invitations.revokeInvitation(id);
       return { id, revoked: true };
+    }
+  );
+
+  // --- Per-team roles -------------------------------------------------------
+  // A member's role is assigned per team. These endpoints manage the member's
+  // team memberships (with a role each) from the member's side. Gated on
+  // team_members.manage (admin/owner), same as the team-page roster controls.
+
+  // Confirm the team exists in the caller's org and the target user is an active
+  // member of that org — both required before touching team_memberships.
+  async function assertTeamAndMember(orgId: string, teamId: string, userId: string) {
+    const supabase = getDb();
+    const { data: team, error: teamErr } = await supabase
+      .from("teams")
+      .select("id, org_id")
+      .eq("id", teamId)
+      .maybeSingle();
+    if (teamErr) throw teamErr;
+    if (!team || (team as { org_id: string }).org_id !== orgId) {
+      throw notFound("members.team_not_found", "Team not found in this organization.");
+    }
+    const { data: membership, error: memErr } = await supabase
+      .from("organization_memberships")
+      .select("id")
+      .eq("org_id", orgId)
+      .eq("user_id", userId)
+      .eq("status", "active")
+      .maybeSingle();
+    if (memErr) throw memErr;
+    if (!membership) {
+      throw badRequest("members.not_org_member", "That user is not an active member of this org.");
+    }
+  }
+
+  // POST /v1/members/:userId/teams — add the member to a team with a role.
+  app.post<{ Params: { userId: string } }>(
+    "/v1/members/:userId/teams",
+    { preHandler: app.requireAuth("team_members.manage") },
+    async (request, reply) => {
+      const { userId } = request.params;
+      if (!UUID_RE.test(userId)) throw badRequest("members.invalid_id", "Invalid user id.");
+      const parsed = addTeamRoleSchema.safeParse(request.body);
+      if (!parsed.success) {
+        throw badRequest("members.invalid_input", "Invalid team assignment.", {
+          issues: parsed.error.issues
+        });
+      }
+      const caller = request.auth!;
+      const supabase = getDb();
+
+      await assertTeamAndMember(caller.orgId, parsed.data.teamId, userId);
+      // Only an owner can grant the owner role — otherwise an admin could
+      // escalate to owner-level permissions via the team-role union.
+      if (parsed.data.roleKey === "owner") {
+        const callerKey = await callerRoleKey(supabase, caller.orgId, caller.userId);
+        if (callerKey !== "owner") {
+          throw forbidden("members.owner_only", "Only an owner can assign the owner role.");
+        }
+      }
+      const roleId = await systemRoleId(supabase, parsed.data.roleKey);
+
+      // Upsert on the (team_id, user_id) unique constraint so re-adding just
+      // updates the role rather than erroring.
+      const { error: upErr } = await supabase
+        .from("team_memberships")
+        .upsert(
+          {
+            team_id: parsed.data.teamId,
+            user_id: userId,
+            org_id: caller.orgId,
+            role_id: roleId,
+            added_by_user_id: caller.userId
+          },
+          { onConflict: "team_id,user_id" }
+        );
+      if (upErr) throw upErr;
+
+      reply.status(201);
+      return { userId, teamId: parsed.data.teamId, roleKey: parsed.data.roleKey, added: true };
+    }
+  );
+
+  // PATCH /v1/members/:userId/teams/:teamId — change the member's role on a team.
+  app.patch<{ Params: { userId: string; teamId: string } }>(
+    "/v1/members/:userId/teams/:teamId",
+    { preHandler: app.requireAuth("team_members.manage") },
+    async (request, _reply) => {
+      const { userId, teamId } = request.params;
+      if (!UUID_RE.test(userId) || !UUID_RE.test(teamId)) {
+        throw badRequest("members.invalid_id", "Invalid id.");
+      }
+      const parsed = teamRoleSchema.safeParse(request.body);
+      if (!parsed.success) {
+        throw badRequest("members.invalid_input", "Invalid role.", { issues: parsed.error.issues });
+      }
+      const caller = request.auth!;
+      const supabase = getDb();
+
+      await assertTeamAndMember(caller.orgId, teamId, userId);
+      if (parsed.data.roleKey === "owner") {
+        const callerKey = await callerRoleKey(supabase, caller.orgId, caller.userId);
+        if (callerKey !== "owner") {
+          throw forbidden("members.owner_only", "Only an owner can assign the owner role.");
+        }
+      }
+      const roleId = await systemRoleId(supabase, parsed.data.roleKey);
+
+      const { error: updErr } = await supabase
+        .from("team_memberships")
+        .update({ role_id: roleId })
+        .eq("org_id", caller.orgId)
+        .eq("team_id", teamId)
+        .eq("user_id", userId);
+      if (updErr) throw updErr;
+
+      return { userId, teamId, roleKey: parsed.data.roleKey, updated: true };
+    }
+  );
+
+  // DELETE /v1/members/:userId/teams/:teamId — remove the member from a team.
+  app.delete<{ Params: { userId: string; teamId: string } }>(
+    "/v1/members/:userId/teams/:teamId",
+    { preHandler: app.requireAuth("team_members.manage") },
+    async (request, _reply) => {
+      const { userId, teamId } = request.params;
+      if (!UUID_RE.test(userId) || !UUID_RE.test(teamId)) {
+        throw badRequest("members.invalid_id", "Invalid id.");
+      }
+      const caller = request.auth!;
+      const supabase = getDb();
+
+      const { error: delErr } = await supabase
+        .from("team_memberships")
+        .delete()
+        .eq("org_id", caller.orgId)
+        .eq("team_id", teamId)
+        .eq("user_id", userId);
+      if (delErr) throw delErr;
+
+      return { userId, teamId, removed: true };
     }
   );
 };

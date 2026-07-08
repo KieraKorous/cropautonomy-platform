@@ -12,3 +12,7 @@ export const ASSIGNABLE_ROLES: Array<{ key: string; name: string }> = [
   { key: "technician", name: "Field Scout" },
   { key: "viewer", name: "Observer" }
 ];
+
+// Roles assignable on a team. Owner is an org-level concept (billing, deleting
+// the org), so it's not offered as a per-team role.
+export const TEAM_ROLES = ASSIGNABLE_ROLES.filter((r) => r.key !== "owner");

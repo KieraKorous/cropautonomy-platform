@@ -909,7 +909,16 @@ export interface OrgMember {
   joinedAt: string | null;
   isSelf: boolean;
   isOwner: boolean;
-  teams: Array<{ id: string; name: string; color: string | null }>;
+  teams: MemberTeam[];
+}
+
+// A team the member belongs to, with the role they hold ON that team.
+export interface MemberTeam {
+  id: string;
+  name: string;
+  color: string | null;
+  roleKey: string | null;
+  roleName: string | null;
 }
 
 export interface ListMembersResponse {
@@ -928,6 +937,13 @@ export interface MemberInvitation {
   status: string;
   createdAt: string;
 }
+
+// POST /v1/members/invitations either emails a new person a Clerk invitation, or
+// (when the email already belongs to a platform user) adds them to the org
+// directly — the `kind` discriminates.
+export type InviteOutcome =
+  | ({ kind: "invited" } & MemberInvitation)
+  | { kind: "added"; userId: string; email: string; roleKey: string };
 
 export interface ListInvitationsResponse {
   orgId: string;
@@ -1046,9 +1062,10 @@ export function listMemberInvitations(): Promise<ListInvitationsResponse> {
   return apiFetch<ListInvitationsResponse>("/v1/members/invitations");
 }
 
-// Invite an email to the org at a given role. Requires members.invite.
-export function inviteMember(email: string, roleKey: string): Promise<MemberInvitation> {
-  return apiFetch<MemberInvitation>("/v1/members/invitations", {
+// Invite an email to the org at a given role. Requires members.invite. Emails a
+// Clerk invitation, or adds an existing platform user to the org directly.
+export function inviteMember(email: string, roleKey: string): Promise<InviteOutcome> {
+  return apiFetch<InviteOutcome>("/v1/members/invitations", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ email, roleKey })
@@ -1058,6 +1075,39 @@ export function inviteMember(email: string, roleKey: string): Promise<MemberInvi
 // Revoke a pending invitation. Requires members.invite.
 export function revokeInvitation(id: string): Promise<{ id: string; revoked: boolean }> {
   return apiFetch(`/v1/members/invitations/${id}`, { method: "DELETE" });
+}
+
+// --- Per-team roles (member side) -----------------------------------------
+// Add/change/remove a member's role on a team. Requires team_members.manage.
+export function addMemberToTeam(
+  userId: string,
+  teamId: string,
+  roleKey: string
+): Promise<{ userId: string; teamId: string; roleKey: string; added: boolean }> {
+  return apiFetch(`/v1/members/${userId}/teams`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ teamId, roleKey })
+  });
+}
+
+export function updateMemberTeamRole(
+  userId: string,
+  teamId: string,
+  roleKey: string
+): Promise<{ userId: string; teamId: string; roleKey: string; updated: boolean }> {
+  return apiFetch(`/v1/members/${userId}/teams/${teamId}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ roleKey })
+  });
+}
+
+export function removeMemberFromTeam(
+  userId: string,
+  teamId: string
+): Promise<{ userId: string; teamId: string; removed: boolean }> {
+  return apiFetch(`/v1/members/${userId}/teams/${teamId}`, { method: "DELETE" });
 }
 
 // The caller's own team memberships.

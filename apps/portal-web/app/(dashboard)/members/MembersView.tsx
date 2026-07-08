@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { PlusIcon, TrashIcon, UsersIcon } from "@gaia/ui";
-import type { MemberInvitation, OrgMember } from "../../../lib/api";
+import type { MemberInvitation, OrgMember, TeamSummary } from "../../../lib/api";
 import { MemberDetailModal } from "./MemberDetailModal";
 import { InviteMemberModal } from "./InviteMemberModal";
 import { revokeInvitationAction } from "./actions";
@@ -37,13 +37,17 @@ export function initials(m: { displayName: string | null; email: string | null }
 export function MembersView({
   members,
   invitations,
+  teams,
   canInvite,
-  canManageMembers
+  canManageMembers,
+  canManageTeams
 }: {
   members: OrgMember[];
   invitations: MemberInvitation[];
+  teams: TeamSummary[];
   canInvite: boolean;
   canManageMembers: boolean;
+  canManageTeams: boolean;
 }) {
   const [viewing, setViewing] = useState<string | null>(null);
   const [inviting, setInviting] = useState(false);
@@ -96,7 +100,9 @@ export function MembersView({
       <MemberDetailModal
         open={viewingMember !== null}
         member={viewingMember}
+        teams={teams}
         canManageMembers={canManageMembers}
+        canManageTeams={canManageTeams}
         onClose={() => setViewing(null)}
       />
 

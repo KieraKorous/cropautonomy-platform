@@ -2,25 +2,39 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { OrgMember } from "../../../lib/api";
+import { TrashIcon } from "@gaia/ui";
+import type { OrgMember, TeamSummary } from "../../../lib/api";
 import { initials, RoleBadge, StatusBadge } from "./MembersView";
-import { removeMemberAction, updateMemberAction } from "./actions";
-import { ASSIGNABLE_ROLES } from "./roles";
+import {
+  addMemberToTeamAction,
+  removeMemberAction,
+  removeMemberFromTeamAction,
+  updateMemberAction,
+  updateMemberTeamRoleAction
+} from "./actions";
+import { ASSIGNABLE_ROLES, TEAM_ROLES } from "./roles";
 
-// Member detail: profile + role/status controls + removal. Opened for a selected
-// member; on a successful mutation we close and router.refresh() so the roster
-// behind the modal updates. Guards (can't touch yourself, keep one owner) are
-// enforced by the API — the modal surfaces those errors and also hides the
-// controls for your own row.
+type ActionResult = { ok: true } | { ok: false; error: string };
+
+// Member detail: profile, org role/status/removal, and per-team roles. Roles are
+// assigned per team — a member can be an Agronomist on one team and a Field Scout
+// on another; their effective permissions are the union. Org-level actions close
+// the modal; team edits keep it open and router.refresh() so the updated roster
+// (and this member's teams) flow back in. Guards (self, last owner, owner-only)
+// are enforced by the API and surfaced here.
 export function MemberDetailModal({
   open,
   member,
+  teams,
   canManageMembers,
+  canManageTeams,
   onClose
 }: {
   open: boolean;
   member: OrgMember | null;
+  teams: TeamSummary[];
   canManageMembers: boolean;
+  canManageTeams: boolean;
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -29,6 +43,8 @@ export function MemberDetailModal({
   const [error, setError] = useState<string | null>(null);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
   const [role, setRole] = useState<string>("");
+  const [addTeamId, setAddTeamId] = useState<string>("");
+  const [addTeamRole, setAddTeamRole] = useState<string>("technician");
 
   useEffect(() => {
     const dialog = ref.current;
@@ -44,6 +60,8 @@ export function MemberDetailModal({
     setError(null);
     setConfirmingRemove(false);
     setRole(member?.roleKey ?? "");
+    setAddTeamId("");
+    setAddTeamRole("technician");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, memberId]);
 
@@ -60,8 +78,12 @@ export function MemberDetailModal({
   // Own row: you can view but not manage yourself here (prevents self-lockout).
   const manageable = canManageMembers && !member.isSelf;
   const suspended = member.status === "suspended";
+  const memberTeams = member.teams;
+  const onTeamIds = new Set(memberTeams.map((t) => t.id));
+  const availableTeams = teams.filter((t) => !onTeamIds.has(t.id));
 
-  async function run(fn: () => Promise<{ ok: true } | { ok: false; error: string }>) {
+  // Org-level action: close the modal + refresh the roster behind it.
+  async function run(fn: () => Promise<ActionResult>) {
     if (busy) return;
     setBusy(true);
     setError(null);
@@ -71,6 +93,20 @@ export function MemberDetailModal({
       router.refresh();
     } else {
       setBusy(false);
+      setError(result.error);
+    }
+  }
+
+  // Team-level edit: stay open, refresh so this member's teams update in place.
+  async function runStay(fn: () => Promise<ActionResult>) {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    const result = await fn();
+    setBusy(false);
+    if (result.ok) {
+      router.refresh();
+    } else {
       setError(result.error);
     }
   }
@@ -125,32 +161,10 @@ export function MemberDetailModal({
             ) : null}
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium text-base-content/65">Teams</span>
-            {member.teams.length > 0 ? (
-              <div className="flex flex-wrap gap-1.5">
-                {member.teams.map((t) => (
-                  <span
-                    key={t.id}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-base-content/10 px-2 py-0.5 text-xs text-base-content/70"
-                  >
-                    <span
-                      className="h-2 w-2 rounded-full"
-                      style={{ backgroundColor: t.color ?? "#6b7280" }}
-                    />
-                    {t.name}
-                  </span>
-                ))}
-              </div>
-            ) : (
-              <span className="text-sm italic text-base-content/40">On no teams</span>
-            )}
-          </div>
-
           {manageable ? (
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-base-content/65" htmlFor="member-role">
-                Role
+                Base role <span className="text-base-content/40">(org-wide)</span>
               </label>
               <div className="flex items-center gap-2">
                 <select
@@ -177,6 +191,113 @@ export function MemberDetailModal({
               </div>
             </div>
           ) : null}
+
+          {/* Teams + per-team role */}
+          <div className="flex flex-col gap-2">
+            <span className="text-xs font-medium text-base-content/65">Teams &amp; roles</span>
+
+            {memberTeams.length > 0 ? (
+              <ul className="flex flex-col gap-1.5">
+                {memberTeams.map((t) => (
+                  <li
+                    key={t.id}
+                    className="flex items-center gap-2 rounded-md border border-base-content/10 px-2.5 py-1.5"
+                  >
+                    <span
+                      className="h-2.5 w-2.5 flex-shrink-0 rounded-full"
+                      style={{ backgroundColor: t.color ?? "#6b7280" }}
+                    />
+                    <span className="min-w-0 flex-1 truncate text-sm text-neutral" title={t.name}>
+                      {t.name}
+                    </span>
+                    {canManageTeams ? (
+                      <>
+                        <select
+                          value={t.roleKey ?? ""}
+                          onChange={(e) =>
+                            runStay(() =>
+                              updateMemberTeamRoleAction(member.userId, t.id, e.target.value)
+                            )
+                          }
+                          disabled={busy}
+                          className="rounded-md border border-base-content/15 bg-base-100 px-2 py-1 text-xs text-neutral outline-none transition-colors focus:border-primary/50"
+                        >
+                          {t.roleKey ? null : <option value="">No role</option>}
+                          {TEAM_ROLES.map((r) => (
+                            <option key={r.key} value={r.key}>
+                              {r.name}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            runStay(() => removeMemberFromTeamAction(member.userId, t.id))
+                          }
+                          disabled={busy}
+                          aria-label={`Remove from ${t.name}`}
+                          className="rounded-md p-1 text-base-content/45 transition-colors hover:bg-error/10 hover:text-error disabled:opacity-50"
+                        >
+                          <TrashIcon size={14} />
+                        </button>
+                      </>
+                    ) : (
+                      <span className="rounded-full bg-base-content/[0.06] px-2 py-0.5 text-xs text-base-content/70">
+                        {t.roleName ?? "No role"}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <span className="text-sm italic text-base-content/40">On no teams</span>
+            )}
+
+            {canManageTeams && availableTeams.length > 0 ? (
+              <div className="mt-1 flex items-center gap-2">
+                <select
+                  value={addTeamId}
+                  onChange={(e) => setAddTeamId(e.target.value)}
+                  disabled={busy}
+                  className="min-w-0 flex-1 rounded-md border border-base-content/15 bg-base-100 px-2 py-1.5 text-sm text-neutral outline-none transition-colors focus:border-primary/50"
+                >
+                  <option value="">Add to team…</option>
+                  {availableTeams.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={addTeamRole}
+                  onChange={(e) => setAddTeamRole(e.target.value)}
+                  disabled={busy || !addTeamId}
+                  className="rounded-md border border-base-content/15 bg-base-100 px-2 py-1.5 text-sm text-neutral outline-none transition-colors focus:border-primary/50"
+                >
+                  {TEAM_ROLES.map((r) => (
+                    <option key={r.key} value={r.key}>
+                      {r.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!addTeamId) return;
+                    const teamId = addTeamId;
+                    setAddTeamId("");
+                    void runStay(() =>
+                      addMemberToTeamAction(member.userId, teamId, addTeamRole)
+                    );
+                  }}
+                  disabled={busy || !addTeamId}
+                  className="rounded-md bg-primary px-3 py-1.5 text-sm font-semibold text-primary-content transition-colors hover:bg-primary/90 disabled:opacity-40"
+                >
+                  Add
+                </button>
+              </div>
+            ) : null}
+          </div>
 
           {error ? <p className="text-sm text-error">{error}</p> : null}
         </div>
