@@ -18,7 +18,8 @@ import {
   completeScoutTaskAction,
   createScoutTaskAction,
   deleteScoutTaskAction,
-  setScoutTaskTeamAction
+  setScoutTaskTeamAction,
+  updateScoutTaskAction
 } from "./actions";
 
 // A rotating palette for assignee avatars, keyed off the user id so a given
@@ -349,6 +350,7 @@ export function ScoutListView({
                   today={today}
                   weekEnd={weekEnd}
                   last={idx === group.items.length - 1}
+                  fields={fields}
                   fieldName={task.fieldId ? (fieldName.get(task.fieldId) ?? null) : null}
                   teams={teams}
                   canAssignTeams={canAssignTeams}
@@ -369,6 +371,7 @@ function TaskRow({
   today,
   weekEnd,
   last,
+  fields,
   fieldName,
   teams,
   canAssignTeams,
@@ -379,6 +382,7 @@ function TaskRow({
   today: string;
   weekEnd: string;
   last: boolean;
+  fields: FieldSummary[];
   fieldName: string | null;
   teams: TeamSummary[];
   canAssignTeams: boolean;
@@ -387,8 +391,21 @@ function TaskRow({
 }) {
   const [pending, startTransition] = useTransition();
   const [busyTeam, setBusyTeam] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
   const done = task.status === "done";
   const immediate = task.priority === "immediate" && !done;
+
+  if (editing) {
+    return (
+      <li
+        className={`px-5 py-3.5 ${last ? "" : "border-b border-base-content/[0.06]"} ${
+          immediate ? "border-l-4 border-l-error bg-error/[0.03]" : "border-l-4 border-l-transparent"
+        }`}
+      >
+        <EditTaskForm task={task} fields={fields} onDone={() => setEditing(false)} />
+      </li>
+    );
+  }
 
   const meta = [
     task.assignee?.displayName ?? "Unassigned",
@@ -502,20 +519,128 @@ function TaskRow({
           <span className="text-xs text-base-content/45">Done</span>
         ) : null}
         {canManage ? (
-          <button
-            type="button"
-            onClick={onDelete}
-            disabled={pending}
-            aria-label="Delete task"
-            className="text-base-content/35 transition-colors hover:text-error"
-          >
-            <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-            </svg>
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              disabled={pending}
+              aria-label="Edit task"
+              className="text-base-content/35 transition-colors hover:text-primary"
+            >
+              <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={onDelete}
+              disabled={pending}
+              aria-label="Delete task"
+              className="text-base-content/35 transition-colors hover:text-error"
+            >
+              <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+              </svg>
+            </button>
+          </>
         ) : null}
       </div>
     </li>
+  );
+}
+
+// Inline editor for an existing task's title, description, and field. Managers+
+// (scout_tasks.update) only — surfaced via the row's pencil control.
+function EditTaskForm({
+  task,
+  fields,
+  onDone
+}: {
+  task: ScoutTaskSummary;
+  fields: FieldSummary[];
+  onDone: () => void;
+}) {
+  const [title, setTitle] = useState(task.title);
+  const [details, setDetails] = useState(task.details ?? "");
+  const [fieldId, setFieldId] = useState(task.fieldId ?? "");
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  function save() {
+    if (!title.trim()) {
+      setError("A task needs a title.");
+      return;
+    }
+    setError(null);
+    startTransition(async () => {
+      const result = await updateScoutTaskAction(task.id, {
+        title: title.trim(),
+        details: details.trim() || null,
+        fieldId: fieldId || null
+      });
+      if (result.ok) onDone();
+      else setError(result.error);
+    });
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <label className="flex flex-col gap-1.5">
+        <span className="text-xs font-medium text-base-content/65">Task</span>
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          className="rounded-md border border-base-content/15 bg-base-100 px-3 py-2 text-sm text-neutral outline-none focus:border-primary/50"
+        />
+      </label>
+
+      <label className="flex flex-col gap-1.5">
+        <span className="text-xs font-medium text-base-content/65">Description</span>
+        <textarea
+          value={details}
+          onChange={(e) => setDetails(e.target.value)}
+          rows={2}
+          className="rounded-md border border-base-content/15 bg-base-100 px-3 py-2 text-sm text-neutral outline-none focus:border-primary/50"
+        />
+      </label>
+
+      <label className="flex max-w-xs flex-col gap-1.5">
+        <span className="text-xs font-medium text-base-content/65">Field</span>
+        <select
+          value={fieldId}
+          onChange={(e) => setFieldId(e.target.value)}
+          className="rounded-md border border-base-content/15 bg-base-100 px-2.5 py-2 text-sm text-neutral outline-none focus:border-primary/50"
+        >
+          <option value="">No field</option>
+          {fields.map((f) => (
+            <option key={f.id} value={f.id}>
+              {f.name}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {error ? <p className="text-xs text-error">{error}</p> : null}
+
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={save}
+          disabled={pending}
+          className="rounded-md bg-primary px-3.5 py-2 text-sm font-medium text-primary-content transition-colors hover:bg-primary/90 disabled:opacity-60"
+        >
+          {pending ? "Saving…" : "Save"}
+        </button>
+        <button
+          type="button"
+          onClick={onDone}
+          disabled={pending}
+          className="text-sm font-medium text-base-content/55 transition-colors hover:text-neutral"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
   );
 }
 

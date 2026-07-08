@@ -39,13 +39,20 @@ export async function createScoutTaskAction(
   return { ok: true };
 }
 
-// Edit a task's body/assignee/field/due/priority, then refresh.
+// Edit a task's body/assignee/field/due/priority, then refresh. Returns the real
+// error (rather than throwing) so the edit form can surface it. Requires
+// scout_tasks.update — manager + admin + owner (server-enforced).
 export async function updateScoutTaskAction(
   id: string,
   patch: ScoutTaskWrite
-): Promise<void> {
-  await updateScoutTask(id, patch);
+): Promise<ActionResult> {
+  try {
+    await updateScoutTask(id, patch);
+  } catch (err) {
+    return { ok: false, error: toActionError(err) };
+  }
   revalidatePath("/scout-list");
+  return { ok: true };
 }
 
 // Change a task's status (open → in_progress → done). The assignee may complete
