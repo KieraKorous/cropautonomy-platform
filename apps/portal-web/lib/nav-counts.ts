@@ -3,10 +3,12 @@ import {
   listFarms,
   listFields,
   listLiveSessions,
+  listMembers,
   listTeams,
   type Device,
   type FarmSummary,
   type LiveSessionSummary,
+  type OrgMember,
   type TeamSummary
 } from "./api";
 
@@ -21,6 +23,7 @@ export interface NavCounts {
   devicesTotal: number;
   devicesMaintenance: number;
   teams: number;
+  members: number;
 }
 
 export const EMPTY_NAV_COUNTS: NavCounts = {
@@ -30,22 +33,28 @@ export const EMPTY_NAV_COUNTS: NavCounts = {
   devicesActive: 0,
   devicesTotal: 0,
   devicesMaintenance: 0,
-  teams: 0
+  teams: 0,
+  members: 0
 };
 
 export async function loadNavCounts(): Promise<NavCounts> {
-  const [live, farmsResult, fieldsResult, devicesResult, teamsResult] = await Promise.all([
-    listLiveSessions().catch(() => ({ sessions: [] as LiveSessionSummary[], orgId: "" })),
-    listFarms().catch(() => ({ farms: [] as FarmSummary[] })),
-    listFields().catch(() => ({ fields: [] })),
-    listDevices().catch(() => ({ devices: [] as Device[] })),
-    listTeams().catch(() => ({ teams: [] as TeamSummary[] }))
-  ]);
+  const [live, farmsResult, fieldsResult, devicesResult, teamsResult, membersResult] =
+    await Promise.all([
+      listLiveSessions().catch(() => ({ sessions: [] as LiveSessionSummary[], orgId: "" })),
+      listFarms().catch(() => ({ farms: [] as FarmSummary[] })),
+      listFields().catch(() => ({ fields: [] })),
+      listDevices().catch(() => ({ devices: [] as Device[] })),
+      listTeams().catch(() => ({ teams: [] as TeamSummary[] })),
+      listMembers().catch(() => ({ members: [] as OrgMember[] }))
+    ]);
 
   const devices = devicesResult.devices;
+  // Count only active members for the nav badge (suspended shouldn't inflate it).
+  const activeMembers = membersResult.members.filter((m) => m.status === "active").length;
   return {
     liveSessions: live.sessions.length,
     teams: teamsResult.teams.length,
+    members: activeMembers,
     // Count farms directly now that they're a managed entity — a farm with no
     // fields yet would be invisible if we still derived this from field.farmId.
     farms: farmsResult.farms.length,

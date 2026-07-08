@@ -1,4 +1,4 @@
-import { createClerkClient, type ClerkClient } from "@clerk/backend";
+import type { ClerkClient } from "@clerk/backend";
 import {
   PermissionDeniedError,
   PermissionResolver,
@@ -7,6 +7,7 @@ import {
 import type { FastifyPluginAsync, FastifyRequest, preHandlerHookHandler } from "fastify";
 import fp from "fastify-plugin";
 import type { Config } from "../config.js";
+import { getClerk } from "../lib/clerk.js";
 import { getDb } from "../lib/db.js";
 import { forbidden, unauthorized } from "../lib/errors.js";
 
@@ -32,11 +33,8 @@ export interface AuthPluginOptions {
   config: Config;
 }
 
-const authPlugin: FastifyPluginAsync<AuthPluginOptions> = async (app, opts) => {
-  const clerk: ClerkClient = createClerkClient({
-    secretKey: opts.config.CLERK_SECRET_KEY,
-    publishableKey: opts.config.CLERK_PUBLISHABLE_KEY
-  });
+const authPlugin: FastifyPluginAsync<AuthPluginOptions> = async (app, _opts) => {
+  const clerk: ClerkClient = getClerk();
 
   app.decorate("requireAuth", (permission?: PermissionKey): preHandlerHookHandler => {
     return async (request, _reply) => {

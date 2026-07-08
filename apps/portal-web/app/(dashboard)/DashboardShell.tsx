@@ -15,6 +15,7 @@ import {
   LiveIcon,
   RoverIcon,
   SidebarPulseCard,
+  UserIcon,
   UsersIcon,
   type AppShellOrg,
   type AppShellProps,
@@ -132,6 +133,12 @@ export function DashboardShell({
           href: "/team",
           icon: <UsersIcon size={16} />,
           ...(counts.teams > 0 ? { meta: String(counts.teams) } : {})
+        },
+        {
+          label: "Members",
+          href: "/members",
+          icon: <UserIcon size={16} />,
+          ...(counts.members > 0 ? { meta: String(counts.members) } : {})
         },
         { label: "Settings", href: "/settings", icon: <CogIcon /> }
       ]

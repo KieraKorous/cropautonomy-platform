@@ -895,20 +895,54 @@ export interface TeamWrite {
   color?: string | null;
 }
 
-// An org member for the "add member" picker (services/api GET /v1/members).
+// An org member (services/api GET /v1/members). Feeds both the Team page's
+// "add member" picker and the Members management page.
 export interface OrgMember {
+  membershipId: string;
   userId: string;
   displayName: string | null;
   email: string | null;
   avatarUrl: string | null;
   roleKey: string | null;
   roleName: string | null;
+  status: string;
+  joinedAt: string | null;
+  isSelf: boolean;
+  isOwner: boolean;
+  teams: Array<{ id: string; name: string; color: string | null }>;
 }
 
-interface ListMembersResponse {
+export interface ListMembersResponse {
   orgId: string;
   members: OrgMember[];
+  // Present on the management page; the picker consumers ignore them.
+  canInvite?: boolean;
+  canManageMembers?: boolean;
 }
+
+// A pending Clerk invitation to the org (services/api GET /v1/members/invitations).
+export interface MemberInvitation {
+  id: string;
+  email: string;
+  roleKey: string | null;
+  status: string;
+  createdAt: string;
+}
+
+export interface ListInvitationsResponse {
+  orgId: string;
+  invitations: MemberInvitation[];
+}
+
+// The system roles a member can be assigned. `owner` is assignable only by an
+// owner (the API enforces it). Shared by the invite + role-change controls.
+export const ASSIGNABLE_ROLES: Array<{ key: string; name: string }> = [
+  { key: "owner", name: "Owner" },
+  { key: "admin", name: "Admin" },
+  { key: "manager", name: "Manager" },
+  { key: "technician", name: "Technician" },
+  { key: "viewer", name: "Viewer" }
+];
 
 // The caller's own teams (services/api GET /v1/me/teams) — drives the Team
 // filter control and the field app's capture team picker.
@@ -994,9 +1028,46 @@ export function unassignEntities(
   });
 }
 
-// Active members of the caller's org (for the add-member picker).
+// Active + suspended members of the caller's org. Feeds the add-member picker
+// (active-only from its side) and the Members management page.
 export function listMembers(): Promise<ListMembersResponse> {
   return apiFetch<ListMembersResponse>("/v1/members");
+}
+
+// Change a member's role and/or status. Requires members.update.
+export function updateMember(
+  userId: string,
+  patch: { roleKey?: string; status?: "active" | "suspended" }
+): Promise<{ userId: string; updated: boolean }> {
+  return apiFetch(`/v1/members/${userId}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(patch)
+  });
+}
+
+// Soft-remove a member from the org. Requires members.remove.
+export function removeMember(userId: string): Promise<{ userId: string; removed: boolean }> {
+  return apiFetch(`/v1/members/${userId}`, { method: "DELETE" });
+}
+
+// Pending Clerk invitations for the caller's org. Requires members.invite.
+export function listMemberInvitations(): Promise<ListInvitationsResponse> {
+  return apiFetch<ListInvitationsResponse>("/v1/members/invitations");
+}
+
+// Invite an email to the org at a given role. Requires members.invite.
+export function inviteMember(email: string, roleKey: string): Promise<MemberInvitation> {
+  return apiFetch<MemberInvitation>("/v1/members/invitations", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email, roleKey })
+  });
+}
+
+// Revoke a pending invitation. Requires members.invite.
+export function revokeInvitation(id: string): Promise<{ id: string; revoked: boolean }> {
+  return apiFetch(`/v1/members/invitations/${id}`, { method: "DELETE" });
 }
 
 // The caller's own team memberships.
