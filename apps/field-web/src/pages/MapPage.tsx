@@ -8,28 +8,47 @@ import Map, {
 
 import { OverlayChrome } from "../components/OverlayChrome.js";
 import { SurfaceSwitcher } from "../components/SurfaceSwitcher.js";
-import { api, type FieldRecord } from "../lib/api.js";
+import { api, type FarmRecord, type FieldRecord } from "../lib/api.js";
 import { env } from "../env.js";
 import { useGps } from "../lib/hud-signals.js";
 import { listPendingForUpload, type QueuedCaptureRecord } from "../lib/db.js";
 import { useActiveSession } from "../lib/session.js";
 
 // Map view — second primary surface alongside /capture. Shows the operator's
-// fields (boundary polygons), GPS dot for current position, and capture pins
-// for anything in the local queue that has a location. Designed for in-field
-// situational awareness ("where have I been, what have I shot, where are the
-// field edges"), not for desk-style mission planning.
+// farms (pins) and fields (boundary polygons colored per farm), a GPS dot for
+// current position, and capture pins for anything in the local queue that has a
+// location. Designed for in-field situational awareness ("where have I been,
+// what have I shot, where are the field edges"), not for desk-style mission
+// planning.
 
 const FALLBACK_VIEW = { longitude: -95.57, latitude: 39.835, zoom: 9.5 } as const;
+
+// A calm, distinguishable palette assigned to farms in list order so each farm's
+// fields + marker share one color — mirrors the portal's Overview map so the two
+// surfaces read the same. See apps/portal-web/.../fieldMapData.ts.
+const FARM_COLORS = [
+  "#9ec27e", // field green (the previous single-farm default)
+  "#7fb0c9", // blue
+  "#d19a5c", // amber
+  "#a897c9", // purple
+  "#77b3a4", // teal
+  "#c1c46f", // olive
+  "#cc8585", // brick
+  "#8aa1c9" // slate-blue
+] as const;
+const DEFAULT_FARM_COLOR = FARM_COLORS[0];
 
 export function MapPage() {
   const { session } = useActiveSession();
   const gps = useGps(true);
   const [fields, setFields] = useState<FieldRecord[] | null>(null);
+  const [farms, setFarms] = useState<FarmRecord[]>([]);
   const [fieldsError, setFieldsError] = useState<string | null>(null);
   const [queued, setQueued] = useState<QueuedCaptureRecord[]>([]);
 
-  // Fetch fields once on mount.
+  // Fetch farms + fields once on mount. Farms drive the per-farm coloring and
+  // markers; a farms failure is non-fatal (the map still shows fields, just in
+  // the default color), so it doesn't surface an error banner.
   useEffect(() => {
     let alive = true;
     api
@@ -39,6 +58,12 @@ export function MapPage() {
         if (!alive) return;
         setFieldsError(err instanceof Error ? err.message : "Failed to load fields.");
         setFields([]);
+      });
+    api
+      .listFarms()
+      .then((res) => alive && setFarms(res.farms))
+      .catch(() => {
+        /* non-fatal: fields fall back to the default color, no markers */
       });
     return () => {
       alive = false;
@@ -60,6 +85,16 @@ export function MapPage() {
     };
   }, []);
 
+  // farmId → color, assigned in farm list order so each farm's fields + marker
+  // share one hue.
+  const farmColor = useMemo(() => {
+    const map: Record<string, string> = {};
+    farms.forEach((farm, i) => {
+      map[farm.id] = FARM_COLORS[i % FARM_COLORS.length];
+    });
+    return map;
+  }, [farms]);
+
   const initialView = useMemo(() => {
     if (gps.status === "fix" && gps.position) {
       return {
@@ -75,8 +110,13 @@ export function MapPage() {
         return { longitude: centroid[0], latitude: centroid[1], zoom: 12 };
       }
     }
+    // No GPS fix and no field with a centroid — fall back to a pinned farm.
+    const farm = farms.find((f) => f.location);
+    if (farm?.location) {
+      return { longitude: farm.location.coordinates[0], latitude: farm.location.coordinates[1], zoom: 11 };
+    }
     return FALLBACK_VIEW;
-  }, [gps.status, gps.position, fields]);
+  }, [gps.status, gps.position, fields, farms]);
 
   const fieldsFeatureCollection = useMemo(
     () => ({
@@ -85,11 +125,16 @@ export function MapPage() {
         .filter((f) => f.boundary)
         .map((f) => ({
           type: "Feature" as const,
-          properties: { id: f.id, name: f.name, areaAcres: f.areaAcres },
+          properties: {
+            id: f.id,
+            name: f.name,
+            areaAcres: f.areaAcres,
+            color: farmColor[f.farmId] ?? DEFAULT_FARM_COLOR
+          },
           geometry: f.boundary!
         }))
     }),
-    [fields]
+    [fields, farmColor]
   );
 
   if (!env.mapboxToken) {
@@ -129,14 +174,15 @@ export function MapPage() {
         style={{ position: "absolute", inset: 0 }}
         attributionControl={false}
       >
-        {/* Field boundaries — translucent fill + visible stroke */}
+        {/* Field boundaries — translucent fill + visible stroke, colored per
+            farm, with a name label at each box's centroid */}
         {fieldsFeatureCollection.features.length > 0 && (
           <Source id="fields" type="geojson" data={fieldsFeatureCollection}>
             <Layer
               id="fields-fill"
               type="fill"
               paint={{
-                "fill-color": "#9ec27e",
+                "fill-color": ["get", "color"],
                 "fill-opacity": 0.18
               }}
             />
@@ -144,13 +190,50 @@ export function MapPage() {
               id="fields-stroke"
               type="line"
               paint={{
-                "line-color": "#9ec27e",
+                "line-color": ["get", "color"],
                 "line-width": 2,
                 "line-opacity": 0.9
               }}
             />
+            <Layer
+              id="fields-label"
+              type="symbol"
+              layout={{
+                "text-field": ["get", "name"],
+                "text-size": 11,
+                "text-anchor": "center"
+              }}
+              paint={{
+                "text-color": "#f5f7f0",
+                "text-halo-color": "#1a1a1a",
+                "text-halo-width": 1.3
+              }}
+            />
           </Source>
         )}
+
+        {/* Farm pins — a dot in the farm's color, labeled with the farm name */}
+        {farms
+          .filter((f) => f.location)
+          .map((farm) => (
+            <Marker
+              key={farm.id}
+              longitude={farm.location!.coordinates[0]}
+              latitude={farm.location!.coordinates[1]}
+              anchor="bottom"
+            >
+              <div className="flex flex-col items-center gap-0.5">
+                <span className="whitespace-nowrap rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white shadow">
+                  {farm.name}
+                </span>
+                <span
+                  className="block h-3.5 w-3.5 rounded-full border-2 border-white shadow"
+                  style={{ backgroundColor: farmColor[farm.id] ?? DEFAULT_FARM_COLOR }}
+                  aria-label={`Farm ${farm.name}`}
+                />
+              </div>
+            </Marker>
+          ))}
 
         {/* Capture pins — small dots for queued/uploading captures */}
         {queued

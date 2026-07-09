@@ -133,6 +133,20 @@ export interface ListFieldsResponse {
   fields: FieldRecord[];
 }
 
+export interface FarmRecord {
+  id: string;
+  name: string;
+  areaAcres: number | null;
+  fieldCount: number;
+  // GeoJSON Point { type: "Point", coordinates: [lng, lat] }, or null when the
+  // farm has no pinned location.
+  location: { type: "Point"; coordinates: [number, number] } | null;
+}
+
+export interface ListFarmsResponse {
+  farms: FarmRecord[];
+}
+
 // A scout task assigned to the signed-in operator — a walk-out / check to do.
 export interface ScoutTaskRecord {
   id: string;
@@ -204,6 +218,7 @@ export const api = {
       body: JSON.stringify(action)
     }),
   listFields: () => call<ListFieldsResponse>("/v1/fields", { method: "GET" }),
+  listFarms: () => call<ListFarmsResponse>("/v1/farms", { method: "GET" }),
   // The caller's own teams — drives the Field Capture team selector.
   getMyTeams: () => call<MyTeamsResponse>("/v1/me/teams", { method: "GET" }),
   // The operator's own open/in-progress scout tasks — the "My tasks" list on the

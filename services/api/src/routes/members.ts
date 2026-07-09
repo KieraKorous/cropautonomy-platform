@@ -218,25 +218,31 @@ const membersRoutes: FastifyPluginAsync = async (app) => {
       teamsByUser.set(r.user_id, list);
     }
 
-    const members = ((membersResult.data ?? []) as unknown as MemberRow[]).map((r) => ({
-      membershipId: r.id,
-      userId: r.user_id,
-      displayName: r.user?.display_name ?? null,
-      email: r.user?.email ?? null,
-      avatarUrl: r.user?.avatar_url ?? null,
-      roleKey: r.role?.key ?? null,
-      roleName: r.role?.name ?? null,
-      status: r.status,
-      joinedAt: r.joined_at,
-      isSelf: r.user_id === caller.userId,
-      isOwner: r.role?.key === "owner",
-      // Ownership: you fully manage the members you personally added. (The roster
-      // is scoped to your invitees + yourself, so this is true for everyone here
-      // except your own row.) Role-permission holders also manage via canUpdate.
-      canManage: (canUpdate || canRemove || r.invited_by_user_id === caller.userId)
-        && r.user_id !== caller.userId,
-      teams: teamsByUser.get(r.user_id) ?? []
-    }));
+    const members = ((membersResult.data ?? []) as unknown as MemberRow[]).map((r) => {
+      const isSelf = r.user_id === caller.userId;
+      // Your own row always presents as Owner — you own your scoped world. This is
+      // a DISPLAY/identity override on the self row only; it does NOT change the
+      // stored membership role or grant org-wide owner permissions (those still
+      // flow from the actual role + the ownership overrides).
+      return {
+        membershipId: r.id,
+        userId: r.user_id,
+        displayName: r.user?.display_name ?? null,
+        email: r.user?.email ?? null,
+        avatarUrl: r.user?.avatar_url ?? null,
+        roleKey: isSelf ? "owner" : r.role?.key ?? null,
+        roleName: isSelf ? "Owner" : r.role?.name ?? null,
+        status: r.status,
+        joinedAt: r.joined_at,
+        isSelf,
+        isOwner: isSelf || r.role?.key === "owner",
+        // Ownership: you fully manage the members you personally added. (The
+        // roster is scoped to your invitees + yourself, so this is true for
+        // everyone here except your own row.) Permission holders also get it.
+        canManage: (canUpdate || canRemove || r.invited_by_user_id === caller.userId) && !isSelf,
+        teams: teamsByUser.get(r.user_id) ?? []
+      };
+    });
 
     return {
       orgId: caller.orgId,
