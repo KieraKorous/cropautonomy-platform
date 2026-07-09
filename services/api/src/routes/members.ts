@@ -129,7 +129,12 @@ const membersRoutes: FastifyPluginAsync = async (app) => {
           "id, user_id, status, joined_at, role:roles!inner ( key, name ), user:users!user_id ( id, display_name, email, avatar_url )"
         )
         .eq("org_id", caller.orgId)
-        .in("status", ["active", "suspended"]),
+        .in("status", ["active", "suspended"])
+        // A user sees only the members they personally added (invited_by them)
+        // plus themselves. No bypass — this holds for every role, owner included.
+        // Invited users are attributed via the Clerk invite → webhook chain; the
+        // direct-add path sets invited_by_user_id inline.
+        .or(`invited_by_user_id.eq.${caller.userId},user_id.eq.${caller.userId}`),
       supabase
         .from("team_memberships")
         .select(
@@ -421,9 +426,10 @@ const membersRoutes: FastifyPluginAsync = async (app) => {
           throw conflict("members.already_member", "That user is already a member of this org.");
         }
         if (prior) {
+          // Re-attribute to whoever re-added them, so the re-adder sees them.
           const { error: reErr } = await supabase
             .from("organization_memberships")
-            .update({ status: "active", role_id: roleId })
+            .update({ status: "active", role_id: roleId, invited_by_user_id: caller.userId })
             .eq("id", (prior as { id: string }).id);
           if (reErr) throw reErr;
         } else {
@@ -475,7 +481,10 @@ const membersRoutes: FastifyPluginAsync = async (app) => {
           emailAddress: parsed.data.email,
           publicMetadata: {
             invited_org_id: caller.orgId,
-            invited_role_key: parsed.data.roleKey
+            invited_role_key: parsed.data.roleKey,
+            // Attribute the eventual membership back to the inviter so it shows
+            // up in their (and only their) roster. Read by the Clerk webhook.
+            invited_by_platform_user_id: caller.userId
           },
           ...(redirectUrl ? { redirectUrl } : {}),
           ignoreExisting: false

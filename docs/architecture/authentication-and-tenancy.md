@@ -195,6 +195,21 @@ Examples:
 - technicians can create scans, add and edit zones, and view assigned field data (but cannot create/edit/delete farms or fields)
 - viewers can read data but not mutate operational records
 
+**Members roster visibility.** `GET /v1/members` is scoped per-caller: a user sees
+only the members they **personally added** (memberships whose
+`invited_by_user_id` is the caller) plus **themselves**. This has **no bypass** —
+it holds for every role including the owner, so no single account sees the entire
+org roster from this endpoint. Attribution is set at add time: the direct-add and
+reactivation paths write `invited_by_user_id = caller` inline; the emailed-invite
+path threads the inviter's platform user id through the Clerk invitation's
+`public_metadata.invited_by_platform_user_id`, which the Clerk webhook
+([`route.ts`](../../apps/portal-web/app/api/webhooks/clerk/route.ts)) writes onto
+the membership on acceptance. Team rosters are exempt: `GET /v1/teams/:id` lists
+**everyone** on a team the caller can see (a caller can only open a team they
+belong to — see below), so selecting a team still shows its full membership.
+Note: memberships created before this rule have a null `invited_by_user_id` and
+are visible only to the member themselves until re-attributed.
+
 ## Teams (sub-organization access boundary)
 
 An org can carve its entities into **teams** — a sub-org grouping that acts as a
@@ -225,6 +240,14 @@ caller holds `team_members.manage` (admin/owner org-wide bypass), OR **(B)** R h
 zero team assignments (unassigned = org-visible — makes rollout non-breaking,
 since all pre-existing rows have zero assignments), OR **(C)** R shares at least
 one team with the caller. Always AND-scoped by `org_id`.
+
+**Teams themselves** follow the same boundary, with membership standing in for
+rule (C): `GET /v1/teams` and `GET /v1/teams/:id` return every team to an
+`team_members.manage` holder (admin/owner bypass) but only the teams the caller
+*belongs to* for everyone else — a member cannot see or open a team they are not
+on (detail 404s rather than 403s, so team existence never leaks). There is no
+rule (B) analog: a team is defined by its membership, so an "unassigned" team is
+just an empty one, visible only to bypass holders.
 
 Enforcement is **primarily in the API query layer**
 ([`services/api/src/lib/team-scope.ts`](../../services/api/src/lib/team-scope.ts)),

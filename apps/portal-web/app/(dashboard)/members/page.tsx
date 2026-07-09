@@ -60,9 +60,9 @@ export default async function MembersPage() {
         <div className="flex flex-col gap-1.5">
           <h1 className="text-2xl font-semibold tracking-tight text-neutral">Members</h1>
           <p className="max-w-2xl text-sm leading-relaxed text-base-content/65">
-            Everyone with access to this organization — their role, their status, and the
-            teams they work on. Invite new operators, change what they can do, or take away
-            access.
+            The people you&apos;ve added to this organization — their role, their status, and
+            the teams they work on. Invite new operators, change what they can do, or take
+            away access.
           </p>
         </div>
         {!loadError && members.length > 0 ? (

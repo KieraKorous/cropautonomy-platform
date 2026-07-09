@@ -22,6 +22,9 @@ interface ClerkUserPayload {
   public_metadata?: {
     invited_org_id?: string;
     invited_role_key?: string;
+    // Platform users.id of whoever sent the invite — attributes the membership
+    // to its inviter so it surfaces in their roster. Set by the members invite route.
+    invited_by_platform_user_id?: string;
     active_org_id?: string;
   } | null;
 }
@@ -105,7 +108,8 @@ export async function POST(request: Request) {
             supabase,
             platformUserId,
             invitedOrgId,
-            evt.data.public_metadata?.invited_role_key ?? "viewer"
+            evt.data.public_metadata?.invited_role_key ?? "viewer",
+            evt.data.public_metadata?.invited_by_platform_user_id ?? null
           );
           if (accepted) {
             try {
@@ -147,7 +151,8 @@ async function acceptInvitation(
   supabase: ReturnType<typeof getServiceSupabase>,
   platformUserId: string,
   orgId: string,
-  roleKey: string
+  roleKey: string,
+  invitedByUserId: string | null
 ): Promise<boolean> {
   const { data: role, error: roleErr } = await supabase
     .from("roles")
@@ -167,6 +172,7 @@ async function acceptInvitation(
     user_id: platformUserId,
     role_id: (role as { id: string }).id,
     status: "active",
+    invited_by_user_id: invitedByUserId,
     joined_at: new Date().toISOString()
   });
   // 23505 = the membership already exists (retry) — treat as success.

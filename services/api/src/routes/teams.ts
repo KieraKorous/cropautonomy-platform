@@ -4,7 +4,7 @@ import { getDb } from "../lib/db.js";
 import { badRequest, conflict, notFound } from "../lib/errors.js";
 import { publishBestEffort } from "../lib/live.js";
 import { channels } from "@gaia/realtime/channels";
-import type { TeamResourceType } from "../lib/team-scope.js";
+import { resolveTeamScope, type TeamResourceType } from "../lib/team-scope.js";
 
 const UUID_RE = /^[0-9a-f-]{36}$/i;
 
@@ -189,13 +189,28 @@ const teamsRoutes: FastifyPluginAsync = async (app) => {
   app.get("/v1/teams", { preHandler: app.requireAuth("teams.read") }, async (request, _reply) => {
     const caller = request.auth!;
     const supabase = getDb();
+    const ctx = { userId: caller.userId, orgId: caller.orgId };
+
+    // A team's members ARE its visibility boundary: admins/owners (bypass) see
+    // every team; everyone else sees only the teams they belong to. A non-bypass
+    // caller on no teams sees none — return early without querying.
+    const scope = await resolveTeamScope(supabase, request.permissions!, ctx);
+    if (!scope.bypass && (scope.teamIds ?? []).length === 0) {
+      const canManage = await request.permissions!.hasPermission(ctx, "teams.create");
+      return { orgId: caller.orgId, canManage, teams: [] };
+    }
+
+    let teamsQuery = supabase
+      .from("teams")
+      .select("id, name, description, color, created_at, updated_at")
+      .eq("org_id", caller.orgId)
+      .order("name", { ascending: true });
+    if (!scope.bypass) {
+      teamsQuery = teamsQuery.in("id", scope.teamIds ?? []);
+    }
 
     const [teamsResult, membersResult, assignmentsResult] = await Promise.all([
-      supabase
-        .from("teams")
-        .select("id, name, description, color, created_at, updated_at")
-        .eq("org_id", caller.orgId)
-        .order("name", { ascending: true }),
+      teamsQuery,
       supabase.from("team_memberships").select("team_id").eq("org_id", caller.orgId),
       supabase
         .from("team_assignments")
@@ -306,6 +321,16 @@ const teamsRoutes: FastifyPluginAsync = async (app) => {
       const supabase = getDb();
 
       const team = await loadTeam(supabase, caller.orgId, id);
+
+      // Same boundary as the list: a non-bypass caller may only open a team they
+      // belong to. 404 (not 403) so we don't leak which teams exist.
+      const scope = await resolveTeamScope(supabase, request.permissions!, {
+        userId: caller.userId,
+        orgId: caller.orgId
+      });
+      if (!scope.bypass && !(scope.teamIds ?? []).includes(id)) {
+        throw notFound("teams.not_found", "Team not found.");
+      }
 
       const [membersResult, assignmentsResult] = await Promise.all([
         // Disambiguate the users embed: team_memberships has TWO FKs to users
