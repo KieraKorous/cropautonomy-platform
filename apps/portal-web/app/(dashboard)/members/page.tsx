@@ -20,8 +20,6 @@ export default async function MembersPage() {
   let invitations: MemberInvitation[] = [];
   let teams: TeamSummary[] = [];
   let canInvite = false;
-  let canManageMembers = false;
-  let canManageTeams = false;
   let loadError: string | null = null;
 
   try {
@@ -33,14 +31,12 @@ export default async function MembersPage() {
     ]);
     members = membersResult.members ?? [];
     canInvite = membersResult.canInvite ?? false;
-    canManageMembers = membersResult.canManageMembers ?? false;
     teams = teamsResult.teams ?? [];
-    // team_members.manage isn't in the teams response; managing members (admin/
-    // owner) is the same tier that manages team rosters, so reuse that flag.
-    canManageTeams = canManageMembers;
+    // Per-member management is decided per row (member.canManage from the API):
+    // you manage the members you added. No page-level flag needed.
 
-    // Pending invitations live in Clerk and only load for members.invite holders;
-    // tolerate a failure so the roster still renders for everyone else.
+    // Pending invitations live in Clerk. The list endpoint stays admin-gated, so
+    // non-admins just get an empty strip — tolerate the failure either way.
     if (canInvite) {
       const inviteResult = await listMemberInvitations().catch(() => ({
         invitations: [] as MemberInvitation[]
@@ -80,8 +76,6 @@ export default async function MembersPage() {
           invitations={invitations}
           teams={teams}
           canInvite={canInvite}
-          canManageMembers={canManageMembers}
-          canManageTeams={canManageTeams}
         />
       )}
     </div>

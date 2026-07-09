@@ -190,7 +190,7 @@ The app should centralize authorization checks.
 Examples:
 
 - owners can manage billing and delete organizations when that exists
-- admins can invite users and manage farms
+- admins manage farms org-wide; any user can invite members and create teams, and fully manages what they create (see Ownership-based management below)
 - managers can edit fields and assign work
 - technicians can create scans, add and edit zones, and view assigned field data (but cannot create/edit/delete farms or fields)
 - viewers can read data but not mutate operational records
@@ -209,6 +209,27 @@ the membership on acceptance. Team rosters are exempt: `GET /v1/teams/:id` lists
 belong to — see below), so selecting a team still shows its full membership.
 Note: memberships created before this rule have a null `invited_by_user_id` and
 are visible only to the member themselves until re-attributed.
+
+**Ownership-based management (members + teams).** Authorization for member and
+team writes is **role-permission OR ownership** — a caller can act if they hold
+the relevant permission *or* they own the resource:
+
+- **Anyone can invite members** (`POST /v1/members/invitations`) and **create
+  teams** (`POST /v1/teams`) — the invite is attributed via `invited_by_user_id`,
+  the team via `created_by_user_id`.
+- A caller gets **full control over what they created**, independent of base
+  role: they can change role/status, remove, and manage the team memberships of
+  **members they added** (`invited_by_user_id === caller`), and can
+  edit/delete/roster/assign **teams they created** (`created_by_user_id ===
+  caller`). Enforced in-route (`members.ts` / `teams.ts`) with `invitedByCaller` /
+  `teamCreatedByCaller` / `assertTeamManageable`, and surfaced to the UI as a
+  **per-resource `canManage`** on each `OrgMember` / `TeamSummary`.
+- Team visibility includes **teams you created** (not just teams you're on), so a
+  creator sees and can open their team even before adding themselves to it.
+- **Guardrail retained:** only an owner may grant the `owner` role (via invite,
+  base-role change, or team role). Assigning `admin`/`manager` is *not* gated, so
+  an inviter can grant org-wide roles to their invitees — a deliberate escalation
+  surface of the "full control" model; revisit if org isolation tightens.
 
 ## Teams (sub-organization access boundary)
 

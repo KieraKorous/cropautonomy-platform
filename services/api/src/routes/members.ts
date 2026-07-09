@@ -48,6 +48,7 @@ interface MemberRow {
   user_id: string;
   status: string;
   joined_at: string | null;
+  invited_by_user_id: string | null;
   role: { key: string; name: string } | null;
   user: {
     id: string;
@@ -109,6 +110,49 @@ async function activeOwnerCount(
   return count ?? 0;
 }
 
+// Ownership override. Authorization here is role-permission OR ownership: a
+// caller may manage a member they personally added even without members.update/
+// remove, and may manage team memberships for a member they added or a team they
+// created. These predicates back that "OR ownership" branch.
+
+// True if `callerUserId` is the recorded inviter of `targetUserId` in this org.
+async function invitedByCaller(
+  supabase: ReturnType<typeof getDb>,
+  orgId: string,
+  callerUserId: string,
+  targetUserId: string
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("organization_memberships")
+    .select("invited_by_user_id")
+    .eq("org_id", orgId)
+    .eq("user_id", targetUserId)
+    .maybeSingle();
+  if (error) throw error;
+  return (
+    (data as { invited_by_user_id: string | null } | null)?.invited_by_user_id === callerUserId
+  );
+}
+
+// True if `callerUserId` created the given team in this org.
+async function teamCreatedByCaller(
+  supabase: ReturnType<typeof getDb>,
+  orgId: string,
+  callerUserId: string,
+  teamId: string
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("teams")
+    .select("created_by_user_id")
+    .eq("id", teamId)
+    .eq("org_id", orgId)
+    .maybeSingle();
+  if (error) throw error;
+  return (
+    (data as { created_by_user_id: string | null } | null)?.created_by_user_id === callerUserId
+  );
+}
+
 const membersRoutes: FastifyPluginAsync = async (app) => {
   // GET /v1/members — the org's members with role + status. Held by every role
   // (members.read). canInvite / canManageMembers drive the page's controls.
@@ -126,7 +170,7 @@ const membersRoutes: FastifyPluginAsync = async (app) => {
       supabase
         .from("organization_memberships")
         .select(
-          "id, user_id, status, joined_at, role:roles!inner ( key, name ), user:users!user_id ( id, display_name, email, avatar_url )"
+          "id, user_id, status, joined_at, invited_by_user_id, role:roles!inner ( key, name ), user:users!user_id ( id, display_name, email, avatar_url )"
         )
         .eq("org_id", caller.orgId)
         .in("status", ["active", "suspended"])
@@ -186,12 +230,18 @@ const membersRoutes: FastifyPluginAsync = async (app) => {
       joinedAt: r.joined_at,
       isSelf: r.user_id === caller.userId,
       isOwner: r.role?.key === "owner",
+      // Ownership: you fully manage the members you personally added. (The roster
+      // is scoped to your invitees + yourself, so this is true for everyone here
+      // except your own row.) Role-permission holders also manage via canUpdate.
+      canManage: (canUpdate || canRemove || r.invited_by_user_id === caller.userId)
+        && r.user_id !== caller.userId,
       teams: teamsByUser.get(r.user_id) ?? []
     }));
 
     return {
       orgId: caller.orgId,
-      canInvite,
+      // Anyone can invite now — the invitee becomes theirs to manage.
+      canInvite: true,
       canManageMembers: canUpdate || canRemove,
       members
     };
@@ -200,7 +250,7 @@ const membersRoutes: FastifyPluginAsync = async (app) => {
   // PATCH /v1/members/:userId — change a member's role and/or status.
   app.patch<{ Params: { userId: string } }>(
     "/v1/members/:userId",
-    { preHandler: app.requireAuth("members.update") },
+    { preHandler: app.requireAuth() },
     async (request, _reply) => {
       const { userId } = request.params;
       if (!UUID_RE.test(userId)) throw badRequest("members.invalid_id", "Invalid user id.");
@@ -222,14 +272,29 @@ const membersRoutes: FastifyPluginAsync = async (app) => {
       // Target must be a real member of this org.
       const { data: membership, error: memErr } = await supabase
         .from("organization_memberships")
-        .select("id, role:roles!inner ( key )")
+        .select("id, invited_by_user_id, role:roles!inner ( key )")
         .eq("org_id", caller.orgId)
         .eq("user_id", userId)
         .in("status", ["active", "suspended"])
         .maybeSingle();
       if (memErr) throw memErr;
       if (!membership) throw notFound("members.not_found", "That user is not a member of this org.");
-      const targetRoleKey = (membership as unknown as { role: { key: string } | null }).role?.key ?? null;
+      const membershipRow = membership as unknown as {
+        invited_by_user_id: string | null;
+        role: { key: string } | null;
+      };
+      const targetRoleKey = membershipRow.role?.key ?? null;
+
+      // Authorize: role-permission OR ownership (you added this member). The
+      // owner/last-owner guards below still apply on top of this.
+      const canManage =
+        (await request.permissions!.hasPermission(
+          { userId: caller.userId, orgId: caller.orgId },
+          "members.update"
+        )) || membershipRow.invited_by_user_id === caller.userId;
+      if (!canManage) {
+        throw forbidden("members.forbidden", "You can only manage members you added.");
+      }
 
       const patch: Record<string, unknown> = {};
 
@@ -278,7 +343,7 @@ const membersRoutes: FastifyPluginAsync = async (app) => {
   // their next request resolves cleanly instead of a stale active_org_id.
   app.delete<{ Params: { userId: string } }>(
     "/v1/members/:userId",
-    { preHandler: app.requireAuth("members.remove") },
+    { preHandler: app.requireAuth() },
     async (request, _reply) => {
       const { userId } = request.params;
       if (!UUID_RE.test(userId)) throw badRequest("members.invalid_id", "Invalid user id.");
@@ -291,14 +356,28 @@ const membersRoutes: FastifyPluginAsync = async (app) => {
 
       const { data: membership, error: memErr } = await supabase
         .from("organization_memberships")
-        .select("id, role:roles!inner ( key )")
+        .select("id, invited_by_user_id, role:roles!inner ( key )")
         .eq("org_id", caller.orgId)
         .eq("user_id", userId)
         .in("status", ["active", "suspended"])
         .maybeSingle();
       if (memErr) throw memErr;
       if (!membership) throw notFound("members.not_found", "That user is not a member of this org.");
-      const targetRoleKey = (membership as unknown as { role: { key: string } | null }).role?.key ?? null;
+      const membershipRow = membership as unknown as {
+        invited_by_user_id: string | null;
+        role: { key: string } | null;
+      };
+      const targetRoleKey = membershipRow.role?.key ?? null;
+
+      // Authorize: role-permission OR ownership (you added this member).
+      const canManage =
+        (await request.permissions!.hasPermission(
+          { userId: caller.userId, orgId: caller.orgId },
+          "members.remove"
+        )) || membershipRow.invited_by_user_id === caller.userId;
+      if (!canManage) {
+        throw forbidden("members.forbidden", "You can only remove members you added.");
+      }
 
       if (targetRoleKey === "owner" && (await activeOwnerCount(supabase, caller.orgId)) <= 1) {
         throw conflict("members.last_owner", "The organization must keep at least one owner.");
@@ -374,7 +453,8 @@ const membersRoutes: FastifyPluginAsync = async (app) => {
   // POST /v1/members/invitations — invite an email to this org at a given role.
   app.post(
     "/v1/members/invitations",
-    { preHandler: app.requireAuth("members.invite") },
+    // Anyone can invite; the invitee is attributed to (and managed by) them.
+    { preHandler: app.requireAuth() },
     async (request, reply) => {
       const parsed = inviteSchema.safeParse(request.body);
       if (!parsed.success) {
@@ -589,7 +669,7 @@ const membersRoutes: FastifyPluginAsync = async (app) => {
   // POST /v1/members/:userId/teams — add the member to a team with a role.
   app.post<{ Params: { userId: string } }>(
     "/v1/members/:userId/teams",
-    { preHandler: app.requireAuth("team_members.manage") },
+    { preHandler: app.requireAuth() },
     async (request, reply) => {
       const { userId } = request.params;
       if (!UUID_RE.test(userId)) throw badRequest("members.invalid_id", "Invalid user id.");
@@ -603,6 +683,21 @@ const membersRoutes: FastifyPluginAsync = async (app) => {
       const supabase = getDb();
 
       await assertTeamAndMember(caller.orgId, parsed.data.teamId, userId);
+      // Authorize: role-permission OR you added this member OR you created this
+      // team. Owner-role grants stay owner-only (guard below).
+      if (
+        !(await request.permissions!.hasPermission(
+          { userId: caller.userId, orgId: caller.orgId },
+          "team_members.manage"
+        )) &&
+        !(await invitedByCaller(supabase, caller.orgId, caller.userId, userId)) &&
+        !(await teamCreatedByCaller(supabase, caller.orgId, caller.userId, parsed.data.teamId))
+      ) {
+        throw forbidden(
+          "members.team_forbidden",
+          "You can only manage teams you created or members you added."
+        );
+      }
       // Only an owner can grant the owner role — otherwise an admin could
       // escalate to owner-level permissions via the team-role union.
       if (parsed.data.roleKey === "owner") {
@@ -637,7 +732,7 @@ const membersRoutes: FastifyPluginAsync = async (app) => {
   // PATCH /v1/members/:userId/teams/:teamId — change the member's role on a team.
   app.patch<{ Params: { userId: string; teamId: string } }>(
     "/v1/members/:userId/teams/:teamId",
-    { preHandler: app.requireAuth("team_members.manage") },
+    { preHandler: app.requireAuth() },
     async (request, _reply) => {
       const { userId, teamId } = request.params;
       if (!UUID_RE.test(userId) || !UUID_RE.test(teamId)) {
@@ -651,6 +746,19 @@ const membersRoutes: FastifyPluginAsync = async (app) => {
       const supabase = getDb();
 
       await assertTeamAndMember(caller.orgId, teamId, userId);
+      if (
+        !(await request.permissions!.hasPermission(
+          { userId: caller.userId, orgId: caller.orgId },
+          "team_members.manage"
+        )) &&
+        !(await invitedByCaller(supabase, caller.orgId, caller.userId, userId)) &&
+        !(await teamCreatedByCaller(supabase, caller.orgId, caller.userId, teamId))
+      ) {
+        throw forbidden(
+          "members.team_forbidden",
+          "You can only manage teams you created or members you added."
+        );
+      }
       if (parsed.data.roleKey === "owner") {
         const callerKey = await callerRoleKey(supabase, caller.orgId, caller.userId);
         if (callerKey !== "owner") {
@@ -674,7 +782,7 @@ const membersRoutes: FastifyPluginAsync = async (app) => {
   // DELETE /v1/members/:userId/teams/:teamId — remove the member from a team.
   app.delete<{ Params: { userId: string; teamId: string } }>(
     "/v1/members/:userId/teams/:teamId",
-    { preHandler: app.requireAuth("team_members.manage") },
+    { preHandler: app.requireAuth() },
     async (request, _reply) => {
       const { userId, teamId } = request.params;
       if (!UUID_RE.test(userId) || !UUID_RE.test(teamId)) {
@@ -682,6 +790,20 @@ const membersRoutes: FastifyPluginAsync = async (app) => {
       }
       const caller = request.auth!;
       const supabase = getDb();
+
+      if (
+        !(await request.permissions!.hasPermission(
+          { userId: caller.userId, orgId: caller.orgId },
+          "team_members.manage"
+        )) &&
+        !(await invitedByCaller(supabase, caller.orgId, caller.userId, userId)) &&
+        !(await teamCreatedByCaller(supabase, caller.orgId, caller.userId, teamId))
+      ) {
+        throw forbidden(
+          "members.team_forbidden",
+          "You can only manage teams you created or members you added."
+        );
+      }
 
       const { error: delErr } = await supabase
         .from("team_memberships")

@@ -872,6 +872,10 @@ export interface TeamSummary {
   assignmentCounts: TeamAssignmentCounts;
   createdAt: string;
   updatedAt: string;
+  // Whether the caller may manage THIS team (edit/delete/roster/assignments):
+  // true if they created it or hold the role-permission. Only set by GET /v1/teams
+  // (the list); the detail/create/update responses omit it.
+  canManage?: boolean;
 }
 
 export interface TeamMember {
@@ -918,6 +922,10 @@ export interface OrgMember {
   joinedAt: string | null;
   isSelf: boolean;
   isOwner: boolean;
+  // Whether the caller may manage THIS member (change role/status, remove, and
+  // manage their team memberships): true if they added them or hold the
+  // role-permission. False for the caller's own row.
+  canManage: boolean;
   teams: MemberTeam[];
 }
 

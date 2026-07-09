@@ -38,16 +38,12 @@ export function MembersView({
   members,
   invitations,
   teams,
-  canInvite,
-  canManageMembers,
-  canManageTeams
+  canInvite
 }: {
   members: OrgMember[];
   invitations: MemberInvitation[];
   teams: TeamSummary[];
   canInvite: boolean;
-  canManageMembers: boolean;
-  canManageTeams: boolean;
 }) {
   const [viewing, setViewing] = useState<string | null>(null);
   const [inviting, setInviting] = useState(false);
@@ -101,8 +97,6 @@ export function MembersView({
         open={viewingMember !== null}
         member={viewingMember}
         teams={teams}
-        canManageMembers={canManageMembers}
-        canManageTeams={canManageTeams}
         onClose={() => setViewing(null)}
       />
 

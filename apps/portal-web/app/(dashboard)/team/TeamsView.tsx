@@ -67,7 +67,9 @@ export function TeamsView({
       farms={farms}
       fields={fields}
       devices={devices}
-      canManage={canManage}
+      // Per-team: you manage a team you created (or via role-permission). The
+      // page-level `canManage` below only gates the "create" affordance.
+      canManage={viewingTeam?.canManage ?? false}
       onClose={() => setViewing(null)}
       onEdit={() => {
         if (!viewingTeam) return;

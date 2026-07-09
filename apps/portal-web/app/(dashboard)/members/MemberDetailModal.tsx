@@ -26,15 +26,11 @@ export function MemberDetailModal({
   open,
   member,
   teams,
-  canManageMembers,
-  canManageTeams,
   onClose
 }: {
   open: boolean;
   member: OrgMember | null;
   teams: TeamSummary[];
-  canManageMembers: boolean;
-  canManageTeams: boolean;
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -76,7 +72,9 @@ export function MemberDetailModal({
   }
 
   // Own row: you can view but not manage yourself here (prevents self-lockout).
-  const manageable = canManageMembers && !member.isSelf;
+  // You manage the members you added (canManage, per-member from the API); never
+  // your own row (canManage is already false for self, but keep the guard).
+  const manageable = member.canManage && !member.isSelf;
   const suspended = member.status === "suspended";
   const memberTeams = member.teams;
   const onTeamIds = new Set(memberTeams.map((t) => t.id));
@@ -224,7 +222,7 @@ export function MemberDetailModal({
                     <span className="min-w-0 flex-1 truncate text-sm text-neutral" title={t.name}>
                       {t.name}
                     </span>
-                    {canManageTeams ? (
+                    {manageable ? (
                       <>
                         <select
                           value={t.roleKey ?? ""}
@@ -267,7 +265,7 @@ export function MemberDetailModal({
               <span className="text-sm italic text-base-content/40">On no teams</span>
             )}
 
-            {canManageTeams && availableTeams.length > 0 ? (
+            {manageable && availableTeams.length > 0 ? (
               <div className="mt-1 flex items-center gap-2">
                 <select
                   value={addTeamId}

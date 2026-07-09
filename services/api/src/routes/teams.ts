@@ -1,12 +1,17 @@
-import type { FastifyPluginAsync } from "fastify";
+import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import { z } from "zod";
+import type { PermissionKey } from "@gaia/db/permissions";
 import { getDb } from "../lib/db.js";
-import { badRequest, conflict, notFound } from "../lib/errors.js";
+import { badRequest, conflict, forbidden, notFound } from "../lib/errors.js";
 import { publishBestEffort } from "../lib/live.js";
 import { channels } from "@gaia/realtime/channels";
 import { resolveTeamScope, type TeamResourceType } from "../lib/team-scope.js";
 
 const UUID_RE = /^[0-9a-f-]{36}$/i;
+
+// A uuid that never matches a real row — forces an empty `.in()` set to match
+// nothing (PostgREST's `in.()` with an empty list is not a reliable empty match).
+const NO_MATCH = "00000000-0000-0000-0000-000000000000";
 
 // The five assignable entity types → their backing tables. One place so the
 // polymorphic team_assignments plumbing and the org-scope validation agree.
@@ -65,6 +70,7 @@ interface TeamRow {
   name: string;
   description: string | null;
   color: string | null;
+  created_by_user_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -98,7 +104,7 @@ async function loadTeam(
 ): Promise<TeamRow> {
   const { data, error } = await supabase
     .from("teams")
-    .select("id, name, description, color, created_at, updated_at, org_id")
+    .select("id, name, description, color, created_by_user_id, created_at, updated_at, org_id")
     .eq("id", teamId)
     .maybeSingle();
   if (error) throw error;
@@ -106,6 +112,22 @@ async function loadTeam(
     throw notFound("teams.not_found", "Team not found.");
   }
   return data as TeamRow;
+}
+
+// Authorize a team write: a role-permission holder OR the team's creator (they
+// own what they created). Call with an already-loaded team so it doesn't refetch.
+async function assertTeamManageable(
+  request: FastifyRequest,
+  team: TeamRow,
+  permission: PermissionKey
+): Promise<void> {
+  const caller = request.auth!;
+  const has = await request.permissions!.hasPermission(
+    { userId: caller.userId, orgId: caller.orgId },
+    permission
+  );
+  if (has || team.created_by_user_id === caller.userId) return;
+  throw forbidden("teams.forbidden", "You can only manage teams you created.");
 }
 
 // Every capture/field/session/capture under a farm — the cascade target set.
@@ -191,22 +213,20 @@ const teamsRoutes: FastifyPluginAsync = async (app) => {
     const supabase = getDb();
     const ctx = { userId: caller.userId, orgId: caller.orgId };
 
-    // A team's members ARE its visibility boundary: admins/owners (bypass) see
-    // every team; everyone else sees only the teams they belong to. A non-bypass
-    // caller on no teams sees none — return early without querying.
+    // Team visibility: admins/owners (bypass) see every team; everyone else sees
+    // the teams they belong to OR the teams they created (ownership). No early
+    // return — a caller on no teams may still have created some.
     const scope = await resolveTeamScope(supabase, request.permissions!, ctx);
-    if (!scope.bypass && (scope.teamIds ?? []).length === 0) {
-      const canManage = await request.permissions!.hasPermission(ctx, "teams.create");
-      return { orgId: caller.orgId, canManage, teams: [] };
-    }
 
     let teamsQuery = supabase
       .from("teams")
-      .select("id, name, description, color, created_at, updated_at")
+      .select("id, name, description, color, created_by_user_id, created_at, updated_at")
       .eq("org_id", caller.orgId)
       .order("name", { ascending: true });
     if (!scope.bypass) {
-      teamsQuery = teamsQuery.in("id", scope.teamIds ?? []);
+      const ids = scope.teamIds ?? [];
+      const inList = ids.length ? ids.join(",") : NO_MATCH;
+      teamsQuery = teamsQuery.or(`id.in.(${inList}),created_by_user_id.eq.${caller.userId}`);
     }
 
     const [teamsResult, membersResult, assignmentsResult] = await Promise.all([
@@ -235,22 +255,23 @@ const teamsRoutes: FastifyPluginAsync = async (app) => {
       assignCounts.set(r.team_id, counts);
     }
 
-    const canManage = await request.permissions!.hasPermission(
-      { userId: caller.userId, orgId: caller.orgId },
-      "teams.create"
-    );
+    // A role-permission holder manages every team; otherwise per-team management
+    // is gated by ownership (you created it) — computed per row below.
+    const canManageAny = await request.permissions!.hasPermission(ctx, "teams.update");
 
     const rows = (teamsResult.data ?? []) as TeamRow[];
     return {
       orgId: caller.orgId,
-      canManage,
-      teams: rows.map((row) =>
-        toTeamSummary(
+      // Anyone can create a team now (they own what they create).
+      canManage: true,
+      teams: rows.map((row) => ({
+        ...toTeamSummary(
           row,
           memberCounts.get(row.id) ?? 0,
           assignCounts.get(row.id) ?? emptyCounts()
-        )
-      )
+        ),
+        canManage: canManageAny || row.created_by_user_id === caller.userId
+      }))
     };
   });
 
@@ -276,7 +297,9 @@ const teamsRoutes: FastifyPluginAsync = async (app) => {
   });
 
   // POST /v1/teams — create a team in the caller's org.
-  app.post("/v1/teams", { preHandler: app.requireAuth("teams.create") }, async (request, reply) => {
+  // Anyone can create a team; created_by_user_id records them as its owner, which
+  // grants them full management of it below.
+  app.post("/v1/teams", { preHandler: app.requireAuth() }, async (request, reply) => {
     const caller = request.auth!;
     const parsed = createTeamSchema.safeParse(request.body);
     if (!parsed.success) {
@@ -323,12 +346,16 @@ const teamsRoutes: FastifyPluginAsync = async (app) => {
       const team = await loadTeam(supabase, caller.orgId, id);
 
       // Same boundary as the list: a non-bypass caller may only open a team they
-      // belong to. 404 (not 403) so we don't leak which teams exist.
+      // belong to or created. 404 (not 403) so we don't leak which teams exist.
       const scope = await resolveTeamScope(supabase, request.permissions!, {
         userId: caller.userId,
         orgId: caller.orgId
       });
-      if (!scope.bypass && !(scope.teamIds ?? []).includes(id)) {
+      if (
+        !scope.bypass &&
+        !(scope.teamIds ?? []).includes(id) &&
+        team.created_by_user_id !== caller.userId
+      ) {
         throw notFound("teams.not_found", "Team not found.");
       }
 
@@ -399,7 +426,7 @@ const teamsRoutes: FastifyPluginAsync = async (app) => {
   // PATCH /v1/teams/:id — rename / recolor / re-describe.
   app.patch<{ Params: { id: string } }>(
     "/v1/teams/:id",
-    { preHandler: app.requireAuth("teams.update") },
+    { preHandler: app.requireAuth() },
     async (request, _reply) => {
       const { id } = request.params;
       if (!UUID_RE.test(id)) throw badRequest("teams.invalid_id", "Invalid team id.");
@@ -412,7 +439,8 @@ const teamsRoutes: FastifyPluginAsync = async (app) => {
       const caller = request.auth!;
       const supabase = getDb();
 
-      await loadTeam(supabase, caller.orgId, id);
+      const team = await loadTeam(supabase, caller.orgId, id);
+      await assertTeamManageable(request, team, "teams.update");
 
       const patch: Record<string, unknown> = {};
       if (parsed.data.name !== undefined) patch.name = parsed.data.name;
@@ -441,14 +469,15 @@ const teamsRoutes: FastifyPluginAsync = async (app) => {
   // org-visible if they lose their last assignment.
   app.delete<{ Params: { id: string } }>(
     "/v1/teams/:id",
-    { preHandler: app.requireAuth("teams.delete") },
+    { preHandler: app.requireAuth() },
     async (request, _reply) => {
       const { id } = request.params;
       if (!UUID_RE.test(id)) throw badRequest("teams.invalid_id", "Invalid team id.");
       const caller = request.auth!;
       const supabase = getDb();
 
-      await loadTeam(supabase, caller.orgId, id);
+      const team = await loadTeam(supabase, caller.orgId, id);
+      await assertTeamManageable(request, team, "teams.delete");
 
       const { error: delErr } = await supabase
         .from("teams")
@@ -464,7 +493,7 @@ const teamsRoutes: FastifyPluginAsync = async (app) => {
   // POST /v1/teams/:id/members — add an active org member to the team.
   app.post<{ Params: { id: string } }>(
     "/v1/teams/:id/members",
-    { preHandler: app.requireAuth("team_members.manage") },
+    { preHandler: app.requireAuth() },
     async (request, reply) => {
       const { id } = request.params;
       if (!UUID_RE.test(id)) throw badRequest("teams.invalid_id", "Invalid team id.");
@@ -477,7 +506,8 @@ const teamsRoutes: FastifyPluginAsync = async (app) => {
       const caller = request.auth!;
       const supabase = getDb();
 
-      await loadTeam(supabase, caller.orgId, id);
+      const team = await loadTeam(supabase, caller.orgId, id);
+      await assertTeamManageable(request, team, "team_members.manage");
 
       // The user must be an active member of this org to join a team in it.
       const { data: membership, error: membershipErr } = await supabase
@@ -513,7 +543,7 @@ const teamsRoutes: FastifyPluginAsync = async (app) => {
   // DELETE /v1/teams/:id/members/:userId — remove a user from the team.
   app.delete<{ Params: { id: string; userId: string } }>(
     "/v1/teams/:id/members/:userId",
-    { preHandler: app.requireAuth("team_members.manage") },
+    { preHandler: app.requireAuth() },
     async (request, _reply) => {
       const { id, userId } = request.params;
       if (!UUID_RE.test(id) || !UUID_RE.test(userId)) {
@@ -522,7 +552,8 @@ const teamsRoutes: FastifyPluginAsync = async (app) => {
       const caller = request.auth!;
       const supabase = getDb();
 
-      await loadTeam(supabase, caller.orgId, id);
+      const team = await loadTeam(supabase, caller.orgId, id);
+      await assertTeamManageable(request, team, "team_members.manage");
 
       const { error: delErr } = await supabase
         .from("team_memberships")
@@ -541,7 +572,7 @@ const teamsRoutes: FastifyPluginAsync = async (app) => {
   // sessions, and captures. Idempotent (unique constraint + ignoreDuplicates).
   app.post<{ Params: { id: string } }>(
     "/v1/teams/:id/assignments",
-    { preHandler: app.requireAuth("teams.assign") },
+    { preHandler: app.requireAuth() },
     async (request, reply) => {
       const { id } = request.params;
       if (!UUID_RE.test(id)) throw badRequest("teams.invalid_id", "Invalid team id.");
@@ -554,7 +585,8 @@ const teamsRoutes: FastifyPluginAsync = async (app) => {
       const caller = request.auth!;
       const supabase = getDb();
 
-      await loadTeam(supabase, caller.orgId, id);
+      const team = await loadTeam(supabase, caller.orgId, id);
+      await assertTeamManageable(request, team, "teams.assign");
 
       // Expand cascade before validation so descendants are org-checked too.
       let items = [...parsed.data.assignments];
@@ -617,7 +649,7 @@ const teamsRoutes: FastifyPluginAsync = async (app) => {
   // DELETE /v1/teams/:id/assignments — unassign entities from the team.
   app.delete<{ Params: { id: string } }>(
     "/v1/teams/:id/assignments",
-    { preHandler: app.requireAuth("teams.assign") },
+    { preHandler: app.requireAuth() },
     async (request, _reply) => {
       const { id } = request.params;
       if (!UUID_RE.test(id)) throw badRequest("teams.invalid_id", "Invalid team id.");
@@ -630,7 +662,8 @@ const teamsRoutes: FastifyPluginAsync = async (app) => {
       const caller = request.auth!;
       const supabase = getDb();
 
-      await loadTeam(supabase, caller.orgId, id);
+      const team = await loadTeam(supabase, caller.orgId, id);
+      await assertTeamManageable(request, team, "teams.assign");
 
       for (const it of parsed.data.assignments) {
         const { error: delErr } = await supabase
