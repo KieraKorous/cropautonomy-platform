@@ -437,6 +437,29 @@ export const scoutTaskChangedV1 = envelopeBaseSchema.extend({
 });
 
 // =============================================================================
+// Notification created (channel: orgNotifications) — a per-user inbox row was
+// written. Broadcast org-wide; every member's browser filters by payload.userId
+// (channel-name tenancy is org-scoped in v0; a per-user channel is a future
+// optimization once the Clerk -> Supabase JWT bridge lands). Consumers use the
+// payload directly to update the bell without a re-fetch.
+// =============================================================================
+
+export const notificationCreatedV1 = envelopeBaseSchema.extend({
+  type: z.literal("notification.created"),
+  version: z.literal(1),
+  payload: z.object({
+    notificationId: z.string().uuid(),
+    userId: z.string(),
+    orgId: z.string().uuid(),
+    notifType: z.string(),
+    title: z.string(),
+    body: z.string().nullable().optional(),
+    actionUrl: z.string().nullable().optional(),
+    createdAt: z.string().datetime({ offset: true })
+  })
+});
+
+// =============================================================================
 // Registry — every event the platform knows about. Adding a new schema is the
 // one place that wires it into both publish-time and receive-time validation.
 // =============================================================================
@@ -472,7 +495,8 @@ const allSchemas = [
   scanFailedV1,
   captureChangedV1,
   teamAssignmentChangedV1,
-  scoutTaskChangedV1
+  scoutTaskChangedV1,
+  notificationCreatedV1
 ] as const;
 
 type AnyEventSchema = (typeof allSchemas)[number];
@@ -524,7 +548,8 @@ export type RealtimeEventInput =
   | Omit<z.infer<typeof scanFailedV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string }
   | Omit<z.infer<typeof captureChangedV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string }
   | Omit<z.infer<typeof teamAssignmentChangedV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string }
-  | Omit<z.infer<typeof scoutTaskChangedV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string };
+  | Omit<z.infer<typeof scoutTaskChangedV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string }
+  | Omit<z.infer<typeof notificationCreatedV1>, "emittedAt" | "emittedBy"> & { emittedBy?: string };
 
 export function stampEnvelope(input: RealtimeEventInput): RealtimeEvent {
   return {

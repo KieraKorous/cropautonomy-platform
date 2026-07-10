@@ -24,13 +24,19 @@ import {
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { getNavCountsAction } from "./nav-actions";
+import { NotificationBell } from "./NotificationBell";
 import type { NavCounts } from "../../lib/nav-counts";
+import type { NotificationSummary } from "../../lib/api";
 
 export interface DashboardShellProps {
   org: AppShellOrg;
   user: AppShellUser;
   orgId: string;
+  /** Internal public.users.id of the signed-in user (for the notification bell). */
+  userId: string;
   initialCounts: NavCounts;
+  initialNotifications: NotificationSummary[];
+  initialUnreadCount: number;
   children: ReactNode;
 }
 
@@ -42,7 +48,10 @@ export function DashboardShell({
   org,
   user,
   orgId,
+  userId,
   initialCounts,
+  initialNotifications,
+  initialUnreadCount,
   children
 }: DashboardShellProps) {
   const [counts, setCounts] = useState<NavCounts>(initialCounts);
@@ -148,8 +157,17 @@ export function DashboardShell({
   return (
     <AppShell
       brand="cropautonomy"
-      hasNotifications
       navGroups={navGroups}
+      notificationsSlot={
+        orgId ? (
+          <NotificationBell
+            initialNotifications={initialNotifications}
+            initialUnreadCount={initialUnreadCount}
+            orgId={orgId}
+            userId={userId}
+          />
+        ) : undefined
+      }
       org={org}
       search={{ placeholder: "Search captures, fields, devices…", shortcut: "⌘K" }}
       sidebarFooter={<FleetPulse counts={counts} />}

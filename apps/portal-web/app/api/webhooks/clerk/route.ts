@@ -144,6 +144,64 @@ export async function POST(request: Request) {
   }
 }
 
+// Notify the org's owners + farm managers that a new member joined. Best-effort:
+// wrapped so a failure here never fails the Clerk webhook (which must 200 or Clerk
+// retries the whole identity mirror). No realtime broadcast — the portal bell's
+// next fetch surfaces the row.
+async function notifyOrgLeadershipOfJoin(
+  supabase: ReturnType<typeof getServiceSupabase>,
+  orgId: string,
+  joinerUserId: string
+): Promise<void> {
+  try {
+    const { data: roles } = await supabase
+      .from("roles")
+      .select("id")
+      .in("key", ["owner", "admin"])
+      .eq("is_system", true)
+      .is("org_id", null);
+    const roleIds = ((roles as { id: string }[] | null) ?? []).map((r) => r.id);
+    if (roleIds.length === 0) return;
+
+    const { data: members } = await supabase
+      .from("organization_memberships")
+      .select("user_id")
+      .eq("org_id", orgId)
+      .eq("status", "active")
+      .in("role_id", roleIds);
+    const recipients = ((members as { user_id: string }[] | null) ?? [])
+      .map((m) => m.user_id)
+      .filter((id) => id !== joinerUserId);
+    if (recipients.length === 0) return;
+
+    const { data: joiner } = await supabase
+      .from("users")
+      .select("display_name, email")
+      .eq("id", joinerUserId)
+      .maybeSingle();
+    const who =
+      (joiner as { display_name: string | null; email: string | null } | null)
+        ?.display_name ||
+      (joiner as { email: string | null } | null)?.email ||
+      "A new member";
+
+    await supabase.from("notifications").insert(
+      recipients.map((userId) => ({
+        user_id: userId,
+        org_id: orgId,
+        type: "member.joined",
+        title: "New member joined",
+        body: who,
+        payload: { userId: joinerUserId },
+        action_url: "/members"
+      }))
+    );
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("[clerk webhook] notify leadership of join failed", err);
+  }
+}
+
 // Join an invited user to their org with the invited role. Idempotent: a
 // duplicate membership (webhook retry) is ignored, and the active org is only
 // set when the user has none yet. Returns true if the membership is in place.
@@ -180,6 +238,13 @@ async function acceptInvitation(
     // eslint-disable-next-line no-console
     console.error("[clerk webhook] create membership failed", insErr);
     return false;
+  }
+
+  // A fresh join is news for the org's leadership. Best-effort inbox rows (no
+  // realtime broadcast from the webhook — the bell picks them up on its next
+  // fetch). A retry hits 23505 above and returns before re-notifying.
+  if (!insErr) {
+    await notifyOrgLeadershipOfJoin(supabase, orgId, platformUserId);
   }
 
   // First org becomes the active org; don't clobber an existing selection.

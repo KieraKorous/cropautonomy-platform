@@ -1318,3 +1318,51 @@ export function deleteScoutTask(
 ): Promise<{ scoutTaskId: string; deleted: boolean }> {
   return apiFetch(`/v1/scout-tasks/${id}`, { method: "DELETE" });
 }
+
+// --- Notifications --------------------------------------------------------
+
+// One inbox row. `type` drives the icon; `actionUrl` is the in-app path the row
+// deep-links to (e.g. "/scout-list", "/captures/{id}"). Unread = readAt is null.
+export interface NotificationSummary {
+  id: string;
+  type: string;
+  title: string;
+  body: string | null;
+  payload: Record<string, unknown>;
+  actionUrl: string | null;
+  readAt: string | null;
+  dismissedAt: string | null;
+  createdAt: string;
+}
+
+export interface ListNotificationsResponse {
+  notifications: NotificationSummary[];
+  unreadCount: number;
+  hasMore: boolean;
+}
+
+export function listNotifications(
+  opts: { limit?: number; unread?: boolean } = {}
+): Promise<ListNotificationsResponse> {
+  const params = new URLSearchParams();
+  if (opts.limit != null) params.set("limit", String(opts.limit));
+  if (opts.unread) params.set("unread", "true");
+  const qs = params.toString();
+  return apiFetch<ListNotificationsResponse>(
+    `/v1/notifications${qs ? `?${qs}` : ""}`
+  );
+}
+
+export function markNotificationRead(
+  id: string
+): Promise<{ notification: NotificationSummary }> {
+  return apiFetch(`/v1/notifications/${id}/read`, { method: "POST" });
+}
+
+export function markAllNotificationsRead(): Promise<{ updated: number }> {
+  return apiFetch("/v1/notifications/read-all", { method: "POST" });
+}
+
+export function dismissNotification(id: string): Promise<{ ok: boolean }> {
+  return apiFetch(`/v1/notifications/${id}/dismiss`, { method: "POST" });
+}

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getClerk } from "../lib/clerk.js";
 import { getDb } from "../lib/db.js";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.js";
+import { notifyRoles } from "../lib/notifications.js";
 
 // Members — the org's people, their role + status, and the invitation flow. The
 // roster (GET) is held by every role via members.read; mutation + invite are
@@ -548,6 +549,20 @@ const membersRoutes: FastifyPluginAsync = async (app) => {
             }
           }
         }
+
+        // Let the org's leadership know a new person is on the roster (not the
+        // joiner themselves, nor a re-add they might not care about — but the
+        // inviter's peers do).
+        await notifyRoles(request.log, {
+          orgId: caller.orgId,
+          roleKeys: ["owner", "admin"],
+          excludeUserId: existingUser.id,
+          type: "member.joined",
+          title: "New member joined",
+          body: parsed.data.email,
+          payload: { userId: existingUser.id },
+          actionUrl: "/members"
+        });
 
         reply.status(201);
         return {

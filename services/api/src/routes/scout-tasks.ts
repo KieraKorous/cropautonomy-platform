@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getDb } from "../lib/db.js";
 import { badRequest, forbidden, notFound } from "../lib/errors.js";
 import { publishBestEffort } from "../lib/live.js";
+import { notifyRoles, notifyUsers } from "../lib/notifications.js";
 import { channels } from "@gaia/realtime/channels";
 import {
   applyTeamFilter,
@@ -507,6 +508,20 @@ const scoutTasksRoutes: FastifyPluginAsync = async (app) => {
 
       await publishChanged(request.log, caller.orgId, row.id, row.status, "created");
 
+      // Tell the assignee they've been given a task (never notify yourself).
+      if (row.assignee_user_id) {
+        await notifyUsers(request.log, {
+          orgId: caller.orgId,
+          userIds: [row.assignee_user_id],
+          excludeUserId: caller.userId,
+          type: "scout_task.assigned",
+          title: "New scout task assigned to you",
+          body: row.title,
+          payload: { taskId: row.id },
+          actionUrl: "/scout-list"
+        });
+      }
+
       const users = await loadUsers(
         supabase,
         row.assignee_user_id ? [row.assignee_user_id] : []
@@ -545,7 +560,7 @@ const scoutTasksRoutes: FastifyPluginAsync = async (app) => {
       const body = parsed.data;
       const supabase = getDb();
 
-      await loadTask(supabase, caller.orgId, id); // 404 across tenants
+      const before = await loadTask(supabase, caller.orgId, id); // 404 across tenants
       await validateRefs(supabase, caller.orgId, body);
 
       const patch: Record<string, unknown> = {};
@@ -569,6 +584,23 @@ const scoutTasksRoutes: FastifyPluginAsync = async (app) => {
       const row = updated as ScoutTaskRow;
 
       await publishChanged(request.log, caller.orgId, row.id, row.status, "updated");
+
+      // Newly assigned (or reassigned) to a different person → notify them.
+      if (
+        row.assignee_user_id &&
+        row.assignee_user_id !== before.assignee_user_id
+      ) {
+        await notifyUsers(request.log, {
+          orgId: caller.orgId,
+          userIds: [row.assignee_user_id],
+          excludeUserId: caller.userId,
+          type: "scout_task.assigned",
+          title: "A scout task was assigned to you",
+          body: row.title,
+          payload: { taskId: row.id },
+          actionUrl: "/scout-list"
+        });
+      }
 
       const [users, teamsById, counts] = await Promise.all([
         loadUsers(supabase, row.assignee_user_id ? [row.assignee_user_id] : []),
@@ -646,6 +678,21 @@ const scoutTasksRoutes: FastifyPluginAsync = async (app) => {
       const next = updated as ScoutTaskRow;
 
       await publishChanged(request.log, caller.orgId, next.id, next.status, "status_changed");
+
+      // A completed task is news for the people watching the team's work. Notify
+      // owner/farm-manager/agronomist; never notify whoever completed it.
+      if (done) {
+        await notifyRoles(request.log, {
+          orgId: caller.orgId,
+          roleKeys: ["owner", "admin", "manager"],
+          excludeUserId: caller.userId,
+          type: "scout_task.completed",
+          title: "Scout task completed",
+          body: next.title,
+          payload: { taskId: next.id },
+          actionUrl: "/scout-list"
+        });
+      }
 
       const [users, teamsById, counts] = await Promise.all([
         loadUsers(supabase, next.assignee_user_id ? [next.assignee_user_id] : []),

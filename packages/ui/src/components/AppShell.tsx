@@ -47,6 +47,12 @@ export type AppShellProps = {
   navGroups: NavGroup[];
   search?: AppShellSearch;
   hasNotifications?: boolean;
+  /**
+   * Replaces the static bell in the top bar. Apps pass a live notifications
+   * control (the portal's NotificationBell) here; when omitted the shell falls
+   * back to the plain `hasNotifications` dot.
+   */
+  notificationsSlot?: ReactNode;
   sidebarFooter?: ReactNode;
   children: ReactNode;
 };
@@ -58,6 +64,7 @@ export function AppShell({
   navGroups,
   search,
   hasNotifications = false,
+  notificationsSlot,
   sidebarFooter,
   children
 }: AppShellProps) {
@@ -84,6 +91,7 @@ export function AppShell({
         brand={brand}
         collapsed={collapsed}
         hasNotifications={hasNotifications}
+        notificationsSlot={notificationsSlot}
         onToggleCollapse={toggleCollapsed}
         org={org}
         search={search}
@@ -103,6 +111,7 @@ function AppTopBar({
   user,
   search,
   hasNotifications,
+  notificationsSlot,
   collapsed,
   onToggleCollapse
 }: {
@@ -111,6 +120,7 @@ function AppTopBar({
   user: AppShellUser;
   search?: AppShellSearch;
   hasNotifications: boolean;
+  notificationsSlot?: ReactNode;
   collapsed: boolean;
   onToggleCollapse: () => void;
 }) {
@@ -126,7 +136,7 @@ function AppTopBar({
       </div>
       <div className="flex items-center gap-2">
         {search && <SearchField placeholder={search.placeholder} shortcut={search.shortcut} />}
-        <NotificationsButton hasUnread={hasNotifications} />
+        {notificationsSlot ?? <NotificationsButton hasUnread={hasNotifications} />}
         <UserPill user={user} />
       </div>
     </header>

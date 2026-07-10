@@ -5,6 +5,7 @@ import { z } from "zod";
 import { getDb } from "../lib/db.js";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.js";
 import { createLiveSession, ensureOrgScoped, publishBestEffort } from "../lib/live.js";
+import { notifyRoles } from "../lib/notifications.js";
 import { applyTeamFilter, resolveTeamScope } from "../lib/team-scope.js";
 
 const UUID_RE = /^[0-9a-f-]{36}$/i;
@@ -731,6 +732,20 @@ const devicesRoutes: FastifyPluginAsync = async (app) => {
           }
         );
 
+        // Auto-live skips the watcher gate, so there's no pending request to
+        // notify on — announce that the device actually went live instead.
+        // (Gated requests are announced below, so a session never double-notifies.)
+        await notifyRoles(request.log, {
+          orgId: caller.orgId,
+          roleKeys: ["owner", "admin"],
+          excludeUserId: caller.userId,
+          type: "live.session.started",
+          title: "A device went live",
+          body: deviceName,
+          payload: { sessionId, deviceId: body.deviceId },
+          actionUrl: "/live"
+        });
+
         reply.status(201);
         return { requestId, sessionId, expiresAt, status: "accepted", orgId: caller.orgId };
       }
@@ -750,6 +765,19 @@ const devicesRoutes: FastifyPluginAsync = async (app) => {
           cropTypeId: body.cropTypeId ?? undefined,
           requestedAt
         }
+      });
+
+      // Someone wants to go live and needs a watcher to approve — notify the
+      // owner + farm manager so a request never sits unseen.
+      await notifyRoles(request.log, {
+        orgId: caller.orgId,
+        roleKeys: ["owner", "admin"],
+        excludeUserId: caller.userId,
+        type: "live.request",
+        title: "Live request pending",
+        body: `${deviceName} is requesting to go live`,
+        payload: { requestId, deviceId: body.deviceId },
+        actionUrl: "/live"
       });
 
       reply.status(201);

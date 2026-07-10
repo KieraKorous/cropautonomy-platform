@@ -51,6 +51,7 @@ interface CaptureRow {
   storage_path: string;
   mime_type: string;
   status: string;
+  captured_by_user_id: string | null;
 }
 
 interface AnalysisJobRow {
@@ -111,7 +112,7 @@ async function runOne(
   // 1. Load capture + analysis_job.
   const { data: captureData, error: captureErr } = await supabase
     .from("captures")
-    .select("id, org_id, storage_bucket, storage_path, mime_type, status")
+    .select("id, org_id, storage_bucket, storage_path, mime_type, status, captured_by_user_id")
     .eq("id", payload.captureId)
     .maybeSingle();
   if (captureErr) throw captureErr;
@@ -220,6 +221,7 @@ async function runOne(
       false
     );
     await safePublishFailure(capture.org_id, analysisJob.id, reason, false, capture.id);
+    await notifyCaptureOwner(supabase, capture, "failed");
     return;
   }
 
@@ -249,6 +251,7 @@ async function runOne(
     await failJob(supabase, analysisJob.id, capture.id, reason, code, retryable);
     await safePublishFailure(capture.org_id, analysisJob.id, reason, retryable, capture.id);
     if (retryable) throw err; // let pg-boss retry
+    await notifyCaptureOwner(supabase, capture, "failed");
     return;
   }
 
@@ -409,6 +412,9 @@ async function runOne(
   });
   // Org-wide capture feed: the row now has a plant name + status; refresh it live.
   await safePublishCaptureChanged(capture.org_id, capture.id, "analyzed", "analyzed");
+
+  // Tell the capturer their scan is ready.
+  await notifyCaptureOwner(supabase, capture, "completed");
 }
 
 async function resolvePipeline(
@@ -542,6 +548,56 @@ async function failJob(
     .from("captures")
     .update({ status: "failed", status_message: message })
     .eq("id", captureId);
+}
+
+// Notify the person who captured the image that its analysis finished (or
+// failed). Per-user inbox row + org-wide notification.created broadcast so the
+// portal bell updates live. Best-effort: a notification never fails the job.
+async function notifyCaptureOwner(
+  supabase: SupabaseClient,
+  capture: CaptureRow,
+  variant: "completed" | "failed"
+): Promise<void> {
+  const userId = capture.captured_by_user_id;
+  if (!userId) return;
+  const isDone = variant === "completed";
+  const type = isDone ? "analysis.completed" : "analysis.failed";
+  const title = isDone ? "Scan analysis ready" : "Scan analysis failed";
+  const actionUrl = `/captures/${capture.id}`;
+  try {
+    const { data, error } = await supabase
+      .from("notifications")
+      .insert({
+        user_id: userId,
+        org_id: capture.org_id,
+        type,
+        title,
+        payload: { captureId: capture.id },
+        action_url: actionUrl
+      })
+      .select("id, created_at")
+      .maybeSingle();
+    if (error || !data) return;
+    const row = data as { id: string; created_at: string };
+    await safePublish(channels.orgNotifications(capture.org_id), {
+      type: "notification.created",
+      version: 1,
+      payload: {
+        notificationId: row.id,
+        userId,
+        orgId: capture.org_id,
+        notifType: type,
+        title,
+        actionUrl,
+        createdAt: new Date(row.created_at).toISOString()
+      }
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `notifyCaptureOwner failed: ${err instanceof Error ? err.message : err}`
+    );
+  }
 }
 
 async function safePublish(
