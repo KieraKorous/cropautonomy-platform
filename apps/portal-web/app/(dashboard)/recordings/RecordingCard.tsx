@@ -23,11 +23,15 @@ const severityTone: Record<string, Tone> = {
 export function RecordingCard({
   recording,
   teams,
-  canAssignTeams
+  canAssignTeams,
+  selected,
+  onToggleSelect
 }: {
   recording: CaptureSummary;
   teams: TeamSummary[];
   canAssignTeams: boolean;
+  selected: boolean;
+  onToggleSelect: () => void;
 }) {
   const duration = formatDuration(recording.videoDurationMs);
   const size = formatSize(recording.sizeBytes);
@@ -36,8 +40,21 @@ export function RecordingCard({
   // No overflow-hidden on the card itself — the team dropdown needs to spill
   // past the bottom edge. The video rounds its own top corners instead.
   return (
-    <article className="flex flex-col rounded-xl border border-base-content/10 bg-base-100">
+    <article
+      className={`flex flex-col rounded-xl border bg-base-100 ${
+        selected ? "border-accent ring-1 ring-accent" : "border-base-content/10"
+      }`}
+    >
       <div className="relative aspect-video overflow-hidden rounded-t-xl bg-neutral">
+        <label className="absolute left-2 top-2 z-10 flex cursor-pointer items-center rounded bg-base-100/85 p-1 shadow-sm">
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onToggleSelect}
+            aria-label="Select recording"
+            className="h-4 w-4 cursor-pointer accent-accent"
+          />
+        </label>
         {ready ? (
           // eslint-disable-next-line jsx-a11y/media-has-caption -- field recording, no caption track
           <video

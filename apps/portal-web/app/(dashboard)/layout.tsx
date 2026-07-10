@@ -19,7 +19,9 @@ export default async function DashboardLayout({ children }: { children: ReactNod
     currentUser(),
     getMe().catch(() => null),
     loadNavCounts().catch(() => EMPTY_NAV_COUNTS),
-    listNotifications({ limit: 8 }).catch(() => EMPTY_NOTIFICATIONS)
+    // The bell shows only unread — reading one clears it from the tray (the full
+    // /notifications page is where history lives).
+    listNotifications({ limit: 8, unread: true }).catch(() => EMPTY_NOTIFICATIONS)
   ]);
 
   const email = clerkUser?.primaryEmailAddress?.emailAddress ?? me?.user.email ?? null;

@@ -10,10 +10,14 @@ import { dateFormat, mediaLabel, severityDisplay, statusDisplay } from "./captur
 // name once analysis has succeeded; everything else surfaces in-flight state.
 export function CaptureRow({
   capture,
-  onOpen
+  onOpen,
+  selected,
+  onToggleSelect
 }: {
   capture: CaptureSummary;
   onOpen: () => void;
+  selected: boolean;
+  onToggleSelect: () => void;
 }) {
   const display = statusDisplay(capture.status, capture.plantType);
   const when = capture.uploadedAt ?? capture.capturedAt;
@@ -21,8 +25,20 @@ export function CaptureRow({
   return (
     <tr
       onClick={onOpen}
-      className="cursor-pointer border-t border-base-content/10 align-middle transition-colors hover:bg-base-content/[0.03]"
+      className={`cursor-pointer border-t border-base-content/10 align-middle transition-colors hover:bg-base-content/[0.03] ${
+        selected ? "bg-accent/[0.06]" : ""
+      }`}
     >
+      {/* Stop propagation so ticking the box doesn't open the lightbox. */}
+      <td className="px-3 py-2.5" onClick={(event) => event.stopPropagation()}>
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onToggleSelect}
+          aria-label="Select capture"
+          className="h-4 w-4 cursor-pointer accent-accent"
+        />
+      </td>
       <td className="px-3 py-2.5">
         <div className="relative h-14 w-14 overflow-hidden rounded-md bg-base-content/[0.04]">
           {capture.imageUrl ? (

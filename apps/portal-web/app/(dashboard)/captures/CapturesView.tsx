@@ -10,6 +10,8 @@ import { CaptureRow } from "./CaptureRow";
 import { CaptureCard } from "./CaptureCard";
 import { CaptureDetailModal } from "./CaptureDetailModal";
 import { isConcern, severityRank } from "./captureDisplay";
+import { useSelection } from "../_components/useSelection";
+import { SelectionToolbar } from "../_components/SelectionToolbar";
 
 type ViewMode = "table" | "grid";
 const STORAGE_KEY = "captures.viewMode";
@@ -199,6 +201,14 @@ export function CapturesView({
     return [...filtered].sort((a, b) => factor * compareCaptures(a, b, sort.key));
   }, [filtered, sort]);
 
+  // Multi-select across table + grid. Prune against the full loaded set so a
+  // discarded row drops out of the selection; select-all targets what's visible.
+  const allIds = useMemo(() => captures.map((c) => c.id), [captures]);
+  const visibleIds = useMemo(() => sorted.map((c) => c.id), [sorted]);
+  const { selected, toggle: toggleOne, clear, toggleAll, isSelected } = useSelection(allIds);
+  const selectedIds = useMemo(() => [...selected], [selected]);
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.has(id));
+
   const toggle = (
     <div
       className="inline-flex items-center gap-1 rounded-lg border border-base-content/10 bg-base-100 p-0.5"
@@ -276,11 +286,30 @@ export function CapturesView({
         ) : null}
       </div>
 
+      <SelectionToolbar
+        selectedIds={selectedIds}
+        items={sorted}
+        teams={teams}
+        canAssignTeams={canAssignTeams}
+        allowReanalyze
+        subjectLabel="capture"
+        onClear={clear}
+      />
+
       {view === "table" ? (
         <div className="overflow-x-auto rounded-xl border border-base-content/10 bg-base-100">
           <table className="w-full min-w-[960px] text-left text-sm">
             <thead className="bg-base-content/[0.03] text-xs uppercase tracking-wide text-base-content/55">
               <tr>
+                <th scope="col" className="px-3 py-2.5 font-medium">
+                  <input
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    onChange={() => toggleAll(visibleIds)}
+                    aria-label="Select all captures"
+                    className="h-4 w-4 cursor-pointer accent-accent"
+                  />
+                </th>
                 <th scope="col" className="px-3 py-2.5 font-medium">
                   <span className="sr-only">Preview</span>
                 </th>
@@ -299,13 +328,19 @@ export function CapturesView({
             <tbody>
               {sorted.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-3 py-10 text-center">
+                  <td colSpan={10} className="px-3 py-10 text-center">
                     <EmptyMessage filtered={hasActiveFilter} />
                   </td>
                 </tr>
               ) : (
                 sorted.map((capture, i) => (
-                  <CaptureRow capture={capture} key={capture.id} onOpen={() => setSelectedIndex(i)} />
+                  <CaptureRow
+                    capture={capture}
+                    key={capture.id}
+                    onOpen={() => setSelectedIndex(i)}
+                    selected={isSelected(capture.id)}
+                    onToggleSelect={() => toggleOne(capture.id)}
+                  />
                 ))
               )}
             </tbody>
@@ -323,7 +358,13 @@ export function CapturesView({
           ) : (
             <div className="grid grid-cols-2 gap-4 p-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
               {sorted.map((capture, i) => (
-                <CaptureCard capture={capture} key={capture.id} onOpen={() => setSelectedIndex(i)} />
+                <CaptureCard
+                  capture={capture}
+                  key={capture.id}
+                  onOpen={() => setSelectedIndex(i)}
+                  selected={isSelected(capture.id)}
+                  onToggleSelect={() => toggleOne(capture.id)}
+                />
               ))}
             </div>
           )}

@@ -16,10 +16,14 @@ import { RecordingDiscardButton } from "./RecordingDiscardButton";
 // video: a play affordance instead of an image, plus duration/size subtext.
 export function RecordingRow({
   recording,
-  onOpen
+  onOpen,
+  selected,
+  onToggleSelect
 }: {
   recording: CaptureSummary;
   onOpen: () => void;
+  selected: boolean;
+  onToggleSelect: () => void;
 }) {
   const status = recordingStatusDisplay(recording.status);
   const duration = formatDuration(recording.videoDurationMs);
@@ -29,8 +33,20 @@ export function RecordingRow({
   return (
     <tr
       onClick={onOpen}
-      className="cursor-pointer border-t border-base-content/10 align-middle transition-colors hover:bg-base-content/[0.03]"
+      className={`cursor-pointer border-t border-base-content/10 align-middle transition-colors hover:bg-base-content/[0.03] ${
+        selected ? "bg-accent/[0.06]" : ""
+      }`}
     >
+      {/* Stop propagation so ticking the box doesn't open the lightbox. */}
+      <td className="px-3 py-2.5" onClick={(event) => event.stopPropagation()}>
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onToggleSelect}
+          aria-label="Select recording"
+          className="h-4 w-4 cursor-pointer accent-accent"
+        />
+      </td>
       <td className="px-3 py-2.5">
         <div className="relative flex h-14 w-20 items-center justify-center overflow-hidden rounded-md bg-neutral text-base-100/70">
           <PlayGlyph />

@@ -83,19 +83,20 @@ export function NotificationBell({
     };
   }, [open]);
 
+  // The bell only holds unread rows, so reading one removes it from the tray
+  // (it stays in history on the /notifications page).
   const markRead = useCallback((id: string) => {
-    setItems((prev) =>
-      prev.map((n) =>
-        n.id === id && !n.readAt ? { ...n, readAt: new Date().toISOString() } : n
-      )
-    );
-    setUnread((n) => Math.max(0, n - 1));
+    setItems((prev) => {
+      if (!prev.some((n) => n.id === id)) return prev;
+      setUnread((n) => Math.max(0, n - 1));
+      return prev.filter((n) => n.id !== id);
+    });
     void markNotificationReadAction(id);
   }, []);
 
   const onItemClick = useCallback(
     (n: NotificationSummary) => {
-      if (!n.readAt) markRead(n.id);
+      markRead(n.id);
       setOpen(false);
       if (n.actionUrl) router.push(n.actionUrl);
     },
@@ -103,9 +104,7 @@ export function NotificationBell({
   );
 
   const markAllRead = useCallback(() => {
-    setItems((prev) =>
-      prev.map((n) => (n.readAt ? n : { ...n, readAt: new Date().toISOString() }))
-    );
+    setItems([]);
     setUnread(0);
     void markAllNotificationsReadAction();
   }, []);

@@ -7,6 +7,8 @@ import { useRealtimeChannel } from "@gaia/realtime/client";
 import { GridIcon, RowsIcon } from "@gaia/ui";
 import type { CaptureStatus, CaptureSummary, TeamSummary } from "../../../lib/api";
 import { isConcern, severityRank } from "../captures/captureDisplay";
+import { useSelection } from "../_components/useSelection";
+import { SelectionToolbar } from "../_components/SelectionToolbar";
 import { RecordingRow } from "./RecordingRow";
 import { RecordingCard } from "./RecordingCard";
 import { RecordingDetailModal } from "./RecordingDetailModal";
@@ -171,6 +173,13 @@ export function RecordingsView({
     return [...filtered].sort((a, b) => factor * compareRecordings(a, b, sort.key));
   }, [filtered, sort]);
 
+  // Multi-select across table + grid, pruned against the full loaded set.
+  const allIds = useMemo(() => recordings.map((r) => r.id), [recordings]);
+  const visibleIds = useMemo(() => sorted.map((r) => r.id), [sorted]);
+  const { selected, toggle: toggleOne, clear, toggleAll, isSelected } = useSelection(allIds);
+  const selectedIds = useMemo(() => [...selected], [selected]);
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.has(id));
+
   const hasActiveFilter =
     concernsOnly || Boolean(farmFilter) || Boolean(fieldFilter) || Boolean(capturedByFilter);
 
@@ -243,11 +252,30 @@ export function RecordingsView({
         ) : null}
       </div>
 
+      <SelectionToolbar
+        selectedIds={selectedIds}
+        items={sorted}
+        teams={teams}
+        canAssignTeams={canAssignTeams}
+        allowReanalyze={false}
+        subjectLabel="recording"
+        onClear={clear}
+      />
+
       {view === "table" ? (
         <div className="overflow-x-auto rounded-xl border border-base-content/10 bg-base-100">
           <table className="w-full min-w-[900px] text-left text-sm">
             <thead className="bg-base-content/[0.03] text-xs uppercase tracking-wide text-base-content/55">
               <tr>
+                <th scope="col" className="px-3 py-2.5 font-medium">
+                  <input
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    onChange={() => toggleAll(visibleIds)}
+                    aria-label="Select all recordings"
+                    className="h-4 w-4 cursor-pointer accent-accent"
+                  />
+                </th>
                 <th scope="col" className="px-3 py-2.5 font-medium">
                   <span className="sr-only">Preview</span>
                 </th>
@@ -265,13 +293,19 @@ export function RecordingsView({
             <tbody>
               {sorted.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-3 py-10 text-center">
+                  <td colSpan={9} className="px-3 py-10 text-center">
                     <EmptyMessage filtered={hasActiveFilter} />
                   </td>
                 </tr>
               ) : (
                 sorted.map((rec, i) => (
-                  <RecordingRow recording={rec} key={rec.id} onOpen={() => setSelectedIndex(i)} />
+                  <RecordingRow
+                    recording={rec}
+                    key={rec.id}
+                    onOpen={() => setSelectedIndex(i)}
+                    selected={isSelected(rec.id)}
+                    onToggleSelect={() => toggleOne(rec.id)}
+                  />
                 ))
               )}
             </tbody>
@@ -294,6 +328,8 @@ export function RecordingsView({
                   recording={rec}
                   teams={teams}
                   canAssignTeams={canAssignTeams}
+                  selected={isSelected(rec.id)}
+                  onToggleSelect={() => toggleOne(rec.id)}
                 />
               ))}
             </div>

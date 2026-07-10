@@ -20,10 +20,14 @@ function locationLine(capture: CaptureSummary): string {
 // but the discard button) opens the detail lightbox.
 export function CaptureCard({
   capture,
-  onOpen
+  onOpen,
+  selected,
+  onToggleSelect
 }: {
   capture: CaptureSummary;
   onOpen: () => void;
+  selected: boolean;
+  onToggleSelect: () => void;
 }) {
   const display = statusDisplay(capture.status, capture.plantType);
   const when = capture.uploadedAt ?? capture.capturedAt;
@@ -39,9 +43,24 @@ export function CaptureCard({
           onOpen();
         }
       }}
-      className="cursor-pointer overflow-hidden rounded-xl border border-base-content/10 bg-base-100 transition-colors hover:border-base-content/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+      className={`cursor-pointer overflow-hidden rounded-xl border bg-base-100 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+        selected ? "border-accent ring-1 ring-accent" : "border-base-content/10 hover:border-base-content/25"
+      }`}
     >
       <div className="relative aspect-square bg-base-content/[0.04]">
+        {/* Stop propagation so ticking the box doesn't open the lightbox. */}
+        <label
+          className="absolute left-2 top-2 z-10 flex cursor-pointer items-center rounded bg-base-100/85 p-1 shadow-sm"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onToggleSelect}
+            aria-label="Select capture"
+            className="h-4 w-4 cursor-pointer accent-accent"
+          />
+        </label>
         {capture.imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- signed Storage URL, not a static asset
           <img
@@ -55,11 +74,11 @@ export function CaptureCard({
           </div>
         )}
         {display.pill ? (
-          <div className="absolute left-2 top-2">
+          <div className="absolute left-11 top-2">
             <StatusPill label={display.pill.label} tone={display.pill.tone} />
           </div>
         ) : capture.status === "failed" ? (
-          <div className="absolute left-2 top-2">
+          <div className="absolute left-11 top-2">
             <span className="inline-flex h-fit items-center gap-1.5 rounded-full bg-error/15 px-2.5 py-1 text-xs font-semibold text-error">
               <span className="h-1.5 w-1.5 rounded-full bg-error" />
               Failed
