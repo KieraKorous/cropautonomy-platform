@@ -5,7 +5,7 @@ import { getDb } from "../lib/db.js";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.js";
 import { publishBestEffort } from "../lib/live.js";
 import { channels } from "@gaia/realtime/channels";
-import { resolveTeamScope, type TeamResourceType } from "../lib/team-scope.js";
+import type { TeamResourceType } from "../lib/team-scope.js";
 
 const UUID_RE = /^[0-9a-f-]{36}$/i;
 
@@ -213,21 +213,24 @@ const teamsRoutes: FastifyPluginAsync = async (app) => {
     const supabase = getDb();
     const ctx = { userId: caller.userId, orgId: caller.orgId };
 
-    // Team visibility: admins/owners (bypass) see every team; everyone else sees
-    // the teams they belong to OR the teams they created (ownership). No early
-    // return — a caller on no teams may still have created some.
-    const scope = await resolveTeamScope(supabase, request.permissions!, ctx);
+    // Team visibility (NO bypass — holds for every role, admins/owners included):
+    // you see a team only if you belong to it OR you created it. Fetch the
+    // caller's team ids directly and filter every query on member-or-creator.
+    const { data: myTeamRows, error: myTeamErr } = await supabase
+      .from("team_memberships")
+      .select("team_id")
+      .eq("org_id", caller.orgId)
+      .eq("user_id", caller.userId);
+    if (myTeamErr) throw myTeamErr;
+    const myTeamIds = ((myTeamRows ?? []) as Array<{ team_id: string }>).map((r) => r.team_id);
+    const inList = myTeamIds.length ? myTeamIds.join(",") : NO_MATCH;
 
-    let teamsQuery = supabase
+    const teamsQuery = supabase
       .from("teams")
       .select("id, name, description, color, created_by_user_id, created_at, updated_at")
       .eq("org_id", caller.orgId)
+      .or(`id.in.(${inList}),created_by_user_id.eq.${caller.userId}`)
       .order("name", { ascending: true });
-    if (!scope.bypass) {
-      const ids = scope.teamIds ?? [];
-      const inList = ids.length ? ids.join(",") : NO_MATCH;
-      teamsQuery = teamsQuery.or(`id.in.(${inList}),created_by_user_id.eq.${caller.userId}`);
-    }
 
     const [teamsResult, membersResult, assignmentsResult] = await Promise.all([
       teamsQuery,
@@ -345,26 +348,15 @@ const teamsRoutes: FastifyPluginAsync = async (app) => {
 
       const team = await loadTeam(supabase, caller.orgId, id);
 
-      // Same boundary as the list: a non-bypass caller may only open a team they
-      // belong to or created. 404 (not 403) so we don't leak which teams exist.
-      const scope = await resolveTeamScope(supabase, request.permissions!, {
-        userId: caller.userId,
-        orgId: caller.orgId
-      });
-      if (
-        !scope.bypass &&
-        !(scope.teamIds ?? []).includes(id) &&
-        team.created_by_user_id !== caller.userId
-      ) {
-        throw notFound("teams.not_found", "Team not found.");
-      }
-
       const [membersResult, assignmentsResult] = await Promise.all([
         // Disambiguate the users embed: team_memberships has TWO FKs to users
-        // (user_id + added_by_user_id), so PostgREST needs the column hint.
+        // (user_id + added_by_user_id), so PostgREST needs the column hint. Also
+        // pull each member's per-team role (team_memberships.role_id → roles).
         supabase
           .from("team_memberships")
-          .select("user_id, created_at, user:users!user_id ( id, display_name, email, avatar_url )")
+          .select(
+            "user_id, created_at, role:roles ( key, name ), user:users!user_id ( id, display_name, email, avatar_url )"
+          )
           .eq("org_id", caller.orgId)
           .eq("team_id", id),
         supabase
@@ -379,6 +371,7 @@ const teamsRoutes: FastifyPluginAsync = async (app) => {
       const members = ((membersResult.data ?? []) as unknown as Array<{
         user_id: string;
         created_at: string;
+        role: { key: string; name: string } | null;
         user: {
           id: string;
           display_name: string | null;
@@ -390,8 +383,37 @@ const teamsRoutes: FastifyPluginAsync = async (app) => {
         displayName: r.user?.display_name ?? null,
         email: r.user?.email ?? null,
         avatarUrl: r.user?.avatar_url ?? null,
+        roleKey: r.role?.key ?? null,
+        roleName: r.role?.name ?? null,
         addedAt: r.created_at
       }));
+
+      // Visibility (NO bypass — every role, admins/owners included): you may open
+      // a team only if you're on it or you created it. 404 (not 403) so team
+      // existence never leaks.
+      const isMember = members.some((m) => m.userId === caller.userId);
+      if (!isMember && team.created_by_user_id !== caller.userId) {
+        throw notFound("teams.not_found", "Team not found.");
+      }
+
+      // Resolve the creator for display ("Created by …").
+      let createdBy: {
+        userId: string;
+        displayName: string | null;
+        email: string | null;
+      } | null = null;
+      if (team.created_by_user_id) {
+        const { data: creator, error: creatorErr } = await supabase
+          .from("users")
+          .select("id, display_name, email")
+          .eq("id", team.created_by_user_id)
+          .maybeSingle();
+        if (creatorErr) throw creatorErr;
+        const c = creator as
+          | { id: string; display_name: string | null; email: string | null }
+          | null;
+        if (c) createdBy = { userId: c.id, displayName: c.display_name, email: c.email };
+      }
 
       const assignments: Record<TeamResourceType, string[]> = {
         farm: [],
@@ -418,7 +440,8 @@ const teamsRoutes: FastifyPluginAsync = async (app) => {
           }, emptyCounts())
         ),
         members,
-        assignments
+        assignments,
+        createdBy
       };
     }
   );

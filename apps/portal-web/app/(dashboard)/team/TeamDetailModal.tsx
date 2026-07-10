@@ -210,6 +210,14 @@ export function TeamDetailModal({
         </div>
 
         <div className="flex flex-col gap-4 overflow-y-auto px-6 py-5">
+          {detail?.createdBy ? (
+            <p className="text-xs text-base-content/55">
+              Created by{" "}
+              <span className="font-medium text-neutral">
+                {detail.createdBy.displayName ?? detail.createdBy.email ?? "Unknown"}
+              </span>
+            </p>
+          ) : null}
           {loading ? (
             <p className="py-6 text-center text-sm text-base-content/55">Loading…</p>
           ) : tab === "members" ? (
@@ -301,13 +309,16 @@ function MembersTab({
                   <span className="truncate text-xs text-base-content/55">{m.email}</span>
                 ) : null}
               </div>
+              <span className="ml-auto flex-shrink-0 rounded-full bg-base-content/[0.06] px-2 py-0.5 text-xs text-base-content/70">
+                {m.roleName ?? "No role"}
+              </span>
               {canManage ? (
                 <button
                   type="button"
                   onClick={() => onRemove(m.userId)}
                   disabled={busy}
                   aria-label={`Remove ${m.displayName ?? m.email ?? "member"}`}
-                  className="ml-auto rounded-md p-1.5 text-base-content/45 transition-colors hover:bg-error/10 hover:text-error disabled:opacity-50"
+                  className="rounded-md p-1.5 text-base-content/45 transition-colors hover:bg-error/10 hover:text-error disabled:opacity-50"
                 >
                   <TrashIcon size={15} />
                 </button>

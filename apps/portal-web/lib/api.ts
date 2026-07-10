@@ -883,16 +883,28 @@ export interface TeamMember {
   displayName: string | null;
   email: string | null;
   avatarUrl: string | null;
+  // The member's per-team role (team_memberships.role_id → roles).
+  roleKey: string | null;
+  roleName: string | null;
   addedAt: string;
 }
 
 // A team's assignments, grouped by resource type (arrays of resource ids).
 export type TeamAssignments = Record<TeamResourceType, string[]>;
 
+// Who created the team (from teams.created_by_user_id), for the "Created by …"
+// line. Null if the creator's user row is gone.
+export interface TeamCreator {
+  userId: string;
+  displayName: string | null;
+  email: string | null;
+}
+
 export interface TeamDetail {
   team: TeamSummary;
   members: TeamMember[];
   assignments: TeamAssignments;
+  createdBy: TeamCreator | null;
 }
 
 interface ListTeamsResponse {

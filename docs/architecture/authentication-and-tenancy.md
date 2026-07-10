@@ -240,8 +240,10 @@ real access boundary, not just a label. See migration
 
 Model:
 - **`teams`** — a named group within one org.
-- **`team_memberships`** — user ↔ team, many-to-many. **No per-team role**: the
-  org role governs what you can *do*; the team only governs *which rows* you see.
+- **`team_memberships`** — user ↔ team, many-to-many, each carrying a **per-team
+  role** (`role_id`, added in `0030`). Effective permissions are the union of the
+  member's org base role and every team role they hold; the team also governs
+  *which rows* they see.
 - **`team_assignments`** — a single polymorphic table (`resource_type`,
   `resource_id`) linking teams to the six assignable entity types: `farm`,
   `field`, `device`, `capture_session` (Live + Recordings), `capture`, and
@@ -262,13 +264,18 @@ zero team assignments (unassigned = org-visible — makes rollout non-breaking,
 since all pre-existing rows have zero assignments), OR **(C)** R shares at least
 one team with the caller. Always AND-scoped by `org_id`.
 
-**Teams themselves** follow the same boundary, with membership standing in for
-rule (C): `GET /v1/teams` and `GET /v1/teams/:id` return every team to an
-`team_members.manage` holder (admin/owner bypass) but only the teams the caller
-*belongs to* for everyone else — a member cannot see or open a team they are not
-on (detail 404s rather than 403s, so team existence never leaks). There is no
-rule (B) analog: a team is defined by its membership, so an "unassigned" team is
-just an empty one, visible only to bypass holders.
+**Teams themselves** are scoped by membership + ownership, with **no bypass** —
+the rule holds for every role, admins and owners included. `GET /v1/teams` and
+`GET /v1/teams/:id` return a team only if the caller **belongs to it** or
+**created it** (`created_by_user_id`); a member cannot see or open any other team
+(detail 404s rather than 403s, so team existence never leaks). There is no rule
+(B) analog: a team is defined by its membership, so an "unassigned" team is just
+an empty one, visible only to its creator. The detail response also carries the
+**creator** (`createdBy`) and each roster member's **per-team role** for display.
+
+Note: this differs from the entity visibility rule above, which *does* keep the
+`team_members.manage` admin/owner bypass — admins still see every farm/field/
+device/capture, they just don't see teams they aren't on or didn't create.
 
 Enforcement is **primarily in the API query layer**
 ([`services/api/src/lib/team-scope.ts`](../../services/api/src/lib/team-scope.ts)),
