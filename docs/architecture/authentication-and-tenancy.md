@@ -287,6 +287,17 @@ Note: this differs from the entity visibility rule above, which *does* keep the
 `team_members.manage` admin/owner bypass — admins still see every farm/field/
 device/capture, they just don't see teams they aren't on or didn't create.
 
+**Devices — stricter than rule (B).** The Devices registry (`GET /v1/devices`)
+narrows rule (B) for `device` rows: an unassigned device is **not** org-visible;
+a non-admin caller sees a device only if they **registered it**
+(`registered_by_user_id`) OR it's **attached to a team they're on** (rule C
+unchanged). Admins/owners keep the (A) bypass and see the whole fleet; the
+`?teamId=` header filter still narrows to one team. Rationale: a paired phone is
+personal kit — an operator shouldn't see everyone else's phones cluttering their
+registry — whereas shared GAIA hardware is made visible to a crew by attaching it
+to a team. This override lives only in the devices route, not in `team-scope.ts`
+or RLS; the other entity types keep the canonical rule (B).
+
 Enforcement is **primarily in the API query layer**
 ([`services/api/src/lib/team-scope.ts`](../../services/api/src/lib/team-scope.ts)),
 with RLS mirroring rules (B)+(C) as the secondary net (the admin bypass lives only

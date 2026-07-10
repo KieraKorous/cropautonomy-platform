@@ -326,11 +326,46 @@ const devicesRoutes: FastifyPluginAsync = async (app) => {
         userId: caller.userId,
         orgId: caller.orgId
       });
-      query = (
-        await applyTeamFilter(query, supabase, caller.orgId, "device", scope, {
-          teamId: request.query.teamId
-        })
-      ).query;
+
+      if (request.query.teamId) {
+        // Header team filter: narrow to that one team's devices (applyTeamFilter
+        // also verifies the caller may see that team at all). The team narrow is
+        // an explicit "show me this crew's fleet", so the added-by rule below
+        // doesn't apply here.
+        query = (
+          await applyTeamFilter(query, supabase, caller.orgId, "device", scope, {
+            teamId: request.query.teamId
+          })
+        ).query;
+      } else if (!scope.bypass) {
+        // Ownership rule (non-admins): a caller sees a device only if they
+        // registered it OR it's attached to a team they're on. This is stricter
+        // than the org-wide "unassigned = visible" default — a device someone
+        // else added, unattached to any of your teams, stays hidden. Admins /
+        // owners (scope.bypass) skip this and see every device in the org.
+        const teamIds = scope.teamIds ?? [];
+        let myTeamDeviceIds: string[] = [];
+        if (teamIds.length > 0) {
+          const { data: assignedRows, error: assignedErr } = await supabase
+            .from("team_assignments")
+            .select("resource_id")
+            .eq("org_id", caller.orgId)
+            .eq("resource_type", "device")
+            .in("team_id", teamIds);
+          if (assignedErr) throw assignedErr;
+          myTeamDeviceIds = [
+            ...new Set(
+              (assignedRows ?? []).map((r) => (r as { resource_id: string }).resource_id)
+            )
+          ];
+        }
+        query =
+          myTeamDeviceIds.length > 0
+            ? query.or(
+                `registered_by_user_id.eq.${caller.userId},id.in.(${myTeamDeviceIds.join(",")})`
+              )
+            : query.eq("registered_by_user_id", caller.userId);
+      }
 
       const { data, error } = await query;
       if (error) throw error;

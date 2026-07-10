@@ -32,6 +32,10 @@ export function DevicesGrid({
   const [addOpen, setAddOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
+  // team id → name, so a card can show which crew a device is attached to
+  // without another fetch (the org's teams are already loaded for the modal).
+  const teamNameById = new Map(teams.map((t) => [t.id, t.name]));
+
   // The open device is looked up by id from the current list, so after an edit
   // revalidates the page the modal reflects the fresh values (or closes if the
   // device was deleted out from under it).
@@ -41,7 +45,14 @@ export function DevicesGrid({
     <>
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         {devices.map((device) => (
-          <DeviceCard key={device.id} device={device} onOpen={() => setSelectedId(device.id)} />
+          <DeviceCard
+            key={device.id}
+            device={device}
+            teamNames={device.teamIds
+              .map((id) => teamNameById.get(id))
+              .filter((n): n is string => Boolean(n))}
+            onOpen={() => setSelectedId(device.id)}
+          />
         ))}
 
         <button
@@ -73,11 +84,21 @@ export function DevicesGrid({
   );
 }
 
-function DeviceCard({ device, onOpen }: { device: Device; onOpen: () => void }) {
+function DeviceCard({
+  device,
+  teamNames,
+  onOpen
+}: {
+  device: Device;
+  // Names of the teams this device is attached to (empty = unassigned).
+  teamNames: string[];
+  onOpen: () => void;
+}) {
   const { label } = deviceFamilyMeta(device.deviceFamily);
   const status = deviceActivityStatus(device);
   const visual = deviceVisual(device);
   const name = deviceName(device);
+  const onTeam = teamNames.length > 0;
 
   return (
     <button
@@ -107,6 +128,20 @@ function DeviceCard({ device, onOpen }: { device: Device; onOpen: () => void }) 
         <span className="block truncate text-xs text-neutral-content/70">
           {label} · {device.live ? "In use now" : `Used ${formatRelativeTime(device.lastUsedAt)}`}
         </span>
+        {/* Team-attached devices carry a little provenance: who added it and which
+            crew it's filed under. Unattached (org-wide) devices stay compact. */}
+        {onTeam ? (
+          <div className="mt-1 flex flex-col gap-0.5 text-[11px] leading-tight text-neutral-content/60">
+            {device.registeredByName ? (
+              <span className="truncate" title={device.registeredByName}>
+                Added by: {device.registeredByName}
+              </span>
+            ) : null}
+            <span className="truncate" title={teamNames.join(", ")}>
+              Attached to team: {teamNames.join(", ")}
+            </span>
+          </div>
+        ) : null}
       </div>
     </button>
   );

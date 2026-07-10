@@ -143,6 +143,13 @@ export function DeviceDetailModal({
   // Optimistic override wins until the server prop confirms it (see effect above).
   const autoLiveChecked = autoLiveOverride ?? device.autoLiveEnabled;
 
+  // Names of the teams this device is filed under, resolved from the optimistic
+  // teamIds so the metadata line tracks a manager's toggles live. Shown to every
+  // viewer (non-managers don't get the team editor below but still see this).
+  const attachedTeamNames = teamIds
+    .map((id) => teams.find((t) => t.id === id)?.name)
+    .filter((n): n is string => Boolean(n));
+
   // Draft appearance → the value we'd persist. Returns null when it matches the
   // family default (icon family glyph in forest green) so unchanged devices stay
   // "default" rather than pinning a redundant override.
@@ -315,7 +322,11 @@ export function DeviceDetailModal({
         <dl className="flex flex-col gap-3 rounded-lg border border-base-content/10 bg-base-content/[0.02] p-4 text-sm">
           <DetailRow label="Kind" value={familyLabel} />
           <DetailRow label="Firmware" value={device.firmwareVersion ?? "—"} />
-          <DetailRow label="Registered by" value={device.registeredByName ?? "—"} />
+          <DetailRow label="Added by" value={device.registeredByName ?? "—"} />
+          <DetailRow
+            label="Attached to team"
+            value={attachedTeamNames.length > 0 ? attachedTeamNames.join(", ") : "None"}
+          />
           <DetailRow label="Registered" value={formatDate(device.registeredAt)} />
           <DetailRow
             label="Last used"
