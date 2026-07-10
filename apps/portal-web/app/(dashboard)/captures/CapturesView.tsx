@@ -241,8 +241,6 @@ export function CapturesView({
           ) : null}
         </button>
 
-        <SortSelect sort={sort} onSort={onSort} />
-
         <FilterSelect
           label="Farm"
           value={farmFilter}
@@ -417,44 +415,6 @@ function FilterSelect({
   );
 }
 
-// Sort dropdown mirroring the table's column headers, so the grid view (which has
-// no headers) can still change sort. Writing to the same `sort` state keeps the
-// two controls in lockstep.
-const SORT_OPTIONS: { key: SortKey; label: string }[] = [
-  { key: "date", label: "Date captured" },
-  { key: "severity", label: "Severity" },
-  { key: "plant", label: "Plant type" },
-  { key: "status", label: "Status" },
-  { key: "capturedBy", label: "Captured by" },
-  { key: "farm", label: "Farm" },
-  { key: "field", label: "Field" }
-];
-
-function SortSelect({
-  sort,
-  onSort
-}: {
-  sort: { key: SortKey; dir: SortDir };
-  onSort: (key: SortKey) => void;
-}) {
-  return (
-    <label className="inline-flex items-center gap-1.5">
-      <span className="text-xs font-medium text-base-content/55">Sort</span>
-      <select
-        value={sort.key}
-        onChange={(event) => onSort(event.target.value as SortKey)}
-        aria-label="Sort captures by"
-        className="rounded-lg border border-base-content/10 bg-base-100 px-3 py-1.5 text-xs font-medium text-base-content/70 transition-colors hover:text-neutral"
-      >
-        {SORT_OPTIONS.map((opt) => (
-          <option key={opt.key} value={opt.key}>
-            {opt.label}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
 
 // Clickable column header. The caret only renders on the active column and
 // points up for ascending / down for descending.
