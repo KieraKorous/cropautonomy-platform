@@ -33,7 +33,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
         initialCounts={navCounts}
         org={{ initials: initialsFrom(orgName), name: orgName }}
         orgId={orgId}
-        user={{ initials: initialsFrom(fullName, email), name: userName }}
+        user={{ initials: initialsFrom(fullName, email), name: userName, href: "/profile" }}
       >
         {children}
       </DashboardShell>

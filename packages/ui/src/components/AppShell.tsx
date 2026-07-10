@@ -37,7 +37,7 @@ export type NavGroup = {
 };
 
 export type AppShellOrg = { initials: string; name: string };
-export type AppShellUser = { initials: string; name: string };
+export type AppShellUser = { initials: string; name: string; href?: string };
 export type AppShellSearch = { placeholder: string; shortcut?: string };
 
 export type AppShellProps = {
@@ -242,15 +242,26 @@ function NotificationsButton({ hasUnread }: { hasUnread: boolean }) {
 }
 
 function UserPill({ user }: { user: AppShellUser }) {
-  return (
-    <button
-      className="flex items-center gap-2 rounded-full py-1 pl-1 pr-2.5 hover:bg-base-content/[0.05]"
-      type="button"
-    >
+  const className =
+    "flex items-center gap-2 rounded-full py-1 pl-1 pr-2.5 hover:bg-base-content/[0.05]";
+  const inner = (
+    <>
       <span className="flex h-7 w-7 items-center justify-center rounded-full bg-secondary text-xs font-semibold text-secondary-content">
         {user.initials}
       </span>
       <span className="whitespace-nowrap text-sm font-medium text-neutral">{user.name}</span>
+    </>
+  );
+  if (user.href) {
+    return (
+      <a aria-label="Your profile" className={className} href={user.href}>
+        {inner}
+      </a>
+    );
+  }
+  return (
+    <button className={className} type="button">
+      {inner}
     </button>
   );
 }
