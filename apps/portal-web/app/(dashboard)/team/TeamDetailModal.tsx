@@ -71,6 +71,13 @@ export function TeamDetailModal({
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Everyone seen on this team's roster this session. The add-picker's org list
+  // (`members`) only holds people the caller personally invited, but the roster
+  // can include members they didn't — so without remembering them, removing such
+  // a member would strand them out of the re-add dropdown. Reset per open team.
+  const [seenMembers, setSeenMembers] = useState<
+    Map<string, { userId: string; displayName: string | null; email: string | null }>
+  >(new Map());
 
   useEffect(() => {
     const dialog = ref.current;
@@ -97,6 +104,7 @@ export function TeamDetailModal({
     if (!open || !teamId) return;
     setTab("members");
     setDetail(null);
+    setSeenMembers(new Map());
     setError(null);
     setBusy(false);
     setLoading(true);
@@ -108,6 +116,19 @@ export function TeamDetailModal({
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, teamId]);
+
+  // Remember each roster member whenever the detail (re)loads — including after a
+  // removal, so the removed member remains a re-add candidate below.
+  useEffect(() => {
+    if (!detail) return;
+    setSeenMembers((prev) => {
+      const next = new Map(prev);
+      for (const m of detail.members) {
+        next.set(m.userId, { userId: m.userId, displayName: m.displayName, email: m.email });
+      }
+      return next;
+    });
+  }, [detail]);
 
   if (!team) {
     return (
@@ -121,6 +142,19 @@ export function TeamDetailModal({
 
   const assignments = detail?.assignments ?? EMPTY_ASSIGNMENTS;
   const roster = detail?.members ?? [];
+  // Add-picker candidates: the caller's addable org members, unioned with anyone
+  // seen on this roster (so a removed member can always be re-added).
+  const addCandidates = (() => {
+    const byId = new Map<
+      string,
+      { userId: string; displayName: string | null; email: string | null }
+    >();
+    for (const m of members) {
+      byId.set(m.userId, { userId: m.userId, displayName: m.displayName, email: m.email });
+    }
+    for (const [id, m] of seenMembers) if (!byId.has(id)) byId.set(id, m);
+    return [...byId.values()];
+  })();
 
   // Run a mutation, then refresh the detail. Guards double-submits.
   async function run(fn: () => Promise<void>) {
@@ -225,7 +259,7 @@ export function TeamDetailModal({
           ) : tab === "members" ? (
             <MembersTab
               roster={roster}
-              orgMembers={members}
+              orgMembers={addCandidates}
               canManage={canManage}
               busy={busy}
               onAdd={(userId, roleKey) =>
@@ -281,7 +315,7 @@ function MembersTab({
   onSetRole
 }: {
   roster: TeamMember[];
-  orgMembers: OrgMember[];
+  orgMembers: Array<{ userId: string; displayName: string | null; email: string | null }>;
   canManage: boolean;
   busy: boolean;
   onAdd: (userId: string, roleKey: string) => void;

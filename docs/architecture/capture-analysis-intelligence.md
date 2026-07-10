@@ -179,6 +179,7 @@ Per [project licensing policy](../decisions/0001-build-for-the-system.md) and th
 - **Phase 1:** map `finding_type` + `severity` through the `analysis_results` insert; compute and write the capture-level rollups (§4.3).
 - **Phase 4+ (multi-job, if needed):** the current model is one in-flight `analysis_jobs` row per capture (`analysis_jobs` unique-in-flight; historical unconstrained). A combined pipeline keeps this 1:1. If we later fan out to per-domain jobs, relax to 1:many and aggregate rollups across jobs — decide when a domain's runtime justifies its own job.
 - **Shadow:** when a candidate pipeline exists for a task, run prod + shadow, persist both tagged by `pipeline_id`/`pipeline_version`, surface only prod (per 0003 §6).
+- **Concern notifications (shipped):** after a capture is marked `analyzed`, if the capture-level `severity` is `medium` or `high` the handler flags a crop concern — it fans out an `analysis.concern` notification (per-user inbox row + `notification.created` broadcast on `orgNotifications`) to the org's management tier (`organization_memberships` where `roles.key ∈ {owner, admin, manager}`), so a field problem surfaces to whoever can act on it, not just the capturer. Best-effort, mirrors `notifyCaptureOwner`; never fails the job. The threshold (medium+high) matches the portal's "Concerns only" filter.
 
 ---
 
@@ -190,6 +191,8 @@ Per [project licensing policy](../decisions/0001-build-for-the-system.md) and th
 - **Taxonomy (Phase 3):** read/manage `disease_types` / `pest_types` / etc.
 - **Reports (Phase 5):** field/season finding rollups powering heat maps and trend views.
 
+- **Captured-by on the list (shipped):** `GET /v1/captures` now embeds the capturer (`captured_by:users!captured_by_user_id`) and returns `capturedById` / `capturedByName` (`display_name → email → null`) so the portal list can show and sort by who took each capture without a client-side join.
+
 ### Reviewer overrides
 
 The existing capture `PATCH /v1/captures/{id}` reviewer override (summary/observation_type/severity) stays for the capture-level brief. The **finding-level** confirm/correct is the new, richer surface — the capture-level tags become a rollup of confirmed findings over time.
@@ -200,6 +203,7 @@ The existing capture `PATCH /v1/captures/{id}` reviewer override (summary/observ
 
 ADR 0003 §5: *"the labeling surface is mission-critical, not optional. If it's bad, the corpus never compounds."*
 
+- **Captures list sort/filter (shipped):** the `CapturesView` table/grid now sorts by severity, captured-by (A→Z), farm, and field (in addition to date/plant/status), shows Severity / Captured By / Farm / Field columns, and offers a filter bar — a "Concerns only" toggle (medium+high severity, matching the worker's concern threshold) plus Farm / Field / Captured-by dropdowns. Filtering is client-side over the server's team-scoped fetch. A bounded fallback poll (`router.refresh()` every 5s while any capture is non-terminal) keeps status live even if a worker `capture.changed` realtime event is missed.
 - **Findings panel (Phase 2):** on the capture detail modal, render findings grouped by domain with severity/confidence, and **bounding-box overlay on the image**. Extends today's `CaptureDetailModal` which only shows `plantType/summary/observationType/severity`.
 - **Confirm loop (Phase 3):** per-finding confirm / reject / edit-bbox / correct-category; add-finding (de-novo); mark-negative ("no issue present"). Mobile-friendly for field contractors reviewing back at base.
 - **Review queue (Phase 3):** uncertainty-sorted worklist across captures, filterable by domain; the daily driver for building the corpus.

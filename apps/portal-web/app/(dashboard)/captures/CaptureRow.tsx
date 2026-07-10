@@ -3,7 +3,7 @@ import type { CaptureSummary } from "../../../lib/api";
 import { DiscardButton } from "./DiscardButton";
 import { PlantName } from "./PlantName";
 import { RetryButton } from "./RetryButton";
-import { dateFormat, mediaLabel, statusDisplay } from "./captureDisplay";
+import { dateFormat, mediaLabel, severityDisplay, statusDisplay } from "./captureDisplay";
 
 // One row in the captures table. Clicking the row (anywhere but the discard
 // button) opens the detail lightbox. Plant column only carries a real species
@@ -73,6 +73,38 @@ export function CaptureRow({
             <RetryButton captureId={capture.id} />
           </div>
         ) : null}
+      </td>
+      <td className="px-3 py-2.5">
+        {capture.severity ? (
+          (() => {
+            const sev = severityDisplay(capture.severity);
+            return (
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${sev.badgeClass}`}
+              >
+                <span className={`h-1.5 w-1.5 rounded-full ${sev.dotClass}`} />
+                {sev.label}
+              </span>
+            );
+          })()
+        ) : (
+          <span className="text-xs text-base-content/40">—</span>
+        )}
+      </td>
+      <td className="px-3 py-2.5">
+        <span className="text-sm text-base-content/80">
+          {capture.capturedByName ?? <span className="text-base-content/40">—</span>}
+        </span>
+      </td>
+      <td className="px-3 py-2.5">
+        <span className="text-sm text-base-content/80">
+          {capture.farmName ?? <span className="text-base-content/40">—</span>}
+        </span>
+      </td>
+      <td className="px-3 py-2.5">
+        <span className="text-sm text-base-content/80">
+          {capture.fieldName ?? <span className="text-base-content/40">—</span>}
+        </span>
       </td>
       {/* Stop propagation so discarding doesn't also open the lightbox. */}
       <td className="px-3 py-2.5 text-right" onClick={(event) => event.stopPropagation()}>

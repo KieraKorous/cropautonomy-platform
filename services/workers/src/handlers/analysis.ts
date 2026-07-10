@@ -52,6 +52,7 @@ interface CaptureRow {
   mime_type: string;
   status: string;
   captured_by_user_id: string | null;
+  field_id: string | null;
 }
 
 interface AnalysisJobRow {
@@ -112,7 +113,9 @@ async function runOne(
   // 1. Load capture + analysis_job.
   const { data: captureData, error: captureErr } = await supabase
     .from("captures")
-    .select("id, org_id, storage_bucket, storage_path, mime_type, status, captured_by_user_id")
+    .select(
+      "id, org_id, storage_bucket, storage_path, mime_type, status, captured_by_user_id, field_id"
+    )
     .eq("id", payload.captureId)
     .maybeSingle();
   if (captureErr) throw captureErr;
@@ -415,6 +418,17 @@ async function runOne(
 
   // Tell the capturer their scan is ready.
   await notifyCaptureOwner(supabase, capture, "completed");
+
+  // Flag a crop concern: if the pipeline judged this capture medium/high
+  // severity, alert the org's management tier (owner/admin/manager) so a
+  // problem in the field surfaces to whoever can act on it — not just the
+  // person who took the photo.
+  if (captureUpdate.severity === "medium" || captureUpdate.severity === "high") {
+    await notifyConcern(supabase, capture, {
+      severity: captureUpdate.severity,
+      observationType: captureUpdate.observation_type ?? null
+    });
+  }
 }
 
 async function resolvePipeline(
@@ -596,6 +610,108 @@ async function notifyCaptureOwner(
     // eslint-disable-next-line no-console
     console.warn(
       `notifyCaptureOwner failed: ${err instanceof Error ? err.message : err}`
+    );
+  }
+}
+
+// Alert the org's management tier that a capture came back flagged. Fans out one
+// inbox row + notification.created broadcast per owner/admin/manager, so the
+// portal bell lights up live for everyone who can act on it. Best-effort: a
+// notification failure never fails the analysis job.
+async function notifyConcern(
+  supabase: SupabaseClient,
+  capture: CaptureRow,
+  concern: { severity: "medium" | "high"; observationType: string | null }
+): Promise<void> {
+  try {
+    // Management tier for this org: owner/admin/manager, active memberships only.
+    // Fetch active memberships with their role key and filter in JS — avoids the
+    // PostgREST embedded-column filter footgun (filtering on a joined resource).
+    const MANAGEMENT_ROLES = new Set(["owner", "admin", "manager"]);
+    const { data: members, error: membersErr } = await supabase
+      .from("organization_memberships")
+      .select("user_id, role:roles!inner ( key )")
+      .eq("org_id", capture.org_id)
+      .eq("status", "active");
+    if (membersErr || !members) return;
+    // `roles!inner` is many-to-one, so `role` is a single object at runtime even
+    // though the generated types widen it to an array — cast through unknown.
+    const memberRows = members as unknown as Array<{
+      user_id: string;
+      role: { key: string } | null;
+    }>;
+    const recipientIds = [
+      ...new Set(
+        memberRows
+          .filter((m) => m.role && MANAGEMENT_ROLES.has(m.role.key))
+          .map((m) => m.user_id)
+      )
+    ];
+    if (recipientIds.length === 0) return;
+
+    // Best-effort field name for the body ("… in North Field"). Skipped if the
+    // capture isn't tied to a field or the lookup fails.
+    let fieldName: string | null = null;
+    if (capture.field_id) {
+      const { data: fieldRow } = await supabase
+        .from("fields")
+        .select("name")
+        .eq("id", capture.field_id)
+        .maybeSingle();
+      fieldName = (fieldRow as { name: string | null } | null)?.name ?? null;
+    }
+
+    const type = "analysis.concern";
+    const title =
+      concern.severity === "high" ? "High crop concern flagged" : "Crop concern flagged";
+    const parts = [
+      `${concern.severity === "high" ? "High" : "Medium"} severity`,
+      concern.observationType ? concern.observationType.replace(/_/g, " ") : null,
+      fieldName ? `in ${fieldName}` : null
+    ].filter(Boolean);
+    const body = `${parts.join(" ")} detected — review the capture.`;
+    const actionUrl = `/captures/${capture.id}`;
+
+    const rows = recipientIds.map((userId) => ({
+      user_id: userId,
+      org_id: capture.org_id,
+      type,
+      title,
+      body,
+      payload: { captureId: capture.id, severity: concern.severity },
+      action_url: actionUrl
+    }));
+
+    const { data: inserted, error: insertErr } = await supabase
+      .from("notifications")
+      .insert(rows)
+      .select("id, user_id, created_at");
+    if (insertErr || !inserted) return;
+
+    for (const row of inserted as Array<{
+      id: string;
+      user_id: string;
+      created_at: string;
+    }>) {
+      await safePublish(channels.orgNotifications(capture.org_id), {
+        type: "notification.created",
+        version: 1,
+        payload: {
+          notificationId: row.id,
+          userId: row.user_id,
+          orgId: capture.org_id,
+          notifType: type,
+          title,
+          body,
+          actionUrl,
+          createdAt: new Date(row.created_at).toISOString()
+        }
+      });
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `notifyConcern failed: ${err instanceof Error ? err.message : err}`
     );
   }
 }

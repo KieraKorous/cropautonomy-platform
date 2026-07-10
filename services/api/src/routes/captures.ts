@@ -231,12 +231,16 @@ interface CaptureListRow {
   session_id: string | null;
   analysis_job_id: string | null;
   discarded_at: string | null;
+  captured_by_user_id: string | null;
+  // PostgREST embeds the to-one user row (the capturer) as an object under this
+  // alias, so the list can show "who captured this" without a client-side join.
+  captured_by: { display_name: string | null; email: string } | null;
 }
 
 // Columns selected for the summary shape returned by the list and single-capture
 // endpoints. Kept in one place so the row interface and selects stay in sync.
 const CAPTURE_SELECT =
-  "id, status, status_message, media_type, captured_at, uploaded_at, inferred_species, inferred_common_name, inferred_summary, inferred_details, description, observation_type, severity, kind, thumbnail_path, storage_path, size_bytes, video_duration_ms, farm_id, field_id, zone_id, session_id, analysis_job_id, discarded_at";
+  "id, status, status_message, media_type, captured_at, uploaded_at, inferred_species, inferred_common_name, inferred_summary, inferred_details, description, observation_type, severity, kind, thumbnail_path, storage_path, size_bytes, video_duration_ms, farm_id, field_id, zone_id, session_id, analysis_job_id, discarded_at, captured_by_user_id, captured_by:users!captured_by_user_id ( display_name, email )";
 
 // Same columns plus org_id, for the single-capture handlers that tenant-check
 // before mapping. `as const` keeps it a literal so the typed client can parse it.
@@ -267,7 +271,10 @@ function toCaptureSummary(row: CaptureListRow, imageUrl: string | null) {
     sizeBytes: row.size_bytes,
     videoDurationMs: row.video_duration_ms,
     analysisJobId: row.analysis_job_id,
-    discardedAt: row.discarded_at
+    discardedAt: row.discarded_at,
+    capturedById: row.captured_by_user_id,
+    // display_name → email → null, matching how sessions/devices name their users.
+    capturedByName: row.captured_by?.display_name ?? row.captured_by?.email ?? null
   };
 }
 
@@ -494,7 +501,9 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
         .range(offset, offset + limit - 1);
       if (error) throw error;
 
-      const rows = (data ?? []) as CaptureListRow[];
+      // Cast through unknown: the embedded `captured_by` is a to-one object at
+      // runtime, but PostgREST's generated types widen it to an array.
+      const rows = (data ?? []) as unknown as CaptureListRow[];
 
       // Batch-sign the viewable objects in one round-trip. Prefer the thumbnail
       // when present; fall back to the original. Rows still pending upload have
@@ -580,7 +589,7 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
       if (!row || (row as { org_id: string }).org_id !== caller.orgId) {
         throw notFound("captures.not_found", "Capture not found.");
       }
-      const capture = row as CaptureListRow & { org_id: string };
+      const capture = row as unknown as CaptureListRow & { org_id: string };
 
       // Team access boundary: a capture on a team the caller isn't on is 404,
       // same as cross-tenant. No-op for admins.
@@ -615,7 +624,7 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
           .order("captured_at", { ascending: false })
           .limit(relatedLimit);
         if (relErr) throw relErr;
-        relatedRows = (rel ?? []) as CaptureListRow[];
+        relatedRows = (rel ?? []) as unknown as CaptureListRow[];
       }
 
       // Sign the detail image (full-size original) and the related thumbnails in

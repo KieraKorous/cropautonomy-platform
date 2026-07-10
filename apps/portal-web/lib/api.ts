@@ -127,6 +127,10 @@ export interface CaptureSummary {
   videoDurationMs: number | null;
   analysisJobId: string | null;
   discardedAt: string | null;
+  // Who took the capture (the field operator). Resolved to a display name so the
+  // list can show + sort by capturer without a client-side join. null if unknown.
+  capturedById: string | null;
+  capturedByName: string | null;
   // Ids of the teams this capture is filed under (a capture may be on several).
   // Empty = unassigned (org-visible). Drives the detail modal's team selector.
   teamIds: string[];

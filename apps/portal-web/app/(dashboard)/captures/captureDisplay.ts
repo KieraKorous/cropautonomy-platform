@@ -1,5 +1,5 @@
 import type { Tone } from "@gaia/ui";
-import type { CaptureStatus, CaptureSummary } from "../../../lib/api";
+import type { CaptureStatus, CaptureSummary, Severity } from "../../../lib/api";
 
 // Shared display vocabulary for a capture, used by the table row, the grid card,
 // and the detail lightbox so the status->label mapping lives in one place. Plant
@@ -38,6 +38,38 @@ export const dateFormat = new Intl.DateTimeFormat("en-US", {
   hour: "numeric",
   minute: "2-digit"
 });
+
+// How "concerning" a capture is, high → low. Drives the severity sort and the
+// "Concerns only" filter. Absent severity (not yet analyzed, or nothing flagged)
+// ranks below everything so it sorts to the bottom.
+export const SEVERITY_RANK: Record<Severity, number> = { high: 3, medium: 2, low: 1 };
+
+export function severityRank(severity: Severity | null): number {
+  return severity ? SEVERITY_RANK[severity] : 0;
+}
+
+// A capture is a "concern" once the pipeline judges it medium or high severity —
+// the threshold that also fires the manager/admin notification in the worker.
+export function isConcern(severity: Severity | null): boolean {
+  return severity === "medium" || severity === "high";
+}
+
+// Label + Tailwind classes for a severity badge/dot. Tone has no error/warning,
+// so severity uses explicit DaisyUI semantic colors (matching the card's dot).
+export function severityDisplay(severity: Severity): {
+  label: string;
+  badgeClass: string;
+  dotClass: string;
+} {
+  switch (severity) {
+    case "high":
+      return { label: "High", badgeClass: "bg-error/15 text-error", dotClass: "bg-error" };
+    case "medium":
+      return { label: "Medium", badgeClass: "bg-warning/15 text-warning", dotClass: "bg-warning" };
+    case "low":
+      return { label: "Low", badgeClass: "bg-success/15 text-success", dotClass: "bg-success" };
+  }
+}
 
 export function mediaLabel(mediaType: CaptureSummary["mediaType"]): string {
   switch (mediaType) {

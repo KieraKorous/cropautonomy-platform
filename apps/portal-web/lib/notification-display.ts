@@ -64,6 +64,8 @@ export function notificationVisual(type: string): NotificationVisual {
       return { glyph: "❋", tone: "success", category: "Analysis" };
     case "analysis.failed":
       return { glyph: "!", tone: "secondary", category: "Analysis" };
+    case "analysis.concern":
+      return { glyph: "⚠", tone: "secondary", category: "Crop concern" };
     case "member.joined":
       return { glyph: "+", tone: "primary", category: "Member" };
     default:

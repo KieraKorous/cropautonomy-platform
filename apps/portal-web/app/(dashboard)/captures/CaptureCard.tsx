@@ -5,6 +5,16 @@ import { PlantName } from "./PlantName";
 import { RetryButton } from "./RetryButton";
 import { dateFormat, statusDisplay } from "./captureDisplay";
 
+// "Field, Farm · Captured by" one-liner under the card title, so the grid view
+// carries the same where/who context as the table. Skips whatever's unknown.
+function locationLine(capture: CaptureSummary): string {
+  const place = [capture.fieldName, capture.farmName].filter(Boolean).join(", ");
+  const parts = [place || null, capture.capturedByName ? `by ${capture.capturedByName}` : null].filter(
+    Boolean
+  );
+  return parts.join(" · ");
+}
+
 // Grid/gallery card for a capture. What shows under the image, and the pill,
 // depend on where the capture is in the pipeline. Clicking the card (anywhere
 // but the discard button) opens the detail lightbox.
@@ -84,6 +94,11 @@ export function CaptureCard({
             />
           </span>
           <span className="text-xs text-base-content/55">{dateFormat.format(new Date(when))}</span>
+          {(capture.farmName || capture.fieldName || capture.capturedByName) && (
+            <span className="mt-0.5 truncate text-xs text-base-content/45" title={locationLine(capture)}>
+              {locationLine(capture)}
+            </span>
+          )}
         </div>
         {/* Stop propagation so these actions don't also open the lightbox. */}
         <div className="flex items-center gap-1" onClick={(event) => event.stopPropagation()}>

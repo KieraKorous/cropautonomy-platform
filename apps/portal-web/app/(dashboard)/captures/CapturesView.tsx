@@ -9,12 +9,24 @@ import type { CaptureStatus, CaptureSummary, TeamSummary } from "../../../lib/ap
 import { CaptureRow } from "./CaptureRow";
 import { CaptureCard } from "./CaptureCard";
 import { CaptureDetailModal } from "./CaptureDetailModal";
+import { isConcern, severityRank } from "./captureDisplay";
 
 type ViewMode = "table" | "grid";
 const STORAGE_KEY = "captures.viewMode";
 
-type SortKey = "date" | "plant" | "status";
+type SortKey = "date" | "plant" | "status" | "severity" | "capturedBy" | "farm" | "field";
 type SortDir = "asc" | "desc";
+
+// Non-terminal statuses: a capture here is still moving through the pipeline, so
+// its row should keep updating. Used to decide whether to keep the fallback poll
+// running (below) when a realtime status event is missed.
+const IN_FLIGHT_STATUSES: ReadonlySet<CaptureStatus> = new Set<CaptureStatus>([
+  "pending_upload",
+  "uploading",
+  "uploaded",
+  "analysis_queued",
+  "analysis_running"
+]);
 
 // Pipeline order so sorting by status groups captures by where they are in the
 // flow, rather than alphabetically. Mirrors the CaptureStatus union in lib/api.
@@ -28,28 +40,47 @@ const STATUS_ORDER: Record<CaptureStatus, number> = {
   failed: 6
 };
 
-// First-click direction per column: dates default newest-first, the rest A→Z.
+// First-click direction per column: dates + severity default high/newest-first,
+// the name columns A→Z.
 const DEFAULT_DIR: Record<SortKey, SortDir> = {
   date: "desc",
   plant: "asc",
-  status: "asc"
+  status: "asc",
+  severity: "desc",
+  capturedBy: "asc",
+  farm: "asc",
+  field: "asc"
 };
 
 const capturedTime = (c: CaptureSummary) => new Date(c.uploadedAt ?? c.capturedAt).getTime();
+
+// Shared null-sinks-to-bottom compare for the name columns: a missing value
+// always sorts last regardless of direction (the outer factor doesn't flip it,
+// because the caller only multiplies non-null comparisons — see `sorted`).
+function compareNullableText(a: string | null, b: string | null): number {
+  if (a == null || b == null) {
+    if (a == null && b == null) return 0;
+    return a == null ? 1 : -1;
+  }
+  return a.localeCompare(b);
+}
 
 function compareCaptures(a: CaptureSummary, b: CaptureSummary, key: SortKey): number {
   switch (key) {
     case "date":
       return capturedTime(a) - capturedTime(b);
     case "plant":
-      // Null plant types always sink to the bottom, regardless of direction.
-      if (a.plantType == null || b.plantType == null) {
-        if (a.plantType == null && b.plantType == null) return 0;
-        return a.plantType == null ? 1 : -1;
-      }
-      return a.plantType.localeCompare(b.plantType);
+      return compareNullableText(a.plantType, b.plantType);
     case "status":
       return STATUS_ORDER[a.status] - STATUS_ORDER[b.status];
+    case "severity":
+      return severityRank(a.severity) - severityRank(b.severity);
+    case "capturedBy":
+      return compareNullableText(a.capturedByName, b.capturedByName);
+    case "farm":
+      return compareNullableText(a.farmName, b.farmName);
+    case "field":
+      return compareNullableText(a.fieldName, b.fieldName);
   }
 }
 
@@ -88,12 +119,54 @@ export function CapturesView({
     };
   }, [latest, router]);
 
+  // Fallback poll so status stays live even if a worker realtime event is missed
+  // (transport hiccup, or the worker publishing while no browser is subscribed).
+  // Only runs while something is still in-flight, and stops once every capture
+  // has reached a terminal status — so an idle, fully-analyzed list never polls.
+  const hasInFlight = useMemo(
+    () => captures.some((c) => IN_FLIGHT_STATUSES.has(c.status)),
+    [captures]
+  );
+  useEffect(() => {
+    if (!hasInFlight) return;
+    const id = setInterval(() => router.refresh(), 5000);
+    return () => clearInterval(id);
+  }, [hasInFlight, router]);
+
   // Start on table for a stable first paint, then hydrate from localStorage so
   // SSR and the first client render agree (avoids a hydration mismatch).
   const [view, setView] = useState<ViewMode>("table");
 
   // Default newest-first, matching how the API already returns captures.
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "date", dir: "desc" });
+
+  // Client-side filters over the loaded set (the server already team-scopes the
+  // fetch). "Concerns only" is the concern tab: medium/high severity captures.
+  const [concernsOnly, setConcernsOnly] = useState(false);
+  const [farmFilter, setFarmFilter] = useState<string>("");
+  const [fieldFilter, setFieldFilter] = useState<string>("");
+  const [capturedByFilter, setCapturedByFilter] = useState<string>("");
+
+  // Dropdown options derived from what's actually in the loaded set, sorted A→Z.
+  const farmOptions = useMemo(() => uniqueSorted(captures.map((c) => c.farmName)), [captures]);
+  const fieldOptions = useMemo(() => uniqueSorted(captures.map((c) => c.fieldName)), [captures]);
+  const capturedByOptions = useMemo(
+    () => uniqueSorted(captures.map((c) => c.capturedByName)),
+    [captures]
+  );
+  const concernCount = useMemo(() => captures.filter((c) => isConcern(c.severity)).length, [captures]);
+
+  const filtered = useMemo(
+    () =>
+      captures.filter((c) => {
+        if (concernsOnly && !isConcern(c.severity)) return false;
+        if (farmFilter && c.farmName !== farmFilter) return false;
+        if (fieldFilter && c.fieldName !== fieldFilter) return false;
+        if (capturedByFilter && c.capturedByName !== capturedByFilter) return false;
+        return true;
+      }),
+    [captures, concernsOnly, farmFilter, fieldFilter, capturedByFilter]
+  );
 
   // Index into `sorted` of the capture open in the detail lightbox; null = closed.
   // Index-based (not id-based) so prev/next is a plain ±1 walk. Re-sorting while
@@ -123,8 +196,8 @@ export function CapturesView({
   // Sorted copy feeds both views, so grid order follows the table's sort too.
   const sorted = useMemo(() => {
     const factor = sort.dir === "asc" ? 1 : -1;
-    return [...captures].sort((a, b) => factor * compareCaptures(a, b, sort.key));
-  }, [captures, sort]);
+    return [...filtered].sort((a, b) => factor * compareCaptures(a, b, sort.key));
+  }, [filtered, sort]);
 
   const toggle = (
     <div
@@ -143,11 +216,71 @@ export function CapturesView({
     </div>
   );
 
+  const hasActiveFilter =
+    concernsOnly || Boolean(farmFilter) || Boolean(fieldFilter) || Boolean(capturedByFilter);
+
   return (
     <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setConcernsOnly((v) => !v)}
+          aria-pressed={concernsOnly}
+          className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
+            concernsOnly
+              ? "border-error/30 bg-error/15 text-error"
+              : "border-base-content/10 bg-base-100 text-base-content/70 hover:text-neutral"
+          }`}
+        >
+          <span className={`h-1.5 w-1.5 rounded-full ${concernsOnly ? "bg-error" : "bg-error/60"}`} />
+          Concerns only
+          {concernCount > 0 ? (
+            <span className="rounded-full bg-error/20 px-1.5 text-[0.65rem] leading-4">
+              {concernCount}
+            </span>
+          ) : null}
+        </button>
+
+        <SortSelect sort={sort} onSort={onSort} />
+
+        <FilterSelect
+          label="Farm"
+          value={farmFilter}
+          options={farmOptions}
+          onChange={setFarmFilter}
+        />
+        <FilterSelect
+          label="Field"
+          value={fieldFilter}
+          options={fieldOptions}
+          onChange={setFieldFilter}
+        />
+        <FilterSelect
+          label="Captured by"
+          value={capturedByFilter}
+          options={capturedByOptions}
+          onChange={setCapturedByFilter}
+        />
+
+        {hasActiveFilter ? (
+          <button
+            type="button"
+            onClick={() => {
+              setConcernsOnly(false);
+              setFarmFilter("");
+              setFieldFilter("");
+              setCapturedByFilter("");
+            }}
+            className="text-xs font-medium text-base-content/55 underline-offset-2 hover:text-neutral hover:underline"
+          >
+            Clear filters
+          </button>
+        ) : null}
+      </div>
+
       {view === "table" ? (
         <div className="overflow-x-auto rounded-xl border border-base-content/10 bg-base-100">
-          <table className="w-full min-w-[640px] text-left text-sm">
+          <table className="w-full min-w-[960px] text-left text-sm">
             <thead className="bg-base-content/[0.03] text-xs uppercase tracking-wide text-base-content/55">
               <tr>
                 <th scope="col" className="px-3 py-2.5 font-medium">
@@ -156,6 +289,10 @@ export function CapturesView({
                 <SortHeader label="Date Captured" sortKey="date" sort={sort} onSort={onSort} />
                 <SortHeader label="Plant Type" sortKey="plant" sort={sort} onSort={onSort} />
                 <SortHeader label="Status" sortKey="status" sort={sort} onSort={onSort} />
+                <SortHeader label="Severity" sortKey="severity" sort={sort} onSort={onSort} />
+                <SortHeader label="Captured By" sortKey="capturedBy" sort={sort} onSort={onSort} />
+                <SortHeader label="Farm" sortKey="farm" sort={sort} onSort={onSort} />
+                <SortHeader label="Field" sortKey="field" sort={sort} onSort={onSort} />
                 <th scope="col" className="px-3 py-1.5 font-medium">
                   <div className="flex justify-end">{toggle}</div>
                 </th>
@@ -164,8 +301,8 @@ export function CapturesView({
             <tbody>
               {sorted.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-3 py-10 text-center">
-                    <EmptyMessage />
+                  <td colSpan={9} className="px-3 py-10 text-center">
+                    <EmptyMessage filtered={hasActiveFilter} />
                   </td>
                 </tr>
               ) : (
@@ -183,7 +320,7 @@ export function CapturesView({
           </div>
           {sorted.length === 0 ? (
             <div className="px-6 py-12">
-              <EmptyMessage />
+              <EmptyMessage filtered={hasActiveFilter} />
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-4 p-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
@@ -207,9 +344,22 @@ export function CapturesView({
   );
 }
 
-// Shown in the table body / grid area when there are no captures yet, so the
-// table structure and view toggle stay on screen.
-function EmptyMessage() {
+// Shown in the table body / grid area when there are no captures to show, so the
+// table structure and view toggle stay on screen. Distinguishes an empty org
+// (nothing captured yet) from a filter that excludes everything.
+function EmptyMessage({ filtered = false }: { filtered?: boolean }) {
+  if (filtered) {
+    return (
+      <div className="flex flex-col items-center gap-2">
+        <span className="rounded-full bg-base-content/10 px-2.5 py-1 text-xs font-semibold text-base-content/70">
+          No matching captures
+        </span>
+        <p className="max-w-md text-sm text-base-content/65">
+          No captures match the current filters. Try clearing them to see everything.
+        </p>
+      </div>
+    );
+  }
   return (
     <div className="flex flex-col items-center gap-2">
       <span className="rounded-full bg-accent/15 px-2.5 py-1 text-xs font-semibold text-accent">
@@ -220,6 +370,89 @@ function EmptyMessage() {
         analyzed.
       </p>
     </div>
+  );
+}
+
+// Unique non-null values from a column, sorted A→Z — feeds the filter dropdowns.
+function uniqueSorted(values: Array<string | null>): string[] {
+  return [...new Set(values.filter((v): v is string => Boolean(v)))].sort((a, b) =>
+    a.localeCompare(b)
+  );
+}
+
+// Labeled dropdown for a single-value filter. Empty value ("") = no filter.
+function FilterSelect({
+  label,
+  value,
+  options,
+  onChange
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+}) {
+  const active = Boolean(value);
+  return (
+    <label className="inline-flex items-center">
+      <span className="sr-only">{label}</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        aria-label={`Filter by ${label.toLowerCase()}`}
+        className={`rounded-lg border bg-base-100 px-3 py-1.5 text-xs font-medium transition-colors ${
+          active
+            ? "border-accent/40 text-neutral"
+            : "border-base-content/10 text-base-content/70 hover:text-neutral"
+        }`}
+      >
+        <option value="">{label}: All</option>
+        {options.map((opt) => (
+          <option key={opt} value={opt}>
+            {opt}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+// Sort dropdown mirroring the table's column headers, so the grid view (which has
+// no headers) can still change sort. Writing to the same `sort` state keeps the
+// two controls in lockstep.
+const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+  { key: "date", label: "Date captured" },
+  { key: "severity", label: "Severity" },
+  { key: "plant", label: "Plant type" },
+  { key: "status", label: "Status" },
+  { key: "capturedBy", label: "Captured by" },
+  { key: "farm", label: "Farm" },
+  { key: "field", label: "Field" }
+];
+
+function SortSelect({
+  sort,
+  onSort
+}: {
+  sort: { key: SortKey; dir: SortDir };
+  onSort: (key: SortKey) => void;
+}) {
+  return (
+    <label className="inline-flex items-center gap-1.5">
+      <span className="text-xs font-medium text-base-content/55">Sort</span>
+      <select
+        value={sort.key}
+        onChange={(event) => onSort(event.target.value as SortKey)}
+        aria-label="Sort captures by"
+        className="rounded-lg border border-base-content/10 bg-base-100 px-3 py-1.5 text-xs font-medium text-base-content/70 transition-colors hover:text-neutral"
+      >
+        {SORT_OPTIONS.map((opt) => (
+          <option key={opt.key} value={opt.key}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
