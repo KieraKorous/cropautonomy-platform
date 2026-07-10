@@ -9,6 +9,7 @@ import { applyTeamFilter, resolveTeamScope } from "../lib/team-scope.js";
 const startSchema = z.object({
   farmId: z.string().uuid().nullable().optional(),
   fieldId: z.string().uuid().nullable().optional(),
+  zoneId: z.string().uuid().nullable().optional(),
   cropTypeId: z.string().uuid().nullable().optional(),
   // Optional team to file this session under. Self-assignment only — the
   // operator must belong to the team (gated in the handler).
@@ -147,6 +148,7 @@ const captureSessionsRoutes: FastifyPluginAsync = async (app) => {
 
       if (body.farmId) await ensureOrgScoped("farms", body.farmId, caller.orgId);
       if (body.fieldId) await ensureOrgScoped("fields", body.fieldId, caller.orgId);
+      if (body.zoneId) await ensureOrgScoped("zones", body.zoneId, caller.orgId);
       if (body.cropTypeId)
         await ensureOrgScoped("crop_types", body.cropTypeId, caller.orgId);
 
@@ -175,6 +177,7 @@ const captureSessionsRoutes: FastifyPluginAsync = async (app) => {
         operatorClerkUserId: caller.clerkUserId,
         farmId: body.farmId,
         fieldId: body.fieldId,
+        zoneId: body.zoneId,
         cropTypeId: body.cropTypeId,
         initialLocation: body.initialLocation,
         plannedDurationMinutes: body.plannedDurationMinutes

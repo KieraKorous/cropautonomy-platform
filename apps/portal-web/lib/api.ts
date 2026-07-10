@@ -114,8 +114,15 @@ export interface CaptureSummary {
   observationType: ObservationType | null;
   severity: Severity | null;
   imageUrl: string | null;
+  farmId: string | null;
   fieldId: string | null;
+  zoneId: string | null;
   sessionId: string | null;
+  // Resolved names for the farm/field/zone above, so the detail page + modal can
+  // show where the capture came from without a client-side join. null when unset.
+  farmName: string | null;
+  fieldName: string | null;
+  zoneName: string | null;
   sizeBytes: number | null;
   videoDurationMs: number | null;
   analysisJobId: string | null;
@@ -241,6 +248,8 @@ export function listCaptures(
     // Narrow to captures assigned to one team (the Team filter). Access is
     // already team-scoped server-side; this only further filters the view.
     teamId?: string;
+    // Restrict to the caller's own teams even for admins (map "my teams" view).
+    mine?: boolean;
   } = {}
 ): Promise<ListCapturesResponse> {
   const search = new URLSearchParams();
@@ -249,6 +258,7 @@ export function listCaptures(
   if (params.discarded != null) search.set("discarded", String(params.discarded));
   if (params.kind != null) search.set("kind", params.kind);
   if (params.teamId != null) search.set("teamId", params.teamId);
+  if (params.mine) search.set("mine", "true");
   const query = search.toString();
   return apiFetch<ListCapturesResponse>(`/v1/captures${query ? `?${query}` : ""}`);
 }
@@ -712,10 +722,13 @@ export interface FieldWrite {
 // The operator's org-scoped fields for the Overview map + acreage stats + the
 // /fields management page.
 export function listFields(
-  params: { teamId?: string } = {}
+  params: { teamId?: string; mine?: boolean } = {}
 ): Promise<ListFieldsResponse> {
-  const query = params.teamId ? `?teamId=${params.teamId}` : "";
-  return apiFetch<ListFieldsResponse>(`/v1/fields${query}`);
+  const search = new URLSearchParams();
+  if (params.teamId) search.set("teamId", params.teamId);
+  if (params.mine) search.set("mine", "true");
+  const query = search.toString();
+  return apiFetch<ListFieldsResponse>(`/v1/fields${query ? `?${query}` : ""}`);
 }
 
 // Create a field under a farm. Requires fields.create (manager+).
@@ -856,10 +869,13 @@ export interface FarmWrite {
 
 // The org's farms for the /farms grid.
 export function listFarms(
-  params: { teamId?: string } = {}
+  params: { teamId?: string; mine?: boolean } = {}
 ): Promise<ListFarmsResponse> {
-  const query = params.teamId ? `?teamId=${params.teamId}` : "";
-  return apiFetch<ListFarmsResponse>(`/v1/farms${query}`);
+  const search = new URLSearchParams();
+  if (params.teamId) search.set("teamId", params.teamId);
+  if (params.mine) search.set("mine", "true");
+  const query = search.toString();
+  return apiFetch<ListFarmsResponse>(`/v1/farms${query ? `?${query}` : ""}`);
 }
 
 // Create a farm. Requires farms.create (manager+).

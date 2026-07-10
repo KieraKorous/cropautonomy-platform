@@ -46,6 +46,7 @@ export interface CreateLiveSessionInput {
   startedByDeviceId?: string | null;
   farmId?: string | null;
   fieldId?: string | null;
+  zoneId?: string | null;
   cropTypeId?: string | null;
   initialLocation?: { lat: number; lng: number; accuracyMeters?: number } | null;
   plannedDurationMinutes?: number;
@@ -75,6 +76,7 @@ export async function createLiveSession(
       started_by_device_id: input.startedByDeviceId ?? null,
       farm_id: input.farmId ?? null,
       field_id: input.fieldId ?? null,
+      zone_id: input.zoneId ?? null,
       crop_type_id: input.cropTypeId ?? null,
       status: "live",
       started_at: startedAt,

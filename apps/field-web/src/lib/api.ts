@@ -50,6 +50,7 @@ export interface FinalizeCaptureRequest {
 export interface SessionStartRequest {
   farmId?: string | null;
   fieldId?: string | null;
+  zoneId?: string | null;
   cropTypeId?: string | null;
   // Team this session (and its captures) is filed under. Optional: the server
   // auto-assigns the tech's only team when omitted.
@@ -147,6 +148,18 @@ export interface ListFarmsResponse {
   farms: FarmRecord[];
 }
 
+// A field sub-area. The operator picks one (or "No zone") at session start once a
+// field is chosen; zones are scoped to their parent field.
+export interface ZoneRecord {
+  id: string;
+  fieldId: string;
+  name: string;
+}
+
+export interface ListZonesResponse {
+  zones: ZoneRecord[];
+}
+
 // A scout task assigned to the signed-in operator — a walk-out / check to do.
 export interface ScoutTaskRecord {
   id: string;
@@ -219,6 +232,12 @@ export const api = {
     }),
   listFields: () => call<ListFieldsResponse>("/v1/fields", { method: "GET" }),
   listFarms: () => call<ListFarmsResponse>("/v1/farms", { method: "GET" }),
+  // Zones of one field — populates the "No zone" + zones dropdown once the
+  // operator has picked a field.
+  listZones: (fieldId: string) =>
+    call<ListZonesResponse>(`/v1/zones?fieldId=${encodeURIComponent(fieldId)}`, {
+      method: "GET"
+    }),
   // The caller's own teams — drives the Field Capture team selector.
   getMyTeams: () => call<MyTeamsResponse>("/v1/me/teams", { method: "GET" }),
   // The operator's own open/in-progress scout tasks — the "My tasks" list on the

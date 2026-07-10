@@ -141,7 +141,7 @@ const farmsRoutes: FastifyPluginAsync = async (app) => {
   // GET /v1/farms — the org's farms for the portal /farms grid. canManage lets
   // the page render the New farm / edit / delete controls (the permission set was
   // already loaded for the farms.read check above).
-  app.get<{ Querystring: { teamId?: string } }>(
+  app.get<{ Querystring: { teamId?: string; mine?: string } }>(
     "/v1/farms",
     { preHandler: app.requireAuth("farms.read") },
     async (request, _reply) => {
@@ -159,11 +159,14 @@ const farmsRoutes: FastifyPluginAsync = async (app) => {
       let rows = (data ?? []) as FarmListRow[];
 
       // Team access boundary (+ optional ?teamId= narrow). Post-filter the RPC
-      // rows in JS — farm lists per org are small. No-op for admins.
-      const scope = await resolveTeamScope(supabase, request.permissions!, {
-        userId: caller.userId,
-        orgId: caller.orgId
-      });
+      // rows in JS — farm lists per org are small. No-op for admins unless
+      // ?mine=true (the map's "my teams only" restrict).
+      const scope = await resolveTeamScope(
+        supabase,
+        request.permissions!,
+        { userId: caller.userId, orgId: caller.orgId },
+        { forceOwnTeams: request.query.mine === "true" }
+      );
       const teamId = request.query.teamId;
       if (!scope.bypass || teamId) {
         const visible = await partitionVisibleIds(

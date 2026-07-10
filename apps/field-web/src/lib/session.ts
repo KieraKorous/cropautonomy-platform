@@ -9,6 +9,7 @@ export interface ActiveSession {
   startedAt: string;
   farmId?: string;
   fieldId?: string;
+  zoneId?: string;
   cropTypeId?: string;
   teamId?: string;
   // The scout task this session was started against, if any. Captures collected
@@ -18,6 +19,29 @@ export interface ActiveSession {
 }
 
 const KEY = "active_session";
+
+// Where the operator said they were, stashed by the start screen before a
+// go-live request. The go-live *adopt* path (request/accept + auto-live) builds
+// an ActiveSession from the grant, which doesn't echo farm/field/zone/team — so
+// we merge this back in on adopt. Cleared once consumed.
+const PENDING_CONTEXT_KEY = "pending_capture_context";
+
+export interface CaptureContext {
+  farmId?: string;
+  fieldId?: string;
+  zoneId?: string;
+  teamId?: string;
+}
+
+export async function setPendingCaptureContext(ctx: CaptureContext): Promise<void> {
+  await setSessionState(PENDING_CONTEXT_KEY, ctx);
+}
+
+async function takePendingCaptureContext(): Promise<CaptureContext | null> {
+  const ctx = await getSessionState<CaptureContext>(PENDING_CONTEXT_KEY);
+  if (ctx) await setSessionState(PENDING_CONTEXT_KEY, null);
+  return ctx;
+}
 
 // Persisted in IndexedDB so a reload mid-session resumes instead of dropping
 // the operator back to the picker. Reconciliation with the server-side
@@ -81,8 +105,21 @@ function ensureLoaded() {
 // the IndexedDB write) so a navigate("/capture") immediately after sees the
 // session and doesn't bounce back through the picker's redirect guard.
 export async function adoptActiveSession(session: ActiveSession): Promise<void> {
-  setStoreState({ session, loading: false });
-  await persistActiveSession(session);
+  // The grant doesn't carry the operator's farm/field/zone/team pick — fold in
+  // what the start screen stashed so live captures tag the same context a
+  // capture-only session would. The session's own values (if any) win.
+  const pending = await takePendingCaptureContext();
+  const merged: ActiveSession = pending
+    ? {
+        ...session,
+        farmId: session.farmId ?? pending.farmId,
+        fieldId: session.fieldId ?? pending.fieldId,
+        zoneId: session.zoneId ?? pending.zoneId,
+        teamId: session.teamId ?? pending.teamId
+      }
+    : session;
+  setStoreState({ session: merged, loading: false });
+  await persistActiveSession(merged);
 }
 
 export function useActiveSession(): {
@@ -91,6 +128,7 @@ export function useActiveSession(): {
   start: (input: {
     farmId?: string;
     fieldId?: string;
+    zoneId?: string;
     cropTypeId?: string;
     teamId?: string;
     scoutTaskId?: string;
@@ -107,6 +145,7 @@ export function useActiveSession(): {
     const response = await api.startSession({
       farmId: input.farmId ?? null,
       fieldId: input.fieldId ?? null,
+      zoneId: input.zoneId ?? null,
       cropTypeId: input.cropTypeId ?? null,
       teamId: input.teamId ?? null,
       initialLocation: input.initialLocation ?? null
@@ -117,6 +156,7 @@ export function useActiveSession(): {
       startedAt: response.startedAt,
       farmId: input.farmId,
       fieldId: input.fieldId,
+      zoneId: input.zoneId,
       cropTypeId: input.cropTypeId,
       teamId: input.teamId,
       scoutTaskId: input.scoutTaskId,

@@ -171,7 +171,7 @@ async function assertFarmInOrg(
 const fieldsRoutes: FastifyPluginAsync = async (app) => {
   // GET /v1/fields — the org's fields for the portal /fields page + the map
   // views. canManage lets the page render the New / edit / delete controls.
-  app.get<{ Querystring: { teamId?: string } }>(
+  app.get<{ Querystring: { teamId?: string; mine?: string } }>(
     "/v1/fields",
     { preHandler: app.requireAuth("fields.read") },
     async (request, _reply) => {
@@ -189,11 +189,14 @@ const fieldsRoutes: FastifyPluginAsync = async (app) => {
       let rows = (data ?? []) as FieldListRow[];
 
       // Team access boundary (+ optional ?teamId= narrow). Post-filter the RPC
-      // rows in JS — org field lists are small. No-op for admins.
-      const scope = await resolveTeamScope(supabase, request.permissions!, {
-        userId: caller.userId,
-        orgId: caller.orgId
-      });
+      // rows in JS — org field lists are small. No-op for admins unless ?mine=true
+      // (the map's "my teams only" restrict), which scopes admins to their teams.
+      const scope = await resolveTeamScope(
+        supabase,
+        request.permissions!,
+        { userId: caller.userId, orgId: caller.orgId },
+        { forceOwnTeams: request.query.mine === "true" }
+      );
       const teamId = request.query.teamId;
       if (!scope.bypass || teamId) {
         const visible = await partitionVisibleIds(

@@ -72,6 +72,7 @@ async function processOne(record: QueuedCaptureRecord) {
     const reservation = await api.reserveCapture({
       farmId: record.farmId ?? null,
       fieldId: record.fieldId ?? null,
+      zoneId: record.zoneId ?? null,
       cropTypeId: record.cropTypeId ?? null,
       sessionId: record.sessionId ?? null,
       teamId: record.teamId ?? null,

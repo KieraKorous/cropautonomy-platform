@@ -376,7 +376,22 @@ export function CaptureDetailModal({
               ) : null}
               <DetailRow label="Media" value={mediaLabel(capture.mediaType)} />
               {size ? <DetailRow label="Size" value={size} /> : null}
-              {capture.fieldId ? <DetailRow label="Field" value={capture.fieldId} /> : null}
+              {capture.farmName ? <DetailRow label="Farm" value={capture.farmName} /> : null}
+              {capture.fieldName ? <DetailRow label="Field" value={capture.fieldName} /> : null}
+              {capture.zoneName ? <DetailRow label="Zone" value={capture.zoneName} /> : null}
+              {/* Read-only team label when the caller can't reassign; the
+                  TeamMultiSelect below covers the editable case. */}
+              {!canAssignTeams && teamIds.length > 0 ? (
+                <DetailRow
+                  label={teamIds.length > 1 ? "Teams" : "Team"}
+                  value={
+                    teamIds
+                      .map((tid) => teams.find((t) => t.id === tid)?.name)
+                      .filter((n): n is string => !!n)
+                      .join(", ") || "—"
+                  }
+                />
+              ) : null}
             </dl>
 
             {capture.details ? (

@@ -21,15 +21,18 @@ import {
   listFarms,
   listFields,
   listLiveSessions,
+  listMyTeams,
   listScoutTasks,
   listZones,
   type CaptureSummary,
   type Device,
   type FarmSummary,
   type FieldSummary,
+  type MyTeam,
   type ScoutTaskSummary,
   type ZoneSummary
 } from "../../lib/api";
+import { TeamFilter } from "./_components/TeamFilter";
 import { FieldMapExplorer } from "./overview/FieldMapExplorer";
 import { buildFieldMapData, type FieldMapData } from "./overview/fieldMapData";
 import { LiveCountBadge } from "./overview/LiveCountBadge";
@@ -44,7 +47,13 @@ export const dynamic = "force-dynamic";
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
-export default async function Overview() {
+export default async function Overview({
+  searchParams
+}: {
+  searchParams: Promise<{ team?: string }>;
+}) {
+  const { team } = await searchParams;
+
   const [
     clerkUser,
     me,
@@ -54,23 +63,35 @@ export default async function Overview() {
     fieldsResult,
     zonesResult,
     liveResult,
-    scoutTasksResult
+    scoutTasksResult,
+    myTeams
   ] = await Promise.all([
     currentUser(),
     getMe().catch(() => null),
-    listCaptures({ limit: 12 }).catch(() => ({ captures: [] as CaptureSummary[] })),
+    // The overview is scoped to the caller's own teams (mine:true also scopes
+    // admins), optionally narrowed to one team via the switcher.
+    listCaptures({ limit: 12, mine: true, teamId: team }).catch(() => ({
+      captures: [] as CaptureSummary[]
+    })),
     listDevices().catch(() => ({ devices: [] as Device[] })),
-    listFarms().catch(() => ({ farms: [] as FarmSummary[] })),
-    listFields().catch(() => ({ fields: [] as FieldSummary[] })),
+    listFarms({ mine: true, teamId: team }).catch(() => ({ farms: [] as FarmSummary[] })),
+    listFields({ mine: true, teamId: team }).catch(() => ({ fields: [] as FieldSummary[] })),
     listZones().catch(() => ({ zones: [] as ZoneSummary[] })),
     listLiveSessions().catch(() => ({ sessions: [], orgId: "" })),
-    listScoutTasks({ limit: 6 }).catch(() => null)
+    listScoutTasks({ limit: 6 }).catch(() => null),
+    listMyTeams()
+      .then((r) => r.teams)
+      .catch(() => [] as MyTeam[])
   ]);
 
   const orgId = me?.orgId ?? liveResult.orgId ?? "";
   const captures = capturesResult.captures;
   const devices = devicesResult.devices;
   const fields = fieldsResult.fields;
+  // Zones carry no team assignment of their own — keep only those under a visible
+  // (team-scoped) field so the map doesn't leak other teams' sub-areas.
+  const visibleFieldIds = new Set(fields.map((f) => f.id));
+  const zones = zonesResult.zones.filter((z) => visibleFieldIds.has(z.fieldId));
 
   const firstName =
     clerkUser?.firstName ?? me?.user.displayName?.split(/\s+/)[0] ?? "there";
@@ -79,7 +100,7 @@ export default async function Overview() {
   for (const f of fields) fieldNames[f.id] = f.name;
 
   // Shape the field-map inputs (colors, markers, dropdown options, activity pins).
-  const mapData = buildFieldMapData(fields, farmsResult.farms, captures, zonesResult.zones);
+  const mapData = buildFieldMapData(fields, farmsResult.farms, captures, zones);
   const totalAcres = mapData.acres;
   // Count managed farms directly — a farm with no fields yet still counts.
   const farmCount = farmsResult.farms.length;
@@ -127,7 +148,7 @@ export default async function Overview() {
         />
       </div>
 
-      <MapSection mapData={mapData} />
+      <MapSection mapData={mapData} myTeams={myTeams} />
 
       <div className="grid items-start gap-5 lg:grid-cols-[1fr_360px]">
         <div className="flex flex-col gap-5">
@@ -217,7 +238,7 @@ function PageHeader({
 
 // --- Map ------------------------------------------------------------------
 
-function MapSection({ mapData }: { mapData: FieldMapData }) {
+function MapSection({ mapData, myTeams }: { mapData: FieldMapData; myTeams: MyTeam[] }) {
   if (!MAPBOX_TOKEN) {
     return (
       <section className="flex flex-col items-start gap-3 rounded-xl border border-dashed border-base-content/20 bg-base-100 px-6 py-8">
@@ -239,16 +260,23 @@ function MapSection({ mapData }: { mapData: FieldMapData }) {
   }
 
   return (
-    <FieldMapExplorer
-      fields={mapData.fieldCollection}
-      zones={mapData.zoneCollection}
-      farmMarkers={mapData.farmMarkers}
-      farmOptions={mapData.farmOptions}
-      activityPins={mapData.activityPins}
-      acres={mapData.acres}
-      mapboxToken={MAPBOX_TOKEN}
-      openFullMapHref="/map"
-    />
+    <div className="flex flex-col gap-3">
+      {myTeams.length > 0 ? (
+        <div className="flex justify-end">
+          <TeamFilter teams={myTeams} />
+        </div>
+      ) : null}
+      <FieldMapExplorer
+        fields={mapData.fieldCollection}
+        zones={mapData.zoneCollection}
+        farmMarkers={mapData.farmMarkers}
+        farmOptions={mapData.farmOptions}
+        activityPins={mapData.activityPins}
+        acres={mapData.acres}
+        mapboxToken={MAPBOX_TOKEN}
+        openFullMapHref="/map"
+      />
+    </div>
   );
 }
 

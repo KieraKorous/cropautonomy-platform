@@ -42,14 +42,21 @@ interface TeamFilterable {
 /**
  * Resolve the caller's team scope for this request. bypass short-circuits all
  * filtering; otherwise teamIds is the (possibly empty) list of the caller's teams.
+ *
+ * `forceOwnTeams` (the `?mine=true` map filter) makes an admin see only their own
+ * teams' rows instead of everything — the caller explicitly asked to be scoped
+ * down. It is a NO-OP for an admin on zero teams: rather than blanking the map to
+ * unassigned-only, we keep their bypass. Non-admins are unaffected (they are
+ * already scoped to their teams).
  */
 export async function resolveTeamScope(
   supabase: SupabaseClient,
   permissions: PermissionResolver,
-  ctx: MembershipContext
+  ctx: MembershipContext,
+  opts: { forceOwnTeams?: boolean } = {}
 ): Promise<TeamScope> {
-  const bypass = await permissions.hasPermission(ctx, "team_members.manage");
-  if (bypass) return { bypass: true, teamIds: null };
+  const isAdmin = await permissions.hasPermission(ctx, "team_members.manage");
+  if (isAdmin && !opts.forceOwnTeams) return { bypass: true, teamIds: null };
 
   const { data, error } = await supabase
     .from("team_memberships")
@@ -59,6 +66,13 @@ export async function resolveTeamScope(
   if (error) throw error;
 
   const teamIds = ((data ?? []) as Array<{ team_id: string }>).map((r) => r.team_id);
+
+  // An admin who forced own-team scope but is on no teams keeps their bypass —
+  // scoping them to unassigned-only would be a surprising empty map.
+  if (isAdmin && opts.forceOwnTeams && teamIds.length === 0) {
+    return { bypass: true, teamIds: null };
+  }
+
   return { bypass: false, teamIds };
 }
 

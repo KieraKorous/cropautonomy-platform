@@ -2,17 +2,26 @@ import { Link, Navigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 
 import { ChromeLayout } from "../components/ChromeLayout.js";
-import { api, type ScoutTaskRecord, type TeamRecord } from "../lib/api.js";
+import {
+  api,
+  type FarmRecord,
+  type FieldRecord,
+  type ScoutTaskRecord,
+  type TeamRecord,
+  type ZoneRecord
+} from "../lib/api.js";
 import { blobToThumbnailDataUrl, nowIso } from "../lib/capture-camera.js";
 import { enqueueCapture, getPairedDevice, type PairedDevice } from "../lib/db.js";
+import { findFieldAtPoint } from "../lib/geo.js";
 import { useLiveRequest } from "../lib/liveRequest.js";
-import { useActiveSession } from "../lib/session.js";
+import { setPendingCaptureContext, useActiveSession } from "../lib/session.js";
 import { kickUploadWorker } from "../lib/upload.js";
 
 // Single-screen picker: confirm where the operator is, start the session,
-// hand off to the capture view. Field/farm dropdowns are placeholders until
-// services/api exposes farm/field endpoints — for v0 the operator can start
-// "no field set" and the capture still tags via GPS.
+// hand off to the capture view. Farm/field/zone come from GPS (the field the
+// phone is standing in is pre-selected) but the operator can override with the
+// dropdowns; team defaults to their only team. The chosen context rides onto
+// every capture the session produces.
 
 export function SessionPickerPage() {
   const { session, loading, start } = useActiveSession();
@@ -25,6 +34,14 @@ export function SessionPickerPage() {
   // read-only chip, that team is sent. 2+: a select (with a "No team" choice).
   const [teams, setTeams] = useState<TeamRecord[]>([]);
   const [teamId, setTeamId] = useState<string | undefined>(undefined);
+  // Where the operator is. Farms + fields load once; GPS pre-selects the field
+  // the phone is standing in (and its farm). Zones load for the chosen field.
+  const [farms, setFarms] = useState<FarmRecord[]>([]);
+  const [fields, setFields] = useState<FieldRecord[]>([]);
+  const [zones, setZones] = useState<ZoneRecord[]>([]);
+  const [farmId, setFarmId] = useState<string | undefined>(undefined);
+  const [fieldId, setFieldId] = useState<string | undefined>(undefined);
+  const [zoneId, setZoneId] = useState<string | undefined>(undefined);
   // The operator's open/in-progress scout tasks — walk-outs to do. Tapping one
   // starts a session scoped to that task so its captures link back.
   const [tasks, setTasks] = useState<ScoutTaskRecord[]>([]);
@@ -61,6 +78,59 @@ export function SessionPickerPage() {
       alive = false;
     };
   }, []);
+
+  // Load farms + fields, then GPS-preselect the field the phone is standing in
+  // (and its farm). The operator can still override with the dropdowns.
+  useEffect(() => {
+    let alive = true;
+    void Promise.all([api.listFarms(), api.listFields()])
+      .then(async ([farmsRes, fieldsRes]) => {
+        if (!alive) return;
+        setFarms(farmsRes.farms);
+        setFields(fieldsRes.fields);
+        const loc = await tryGetLocation();
+        if (!alive || !loc) return;
+        const match = findFieldAtPoint(fieldsRes.fields, { lng: loc.lng, lat: loc.lat });
+        if (match) {
+          setFieldId(match.id);
+          setFarmId(match.farmId);
+        }
+      })
+      .catch(() => {
+        /* no farm/field pickers if they can't be read — start "no field set" */
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Load the chosen field's zones for the "No zone" + zones dropdown. Clears when
+  // no field is selected.
+  useEffect(() => {
+    if (!fieldId) {
+      setZones([]);
+      return;
+    }
+    let alive = true;
+    void api
+      .listZones(fieldId)
+      .then(({ zones: z }) => {
+        if (alive) setZones(z);
+      })
+      .catch(() => {
+        if (alive) setZones([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [fieldId]);
+
+  // Stash the current selection so the go-live *adopt* path (which builds the
+  // session from the grant, without this context) can fold it back in. The plain
+  // start() path passes the selection directly and doesn't rely on this.
+  useEffect(() => {
+    void setPendingCaptureContext({ farmId, fieldId, zoneId, teamId });
+  }, [farmId, fieldId, zoneId, teamId]);
 
   // Load the operator's own open/in-progress scout tasks for the "My tasks" list.
   useEffect(() => {
@@ -132,7 +202,7 @@ export function SessionPickerPage() {
     setError(null);
     try {
       const initialLocation = await tryGetLocation();
-      await start({ initialLocation, teamId });
+      await start({ initialLocation, farmId, fieldId, zoneId, teamId });
       // No need to navigate — the next render returns <Navigate to="/capture" />.
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not start session.");
@@ -149,12 +219,15 @@ export function SessionPickerPage() {
     setError(null);
     try {
       const initialLocation = await tryGetLocation();
+      // A manual farm/field pick overrides the task's defaults; otherwise inherit
+      // the task's farm/field. Zone/team come from the pickers.
       await start({
         initialLocation,
         teamId,
         scoutTaskId: task.id,
-        farmId: task.farmId ?? undefined,
-        fieldId: task.fieldId ?? undefined
+        farmId: farmId ?? task.farmId ?? undefined,
+        fieldId: fieldId ?? task.fieldId ?? undefined,
+        zoneId
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not start session.");
@@ -181,7 +254,9 @@ export function SessionPickerPage() {
   // to /capture (the `if (session)` branch below).
   async function handleRequestGoLive() {
     setError(null);
-    await live.request();
+    // Forward farm/field to the server session; zone/team ride to the adopted
+    // session via the pending-context merge (persisted by the effect above).
+    await live.request({ farmId, fieldId });
   }
 
   async function handleUpload(files: FileList | null) {
@@ -232,10 +307,84 @@ export function SessionPickerPage() {
           </h2>
           <p className="mt-2 text-base text-base-content/65">
             Start a session and the portal will see your captures as they come in.
-            Where you are is tagged from GPS automatically; you can set a specific
-            field later.
+            We&rsquo;ll guess your field from GPS — check the farm, field, and zone
+            below before you start.
           </p>
         </div>
+
+        {farms.length > 0 && (
+          <label className="flex flex-col gap-1.5 text-sm text-base-content/65">
+            <span className="font-medium text-base-content/50">Farm</span>
+            <select
+              value={farmId ?? ""}
+              onChange={(e) => {
+                const next = e.currentTarget.value || undefined;
+                setFarmId(next);
+                // Drop a field (and its zone) that doesn't belong to the new farm.
+                if (fieldId && next) {
+                  const f = fields.find((x) => x.id === fieldId);
+                  if (f && f.farmId !== next) {
+                    setFieldId(undefined);
+                    setZoneId(undefined);
+                  }
+                }
+              }}
+              className="rounded-md border border-base-content/15 bg-base-100 px-3 py-2 text-base font-medium text-neutral shadow-sm"
+            >
+              <option value="">No farm</option>
+              {farms.map((farm) => (
+                <option key={farm.id} value={farm.id}>
+                  {farm.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
+        {fields.length > 0 && (
+          <label className="flex flex-col gap-1.5 text-sm text-base-content/65">
+            <span className="font-medium text-base-content/50">Field</span>
+            <select
+              value={fieldId ?? ""}
+              onChange={(e) => {
+                const next = e.currentTarget.value || undefined;
+                setFieldId(next);
+                setZoneId(undefined);
+                // Sync the farm to the field's parent so the pair stays consistent.
+                if (next) {
+                  const f = fields.find((x) => x.id === next);
+                  if (f) setFarmId(f.farmId);
+                }
+              }}
+              className="rounded-md border border-base-content/15 bg-base-100 px-3 py-2 text-base font-medium text-neutral shadow-sm"
+            >
+              <option value="">No field</option>
+              {(farmId ? fields.filter((f) => f.farmId === farmId) : fields).map((field) => (
+                <option key={field.id} value={field.id}>
+                  {field.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
+        {fieldId && zones.length > 0 && (
+          <label className="flex flex-col gap-1.5 text-sm text-base-content/65">
+            <span className="font-medium text-base-content/50">Zone</span>
+            <select
+              value={zoneId ?? ""}
+              onChange={(e) => setZoneId(e.currentTarget.value || undefined)}
+              className="rounded-md border border-base-content/15 bg-base-100 px-3 py-2 text-base font-medium text-neutral shadow-sm"
+            >
+              <option value="">No zone</option>
+              {zones.map((zone) => (
+                <option key={zone.id} value={zone.id}>
+                  {zone.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
 
         {teams.length === 1 && (
           <div className="flex items-center gap-2 text-sm text-base-content/65">

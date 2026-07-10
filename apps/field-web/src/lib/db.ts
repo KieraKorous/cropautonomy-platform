@@ -19,6 +19,7 @@ export interface QueuedCaptureRecord {
   orgId?: string;
   farmId?: string;
   fieldId?: string;
+  zoneId?: string;
   cropTypeId?: string;
   // Team this capture is filed under. Optional — the server auto-defaults to
   // the tech's only team when absent.
@@ -67,10 +68,10 @@ interface FieldDB extends DBSchema {
 }
 
 const DB_NAME = "gaia-field";
-// v2: additive `teamId` on QueuedCaptureRecord. No store/index change and no
-// migration of existing rows (the field is optional), just a version bump so
-// the app opens cleanly. Existing v1 databases upgrade in place.
-const DB_VERSION = 2;
+// v2: additive `teamId` on QueuedCaptureRecord. v3: additive `zoneId`. Both are
+// optional scalar fields — no store/index change and no row migration, just a
+// version bump so the app opens cleanly. Existing databases upgrade in place.
+const DB_VERSION = 3;
 
 let dbPromise: Promise<IDBPDatabase<FieldDB>> | null = null;
 

@@ -192,7 +192,10 @@ const listQuerySchema = z.object({
   kind: z.enum(["observation", "session_recording"]).optional(),
   // Optional team narrow (portal TeamFilter). Restricts to captures assigned to
   // this team, within the caller's already team-scoped visibility.
-  teamId: z.string().uuid().optional()
+  teamId: z.string().uuid().optional(),
+  // "my teams only" restrict (map/overview). Scopes admins to their own teams
+  // instead of everything; no-op for non-admins (already scoped).
+  mine: z.coerce.boolean().default(false)
 });
 
 // Statuses whose storage object exists and can be signed for viewing.
@@ -222,7 +225,9 @@ interface CaptureListRow {
   storage_path: string;
   size_bytes: number | null;
   video_duration_ms: number | null;
+  farm_id: string | null;
   field_id: string | null;
+  zone_id: string | null;
   session_id: string | null;
   analysis_job_id: string | null;
   discarded_at: string | null;
@@ -231,7 +236,7 @@ interface CaptureListRow {
 // Columns selected for the summary shape returned by the list and single-capture
 // endpoints. Kept in one place so the row interface and selects stay in sync.
 const CAPTURE_SELECT =
-  "id, status, status_message, media_type, captured_at, uploaded_at, inferred_species, inferred_common_name, inferred_summary, inferred_details, description, observation_type, severity, kind, thumbnail_path, storage_path, size_bytes, video_duration_ms, field_id, session_id, analysis_job_id, discarded_at";
+  "id, status, status_message, media_type, captured_at, uploaded_at, inferred_species, inferred_common_name, inferred_summary, inferred_details, description, observation_type, severity, kind, thumbnail_path, storage_path, size_bytes, video_duration_ms, farm_id, field_id, zone_id, session_id, analysis_job_id, discarded_at";
 
 // Same columns plus org_id, for the single-capture handlers that tenant-check
 // before mapping. `as const` keeps it a literal so the typed client can parse it.
@@ -255,7 +260,9 @@ function toCaptureSummary(row: CaptureListRow, imageUrl: string | null) {
     severity: row.severity,
     kind: row.kind,
     imageUrl,
+    farmId: row.farm_id,
     fieldId: row.field_id,
+    zoneId: row.zone_id,
     sessionId: row.session_id,
     sizeBytes: row.size_bytes,
     videoDurationMs: row.video_duration_ms,
@@ -387,6 +394,63 @@ async function loadTeamIdsByResource(
   return map;
 }
 
+// Resolved farm/field/zone names for a batch of captures, so the portal capture
+// detail + list modal can show where a capture came from without a client-side
+// join against the fields/farms lists. Ids not in the caller's org resolve to
+// undefined (defensive — cross-tenant ids never reach here).
+interface CaptureContextNames {
+  farmNames: Map<string, string>;
+  fieldNames: Map<string, string>;
+  zoneNames: Map<string, string>;
+}
+
+async function loadContextNames(
+  supabase: ReturnType<typeof getDb>,
+  orgId: string,
+  rows: Array<{ farm_id: string | null; field_id: string | null; zone_id: string | null }>
+): Promise<CaptureContextNames> {
+  const uniq = (vals: Array<string | null>) =>
+    [...new Set(vals.filter((v): v is string => !!v))];
+  const farmIds = uniq(rows.map((r) => r.farm_id));
+  const fieldIds = uniq(rows.map((r) => r.field_id));
+  const zoneIds = uniq(rows.map((r) => r.zone_id));
+
+  const nameMap = async (table: string, ids: string[]): Promise<Map<string, string>> => {
+    const map = new Map<string, string>();
+    if (ids.length === 0) return map;
+    const { data, error } = await supabase
+      .from(table)
+      .select("id, name")
+      .eq("org_id", orgId)
+      .in("id", ids);
+    if (error) throw error;
+    for (const r of (data ?? []) as Array<{ id: string; name: string }>) {
+      map.set(r.id, r.name);
+    }
+    return map;
+  };
+
+  const [farmNames, fieldNames, zoneNames] = await Promise.all([
+    nameMap("farms", farmIds),
+    nameMap("fields", fieldIds),
+    nameMap("zones", zoneIds)
+  ]);
+  return { farmNames, fieldNames, zoneNames };
+}
+
+// Attach resolved farm/field/zone names to a capture summary shape.
+function withContextNames<T extends { farmId: string | null; fieldId: string | null; zoneId: string | null }>(
+  summary: T,
+  names: CaptureContextNames
+): T & { farmName: string | null; fieldName: string | null; zoneName: string | null } {
+  return {
+    ...summary,
+    farmName: summary.farmId ? names.farmNames.get(summary.farmId) ?? null : null,
+    fieldName: summary.fieldId ? names.fieldNames.get(summary.fieldId) ?? null : null,
+    zoneName: summary.zoneId ? names.zoneNames.get(summary.zoneId) ?? null : null
+  };
+}
+
 const capturesRoutes: FastifyPluginAsync = async (app) => {
   app.get(
     "/v1/captures",
@@ -399,7 +463,7 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
           issues: parsed.error.issues
         });
       }
-      const { limit, offset, discarded, kind, teamId } = parsed.data;
+      const { limit, offset, discarded, kind, teamId, mine } = parsed.data;
       const supabase = getDb();
 
       let query = supabase
@@ -411,11 +475,14 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
         : query.is("discarded_at", null);
       if (kind) query = query.eq("kind", kind);
 
-      // Team access boundary (+ optional ?teamId= narrow). No-op for admins.
-      const scope = await resolveTeamScope(supabase, request.permissions!, {
-        userId: caller.userId,
-        orgId: caller.orgId
-      });
+      // Team access boundary (+ optional ?teamId= narrow). No-op for admins
+      // unless ?mine=true (map "my teams only" restrict).
+      const scope = await resolveTeamScope(
+        supabase,
+        request.permissions!,
+        { userId: caller.userId, orgId: caller.orgId },
+        { forceOwnTeams: mine }
+      );
       query = (
         await applyTeamFilter(query, supabase, caller.orgId, "capture", scope, {
           teamId
@@ -467,11 +534,18 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
         "teams.assign"
       );
 
+      // Resolve farm/field/zone names so the captures grid + detail modal can show
+      // where each capture came from.
+      const names = await loadContextNames(supabase, caller.orgId, rows);
+
       return {
         captures: rows.map((row) => {
           const path = pathByRow.get(row.id);
           return {
-            ...toCaptureSummary(row, path ? (signedByPath.get(path) ?? null) : null),
+            ...withContextNames(
+              toCaptureSummary(row, path ? (signedByPath.get(path) ?? null) : null),
+              names
+            ),
             teamIds: teamsByCapture.get(row.id) ?? []
           };
         }),
@@ -613,9 +687,12 @@ const capturesRoutes: FastifyPluginAsync = async (app) => {
         [capture.id, ...relatedRows.map((r) => r.id)]
       );
 
+      // Resolve this capture's farm/field/zone names for the detail metadata block.
+      const names = await loadContextNames(supabase, caller.orgId, [capture]);
+
       return {
         capture: {
-          ...toCaptureSummary(capture, sign(capture.id)),
+          ...withContextNames(toCaptureSummary(capture, sign(capture.id)), names),
           teamIds: teamsByCapture.get(capture.id) ?? []
         },
         related: relatedRows.map((rel) => ({

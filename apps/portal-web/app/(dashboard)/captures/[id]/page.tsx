@@ -4,6 +4,8 @@ import { ArrowRight, CameraIcon, StatusPill } from "@gaia/ui";
 import {
   ApiError,
   getCapture,
+  listMyTeams,
+  listTeams,
   type Annotation,
   type CaptureSummary,
   type Finding
@@ -42,13 +44,23 @@ export default async function CaptureDetailPage({
   let findings: Finding[] = [];
   let annotations: Annotation[] = [];
   let canAnnotate = false;
+  // Team-name lookup for the capture's teamIds. listTeams needs teams.read
+  // (admins/managers); listMyTeams is always readable and covers the common case
+  // where the viewer is on the capture's team. Merge both, best-effort.
+  const teamNames = new Map<string, string>();
   try {
-    const result = await getCapture(id, { relatedLimit: 24 });
+    const [result, allTeams, myTeams] = await Promise.all([
+      getCapture(id, { relatedLimit: 24 }),
+      listTeams().catch(() => null),
+      listMyTeams().catch(() => ({ teams: [] }))
+    ]);
     capture = result.capture;
     related = result.related;
     findings = result.findings;
     annotations = result.annotations;
     canAnnotate = result.canAnnotate;
+    for (const t of allTeams?.teams ?? []) teamNames.set(t.id, t.name);
+    for (const t of myTeams.teams) if (!teamNames.has(t.id)) teamNames.set(t.id, t.name);
   } catch (err) {
     // A missing/cross-tenant capture is a genuine 404. Any other failure
     // (API 500, unreachable service) shouldn't crash the whole RSC render —
@@ -62,6 +74,11 @@ export default async function CaptureDetailPage({
 
   const display = statusDisplay(capture.status, capture.plantType);
   const size = formatSize(capture.sizeBytes);
+  // Resolve the capture's team names (ids that don't resolve are dropped).
+  const teamLabel = capture.teamIds
+    .map((tid) => teamNames.get(tid))
+    .filter((n): n is string => !!n)
+    .join(", ");
   // Issue findings (disease/pest/nutrient/…); 'plant' species/object detections
   // are represented by the header/metadata, not the findings panel/overlay. The
   // same array feeds the panel and the image overlay so their numbering agrees.
@@ -168,7 +185,12 @@ export default async function CaptureDetailPage({
               ) : null}
               <DetailRow label="Media" value={mediaLabel(capture.mediaType)} />
               {size ? <DetailRow label="Size" value={size} /> : null}
-              {capture.fieldId ? <DetailRow label="Field" value={capture.fieldId} /> : null}
+              {capture.farmName ? <DetailRow label="Farm" value={capture.farmName} /> : null}
+              {capture.fieldName ? <DetailRow label="Field" value={capture.fieldName} /> : null}
+              {capture.zoneName ? <DetailRow label="Zone" value={capture.zoneName} /> : null}
+              {teamLabel ? (
+                <DetailRow label={capture.teamIds.length > 1 ? "Teams" : "Team"} value={teamLabel} />
+              ) : null}
             </dl>
             {capture.statusMessage ? (
               <p className="mt-4 text-sm leading-relaxed text-base-content/65">
