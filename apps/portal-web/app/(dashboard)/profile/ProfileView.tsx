@@ -4,6 +4,9 @@ import { useClerk, useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 
+import type { MyOrganization } from "../../../lib/api";
+import { createOrganizationAction, setActiveOrganizationAction } from "./actions";
+
 // A team the signed-in user belongs to, with the role they hold on it.
 export interface ProfileTeam {
   id: string;
@@ -17,9 +20,10 @@ export interface ProfileViewProps {
   email: string | null;
   initials: string;
   avatarUrl: string | null;
-  orgName: string | null;
   orgRoleName: string | null;
   teams: ProfileTeam[];
+  organizations: MyOrganization[];
+  activeOrgId: string | null;
 }
 
 // Names may contain letters (any script) and spaces only — no digits or symbols.
@@ -42,9 +46,10 @@ export function ProfileView({
   email,
   initials,
   avatarUrl,
-  orgName,
   orgRoleName,
-  teams
+  teams,
+  organizations,
+  activeOrgId
 }: ProfileViewProps) {
   const { user } = useUser();
   const { signOut } = useClerk();
@@ -64,7 +69,12 @@ export function ProfileView({
 
       <PasswordSection passwordEnabled={user?.passwordEnabled ?? false} />
 
-      <OrgSection orgName={orgName} orgRoleName={orgRoleName} teams={teams} />
+      <OrgSection
+        orgRoleName={orgRoleName}
+        teams={teams}
+        organizations={organizations}
+        activeOrgId={activeOrgId}
+      />
 
       <section className="flex flex-col gap-3 rounded-xl border border-base-content/10 bg-base-100 p-6">
         <div className="flex flex-col gap-1">
@@ -98,16 +108,20 @@ function ProfileHeader({
   initials: string;
   avatarUrl: string | null;
 }) {
-  const { user } = useUser();
+  const { isLoaded, user } = useUser();
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Prefer Clerk's live image so an upload/removal reflects immediately; the
-  // server-provided url covers the brief window before the client user loads.
-  const imageUrl = user?.imageUrl ?? avatarUrl;
-  const hasImage = user?.hasImage ?? false;
+  // "Use initials" is an explicit choice, stored in Clerk unsafeMetadata, so a
+  // user who doesn't want a photo still counts as having set up their avatar.
+  const useInitials = Boolean(user?.unsafeMetadata?.useInitials);
+  // Show the photo only when a custom one is set AND initials aren't chosen.
+  // Before the client user loads, fall back to the server-provided url to
+  // avoid a flash to initials.
+  const showPhoto = isLoaded && user ? user.hasImage && !useInitials : Boolean(avatarUrl);
+  const imageUrl = isLoaded && user ? user.imageUrl : avatarUrl;
 
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -125,6 +139,8 @@ function ProfileHeader({
     setError(null);
     try {
       await user.setProfileImage({ file });
+      // Uploading a photo overrides a prior "use initials" choice.
+      await user.update({ unsafeMetadata: { ...user.unsafeMetadata, useInitials: false } });
       router.refresh(); // shell/header read the avatar from Clerk
     } catch (err) {
       setError(clerkErrorMessage(err, "Could not update your photo."));
@@ -133,15 +149,16 @@ function ProfileHeader({
     }
   }
 
-  async function remove() {
+  async function chooseInitials() {
     if (!user) return;
     setBusy(true);
     setError(null);
     try {
-      await user.setProfileImage({ file: null });
+      if (user.hasImage) await user.setProfileImage({ file: null });
+      await user.update({ unsafeMetadata: { ...user.unsafeMetadata, useInitials: true } });
       router.refresh();
     } catch (err) {
-      setError(clerkErrorMessage(err, "Could not remove your photo."));
+      setError(clerkErrorMessage(err, "Could not update your avatar."));
     } finally {
       setBusy(false);
     }
@@ -150,7 +167,7 @@ function ProfileHeader({
   return (
     <header className="flex flex-col gap-4 border-b border-base-content/10 pb-6">
       <div className="flex items-center gap-4">
-        {imageUrl ? (
+        {showPhoto && imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={imageUrl}
@@ -179,18 +196,20 @@ function ProfileHeader({
           disabled={busy}
           className="rounded-md border border-base-content/15 px-3 py-1.5 text-sm font-semibold text-neutral transition-colors hover:bg-base-content/[0.05] disabled:opacity-40"
         >
-          {busy ? "Working…" : "Change photo"}
+          {busy ? "Working…" : showPhoto ? "Change photo" : "Add photo"}
         </button>
-        {hasImage ? (
+        {useInitials ? (
+          <span className="text-xs text-base-content/45">Using your initials.</span>
+        ) : (
           <button
             type="button"
-            onClick={() => void remove()}
+            onClick={() => void chooseInitials()}
             disabled={busy}
-            className="rounded-md px-3 py-1.5 text-sm font-semibold text-base-content/60 transition-colors hover:bg-error/10 hover:text-error disabled:opacity-40"
+            className="rounded-md px-3 py-1.5 text-sm font-semibold text-base-content/60 transition-colors hover:bg-base-content/[0.05] hover:text-neutral disabled:opacity-40"
           >
-            Remove
+            Use initials instead
           </button>
-        ) : null}
+        )}
         {error ? (
           <span className="text-sm text-error">{error}</span>
         ) : (
@@ -489,65 +508,206 @@ function EyeToggle({ shown, onToggle }: { shown: boolean; onToggle: () => void }
 }
 
 function OrgSection({
-  orgName,
   orgRoleName,
-  teams
+  teams,
+  organizations,
+  activeOrgId
 }: {
-  orgName: string | null;
   orgRoleName: string | null;
   teams: ProfileTeam[];
+  organizations: MyOrganization[];
+  activeOrgId: string | null;
 }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState("");
+
+  const hasActive = Boolean(activeOrgId);
+
+  async function switchOrg(orgId: string) {
+    if (busy || orgId === activeOrgId) return;
+    setBusy(true);
+    setError(null);
+    const res = await setActiveOrganizationAction(orgId);
+    setBusy(false);
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    router.refresh(); // re-reads the active org across the shell + this page
+  }
+
+  async function createOrg() {
+    const name = newName.trim();
+    if (name.length < 2) {
+      setError("Organization name must be at least 2 characters.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    const res = await createOrganizationAction(name);
+    setBusy(false);
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    setNewName("");
+    setCreating(false);
+    router.refresh();
+  }
+
   return (
     <section className="flex flex-col gap-4 rounded-xl border border-base-content/10 bg-base-100 p-6">
       <div className="flex flex-col gap-1">
-        <h2 className="text-base font-semibold text-neutral">Organization &amp; roles</h2>
+        <h2 className="text-base font-semibold text-neutral">Organization</h2>
         <p className="text-sm text-base-content/65">
-          Your organization, your base role, and the role you hold on each team.
+          Choose your active organization, or create a new one. Everything in the portal is scoped
+          to it.
         </p>
       </div>
 
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-4 rounded-md border border-base-content/10 px-3 py-2.5">
-          <div className="flex min-w-0 flex-col">
-            <span className="truncate text-sm font-medium text-neutral">
-              {orgName ?? "Your organization"}
-            </span>
-            <span className="text-xs text-base-content/50">Base role (organization-wide)</span>
-          </div>
-          <span className="flex-shrink-0 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
-            {orgRoleName ?? "—"}
-          </span>
+      {!hasActive ? (
+        <div className="rounded-md border border-accent/30 bg-accent/[0.07] px-3 py-2.5 text-sm text-base-content/70">
+          You haven&apos;t selected an organization yet. Pick one below or create a new one to start
+          using the portal.
         </div>
+      ) : null}
 
-        <div className="flex flex-col gap-1.5">
-          <span className="text-xs font-medium text-base-content/65">Teams</span>
-          {teams.length > 0 ? (
-            <ul className="flex flex-col gap-1.5">
-              {teams.map((t) => (
-                <li
-                  key={t.id}
-                  className="flex items-center gap-2 rounded-md border border-base-content/10 px-2.5 py-1.5"
+      {organizations.length > 0 ? (
+        <ul className="flex flex-col gap-1.5">
+          {organizations.map((o) => {
+            const active = o.id === activeOrgId;
+            return (
+              <li key={o.id}>
+                <button
+                  type="button"
+                  onClick={() => void switchOrg(o.id)}
+                  disabled={busy || active}
+                  className={`flex w-full items-center justify-between gap-4 rounded-md border px-3 py-2.5 text-left transition-colors disabled:cursor-default ${
+                    active
+                      ? "border-primary/40 bg-primary/[0.06]"
+                      : "border-base-content/10 hover:bg-base-content/[0.04]"
+                  }`}
                 >
-                  <span
-                    className="h-2.5 w-2.5 flex-shrink-0 rounded-full"
-                    style={{ backgroundColor: t.color ?? "#6b7280" }}
-                  />
-                  <span className="min-w-0 flex-1 truncate text-sm text-neutral" title={t.name}>
-                    {t.name}
-                  </span>
-                  <span className="flex-shrink-0 rounded-full bg-base-content/[0.06] px-2 py-0.5 text-xs text-base-content/70">
-                    {t.roleName ?? "No role"}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <span className="text-sm italic text-base-content/40">
-              You&apos;re not on any teams yet.
-            </span>
-          )}
+                  <div className="flex min-w-0 flex-col">
+                    <span className="truncate text-sm font-medium text-neutral">{o.name}</span>
+                    <span className="text-xs text-base-content/50">{o.roleName ?? "Member"}</span>
+                  </div>
+                  {active ? (
+                    <span className="flex-shrink-0 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
+                      Active
+                    </span>
+                  ) : (
+                    <span className="flex-shrink-0 text-xs font-semibold text-primary">Switch</span>
+                  )}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <span className="text-sm italic text-base-content/40">
+          You&apos;re not part of any organization yet.
+        </span>
+      )}
+
+      {creating ? (
+        <div className="flex max-w-sm flex-col gap-2">
+          <input
+            type="text"
+            value={newName}
+            onChange={(e) => {
+              setNewName(e.target.value);
+              setError(null);
+            }}
+            placeholder="Organization name"
+            className={inputClass}
+            autoComplete="organization"
+          />
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void createOrg()}
+              disabled={busy || newName.trim().length < 2}
+              className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-content transition-colors hover:bg-primary/90 disabled:opacity-40"
+            >
+              {busy ? "Creating…" : "Create organization"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setCreating(false);
+                setNewName("");
+                setError(null);
+              }}
+              disabled={busy}
+              className="rounded-md border border-base-content/15 px-4 py-2 text-sm font-semibold text-neutral transition-colors hover:bg-base-content/[0.05]"
+            >
+              Cancel
+            </button>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div>
+          <button
+            type="button"
+            onClick={() => {
+              setCreating(true);
+              setError(null);
+            }}
+            disabled={busy}
+            className="rounded-md border border-base-content/15 px-4 py-2 text-sm font-semibold text-neutral transition-colors hover:bg-base-content/[0.05] disabled:opacity-40"
+          >
+            Create a new organization
+          </button>
+        </div>
+      )}
+
+      {error ? <p className="text-sm text-error">{error}</p> : null}
+
+      {hasActive ? (
+        <div className="flex flex-col gap-3 border-t border-base-content/10 pt-4">
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-xs font-medium text-base-content/65">
+              Your base role in the active organization
+            </span>
+            <span className="flex-shrink-0 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
+              {orgRoleName ?? "—"}
+            </span>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <span className="text-xs font-medium text-base-content/65">Your teams &amp; roles</span>
+            {teams.length > 0 ? (
+              <ul className="flex flex-col gap-1.5">
+                {teams.map((t) => (
+                  <li
+                    key={t.id}
+                    className="flex items-center gap-2 rounded-md border border-base-content/10 px-2.5 py-1.5"
+                  >
+                    <span
+                      className="h-2.5 w-2.5 flex-shrink-0 rounded-full"
+                      style={{ backgroundColor: t.color ?? "#6b7280" }}
+                    />
+                    <span className="min-w-0 flex-1 truncate text-sm text-neutral" title={t.name}>
+                      {t.name}
+                    </span>
+                    <span className="flex-shrink-0 rounded-full bg-base-content/[0.06] px-2 py-0.5 text-xs text-base-content/70">
+                      {t.roleName ?? "No role"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <span className="text-sm italic text-base-content/40">
+                You&apos;re not on any teams yet.
+              </span>
+            )}
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

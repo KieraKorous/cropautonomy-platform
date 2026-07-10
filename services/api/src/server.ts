@@ -16,6 +16,7 @@ import healthRoutes from "./routes/health.js";
 import leadsRoutes from "./routes/leads.js";
 import meRoutes from "./routes/me.js";
 import membersRoutes from "./routes/members.js";
+import organizationsRoutes from "./routes/organizations.js";
 import metaRoutes from "./routes/meta.js";
 import realtimeRoutes from "./routes/realtime.js";
 import scoutTasksRoutes from "./routes/scout-tasks.js";
@@ -53,6 +54,7 @@ export async function buildServer(config: Config): Promise<FastifyInstance> {
   await app.register(metaRoutes, { config });
   await app.register(meRoutes);
   await app.register(membersRoutes);
+  await app.register(organizationsRoutes);
   await app.register(leadsRoutes);
   await app.register(captureSessionsRoutes);
   await app.register(capturesRoutes);

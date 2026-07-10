@@ -84,11 +84,21 @@ Claim semantics:
 
 CropAutonomy is the source of truth for org membership; Clerk publicMetadata is a render cache for the JWT template. The contract:
 
-1. On Clerk user creation (webhook), portal API creates the `users` row and (when applicable) joins them to their invited org. The first membership becomes the active org. Portal API then patches Clerk user metadata: `{ active_org_id, platform_user_id }`.
+1. On Clerk user creation (webhook), portal API creates the `users` row and (when applicable) joins them to their invited org. The first membership becomes the active org. Portal API then patches Clerk user metadata: `{ active_org_id, platform_user_id }`. A user who signs up **without** an invite has no membership and no active org — they land in the "blank" state (see below).
 2. On org switch in the portal, portal API updates `public.users.active_organization_id`, validates the user has an active membership there, then patches Clerk user metadata with the new `active_org_id`. The client refreshes the Clerk session token; the next Supabase request carries the new `org_id` claim.
 3. On membership removal, portal API revokes membership, clears `users.active_organization_id` if it pointed at that org, and patches Clerk publicMetadata to clear `active_org_id`. The next token refresh stops carrying the claim; RLS denies further reads of that org.
 
 The field PWA does not switch orgs — it operates on whatever org the user had active when they signed in. If a tech needs a different org, they go to the portal to switch.
+
+### Blank-org state and self-serve onboarding
+
+A user with `active_organization_id = null` (uninvited signup, or removed from their only org) is the **blank** state. Every `requireAuth`-gated API route returns 403 `auth.no_active_org` for them, and the portal tolerates a null `getMe()` (renders the shell, panels empty). To let such a user get unblocked without an invite, the org onboarding endpoints authenticate with **`requireUser`** (a lighter auth path in `services/api/src/plugins/auth.ts` that resolves the platform user but does **not** require an active org):
+
+- `GET /v1/me/organizations` — orgs the caller is an active member of, each flagged `isActive` (empty for a blank user).
+- `POST /v1/me/active-organization` `{ orgId }` — switch active org to one the caller already belongs to (the flow in step 2 above).
+- `POST /v1/organizations` `{ name }` — self-serve create: inserts the org (unique slug from the name), makes the caller **Owner**, and sets it active. Same two-sided write as an invite (DB `active_organization_id` + Clerk `active_org_id`).
+
+The portal surfaces all three in the profile page's Organization section (`apps/portal-web/app/(dashboard)/profile/`), and the Overview shows a setup banner until the user has both an active org and a chosen avatar (uploaded photo, or an explicit "use initials" flag stored in Clerk `unsafeMetadata.useInitials`). "Join an existing org you weren't invited to" is **not** self-serve — that still goes through an admin email invite.
 
 ### Supabase configuration
 

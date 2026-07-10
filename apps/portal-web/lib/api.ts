@@ -614,6 +614,45 @@ export function getMe(): Promise<MeResponse> {
   return apiFetch<MeResponse>("/v1/me");
 }
 
+// An organization the signed-in user is a member of, with their role and whether
+// it's their currently-active org. Backs the profile Organization section.
+export interface MyOrganization {
+  id: string;
+  name: string;
+  slug: string;
+  roleKey: string | null;
+  roleName: string | null;
+  isActive: boolean;
+}
+
+// All orgs the caller belongs to (empty for a user who hasn't joined/created one
+// yet). Uses the no-active-org-required endpoint, so it's safe to call before
+// the user has picked an org.
+export function listMyOrganizations(): Promise<{
+  organizations: MyOrganization[];
+  activeOrgId: string | null;
+}> {
+  return apiFetch("/v1/me/organizations");
+}
+
+// Switch the caller's active org to one they already belong to.
+export function setActiveOrganization(orgId: string): Promise<{ ok: true }> {
+  return apiFetch("/v1/me/active-organization", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ orgId })
+  });
+}
+
+// Self-serve create: the caller becomes Owner and the new org becomes active.
+export function createOrganization(name: string): Promise<{ organization: MyOrganization }> {
+  return apiFetch("/v1/organizations", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name })
+  });
+}
+
 // --- Fields ---------------------------------------------------------------
 
 interface GeoJsonPolygon {

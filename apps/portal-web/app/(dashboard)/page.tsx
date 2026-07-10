@@ -33,6 +33,7 @@ import {
 import { FieldMapExplorer } from "./overview/FieldMapExplorer";
 import { buildFieldMapData, type FieldMapData } from "./overview/fieldMapData";
 import { LiveCountBadge } from "./overview/LiveCountBadge";
+import { ProfilePromptBanner } from "./overview/ProfilePromptBanner";
 import { RecentScansLive } from "./overview/RecentScansLive";
 
 // The Overview reads live, per-account data on every request (Clerk identity +
@@ -94,6 +95,7 @@ export default async function Overview() {
 
   return (
     <div className="flex flex-col gap-7">
+      <ProfilePromptBanner hasOrganization={Boolean(orgId)} />
       <PageHeader firstName={firstName} liveCount={liveResult.sessions.length} orgId={orgId} />
 
       <div className="grid gap-3.5 md:grid-cols-2 lg:grid-cols-4">

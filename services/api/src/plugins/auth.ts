@@ -19,13 +19,26 @@ export interface AuthContext {
   orgId: string;
 }
 
+// A signed-in user resolved WITHOUT requiring an active organization. Used by the
+// org-onboarding endpoints (list my orgs / switch / create) which a user with no
+// active org must still be able to call — requireAuth would 403 them first.
+export interface UserContext {
+  clerkUserId: string;
+  /** Internal public.users.id uuid. */
+  userId: string;
+  /** Active organization uuid, or null if none is selected yet. */
+  activeOrgId: string | null;
+}
+
 declare module "fastify" {
   interface FastifyRequest {
     auth?: AuthContext;
+    userAuth?: UserContext;
     permissions?: PermissionResolver;
   }
   interface FastifyInstance {
     requireAuth: (permission?: PermissionKey) => preHandlerHookHandler;
+    requireUser: () => preHandlerHookHandler;
   }
 }
 
@@ -59,19 +72,26 @@ const authPlugin: FastifyPluginAsync<AuthPluginOptions> = async (app, _opts) => 
       }
     };
   });
+
+  app.decorate("requireUser", (): preHandlerHookHandler => {
+    return async (request, _reply) => {
+      request.userAuth = await resolveUser(request, clerk);
+    };
+  });
 };
 
-async function resolveAuth(
+// Authenticate the Clerk session and resolve the platform user, but do NOT
+// require an active org. resolveAuth builds on this and adds the org checks.
+async function resolveUser(
   request: FastifyRequest,
   clerk: ClerkClient
-): Promise<AuthContext> {
+): Promise<UserContext> {
   const requestState = await clerk.authenticateRequest(toWebRequest(request));
 
   if (!requestState.isSignedIn) {
     throw unauthorized("auth.unauthenticated", "Sign-in required.");
   }
-  const clerkAuth = requestState.toAuth();
-  const clerkUserId = clerkAuth.userId;
+  const clerkUserId = requestState.toAuth().userId;
 
   const supabase = getDb();
   const { data: userRow, error } = await supabase
@@ -86,16 +106,30 @@ async function resolveAuth(
       "No platform user exists for this Clerk identity. The Clerk webhook may not have fired yet."
     );
   }
-  const orgId = (userRow as { active_organization_id: string | null }).active_organization_id;
-  if (!orgId) {
+
+  return {
+    clerkUserId,
+    userId: (userRow as { id: string }).id,
+    activeOrgId: (userRow as { active_organization_id: string | null }).active_organization_id
+  };
+}
+
+async function resolveAuth(
+  request: FastifyRequest,
+  clerk: ClerkClient
+): Promise<AuthContext> {
+  const user = await resolveUser(request, clerk);
+
+  if (!user.activeOrgId) {
     throw forbidden("auth.no_active_org", "No active organization selected for this user.");
   }
 
+  const supabase = getDb();
   const { data: membership, error: membershipErr } = await supabase
     .from("organization_memberships")
     .select("status")
-    .eq("user_id", (userRow as { id: string }).id)
-    .eq("org_id", orgId)
+    .eq("user_id", user.userId)
+    .eq("org_id", user.activeOrgId)
     .eq("status", "active")
     .maybeSingle();
   if (membershipErr) throw membershipErr;
@@ -107,9 +141,9 @@ async function resolveAuth(
   }
 
   return {
-    clerkUserId,
-    userId: (userRow as { id: string }).id,
-    orgId
+    clerkUserId: user.clerkUserId,
+    userId: user.userId,
+    orgId: user.activeOrgId
   };
 }
 

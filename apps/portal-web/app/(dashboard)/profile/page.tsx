@@ -1,6 +1,6 @@
 import { currentUser } from "@clerk/nextjs/server";
 
-import { getMe, listMembers } from "../../../lib/api";
+import { getMe, listMembers, listMyOrganizations } from "../../../lib/api";
 import { initialsFrom } from "../../../lib/initials";
 import { ProfileView, type ProfileTeam } from "./ProfileView";
 
@@ -12,10 +12,11 @@ import { ProfileView, type ProfileTeam } from "./ProfileView";
 export const dynamic = "force-dynamic";
 
 export default async function ProfilePage() {
-  const [clerkUser, me, membersResult] = await Promise.all([
+  const [clerkUser, me, membersResult, orgsResult] = await Promise.all([
     currentUser(),
     getMe().catch(() => null),
-    listMembers().catch(() => null)
+    listMembers().catch(() => null),
+    listMyOrganizations().catch(() => null)
   ]);
 
   const email = clerkUser?.primaryEmailAddress?.emailAddress ?? me?.user.email ?? null;
@@ -39,9 +40,10 @@ export default async function ProfilePage() {
       email={email}
       initials={initialsFrom(fullName, email)}
       avatarUrl={avatarUrl}
-      orgName={me?.org.name ?? null}
       orgRoleName={me?.role.name ?? null}
       teams={teams}
+      organizations={orgsResult?.organizations ?? []}
+      activeOrgId={orgsResult?.activeOrgId ?? null}
     />
   );
 }
