@@ -1,7 +1,6 @@
-import { StatusPill, type Tone } from "@gaia/ui";
-
 import {
   ApiError,
+  getMe,
   listMyTeams,
   listRecordings,
   listTeams,
@@ -9,43 +8,13 @@ import {
   type MyTeam,
   type TeamSummary
 } from "../../../lib/api";
-import { DownloadButton } from "../_components/DownloadButton";
 import { TeamFilter } from "../_components/TeamFilter";
-import { dateFormat } from "../captures/captureDisplay";
-import { RecordingDiscardButton } from "./RecordingDiscardButton";
-import { RecordingTeams } from "./RecordingTeams";
-
-// Title-case an enum value ("growth_stage" → "Growth stage") for display.
-function titleCase(value: string): string {
-  const s = value.replace(/_/g, " ");
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-const severityTone: Record<string, Tone> = {
-  high: "accent",
-  medium: "secondary",
-  low: "muted"
-};
+import { RecordingsView } from "./RecordingsView";
 
 // Saved live-feed recordings — kind='session_recording' video captures, from
 // either the field phone (during a live session) or a portal watcher recording
 // the stream. Kept apart from the Captures grid (those are still observations).
 export const dynamic = "force-dynamic";
-
-function formatDuration(ms: number | null): string | null {
-  if (ms == null || ms <= 0) return null;
-  const total = Math.round(ms / 1000);
-  const m = Math.floor(total / 60);
-  const s = total % 60;
-  return `${m}:${s.toString().padStart(2, "0")}`;
-}
-
-function formatSize(bytes: number | null): string | null {
-  if (bytes == null) return null;
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 export default async function RecordingsPage({
   searchParams
@@ -55,9 +24,10 @@ export default async function RecordingsPage({
   const { team } = await searchParams;
 
   let recordings: CaptureSummary[] = [];
+  let orgId = "";
   let loadError: string | null = null;
   let myTeams: MyTeam[] = [];
-  // All org teams for the per-card team selector; canAssignTeams gates it.
+  // All org teams for the per-recording team selector; canAssignTeams gates it.
   let teams: TeamSummary[] = [];
   let canAssignTeams = false;
 
@@ -73,15 +43,22 @@ export default async function RecordingsPage({
   }
 
   try {
-    myTeams = (await listMyTeams()).teams;
-  } catch {
-    myTeams = [];
-  }
-
-  try {
     teams = (await listTeams()).teams;
   } catch {
     teams = [];
+  }
+
+  // orgId scopes the live capture feed. Non-fatal — the list still renders.
+  try {
+    orgId = (await getMe()).orgId;
+  } catch {
+    orgId = "";
+  }
+
+  try {
+    myTeams = (await listMyTeams()).teams;
+  } catch {
+    myTeams = [];
   }
 
   return (
@@ -106,127 +83,15 @@ export default async function RecordingsPage({
 
       {loadError ? (
         <ErrorState message={loadError} />
-      ) : recordings.length === 0 ? (
-        <EmptyState />
       ) : (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-          {recordings.map((rec) => (
-            <RecordingCard
-              key={rec.id}
-              recording={rec}
-              teams={teams}
-              canAssignTeams={canAssignTeams}
-            />
-          ))}
-        </div>
+        <RecordingsView
+          recordings={recordings}
+          orgId={orgId}
+          teams={teams}
+          canAssignTeams={canAssignTeams}
+        />
       )}
     </div>
-  );
-}
-
-function RecordingCard({
-  recording,
-  teams,
-  canAssignTeams
-}: {
-  recording: CaptureSummary;
-  teams: TeamSummary[];
-  canAssignTeams: boolean;
-}) {
-  const duration = formatDuration(recording.videoDurationMs);
-  const size = formatSize(recording.sizeBytes);
-  const ready = recording.imageUrl != null;
-
-  // No overflow-hidden on the card itself — the team dropdown needs to spill
-  // past the bottom edge. The video rounds its own top corners instead.
-  return (
-    <article className="flex flex-col rounded-xl border border-base-content/10 bg-base-100">
-      <div className="relative aspect-video overflow-hidden rounded-t-xl bg-neutral">
-        {ready ? (
-          // eslint-disable-next-line jsx-a11y/media-has-caption -- field recording, no caption track
-          <video
-            controls
-            preload="metadata"
-            src={recording.imageUrl ?? undefined}
-            className="h-full w-full bg-neutral object-contain"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center text-xs font-medium text-base-100/60">
-            Processing…
-          </div>
-        )}
-        {duration ? (
-          <span className="pointer-events-none absolute bottom-2 right-2 rounded bg-neutral/80 px-1.5 py-0.5 text-[11px] font-semibold text-base-100">
-            {duration}
-          </span>
-        ) : null}
-      </div>
-      <div className="flex items-center justify-between gap-1.5 px-2.5 py-2">
-        <div className="flex min-w-0 flex-col gap-0.5">
-          <span className="truncate text-xs font-medium text-neutral">
-            {dateFormat.format(new Date(recording.capturedAt))}
-          </span>
-          <span className="truncate text-[11px] text-base-content/55">
-            {recording.fieldId ? "Field session" : "Live session"}
-            {size ? ` · ${size}` : ""}
-          </span>
-        </div>
-        <div className="flex flex-shrink-0 items-center">
-          {ready ? <DownloadButton captureId={recording.id} /> : null}
-          <RecordingDiscardButton recordingId={recording.id} />
-        </div>
-      </div>
-
-      {/* AI brief — a few sentences on what the clip showed, plus any flagged
-          plant issue. Populated by the video_summary pipeline; absent until the
-          recording is analyzed. */}
-      {recording.summary || recording.observationType ? (
-        <div className="flex flex-col gap-1.5 border-t border-base-content/8 px-2.5 py-2">
-          {recording.observationType ? (
-            <StatusPill
-              label={
-                titleCase(recording.observationType) +
-                (recording.severity ? ` · ${titleCase(recording.severity)}` : "")
-              }
-              tone={
-                recording.severity ? severityTone[recording.severity] ?? "muted" : "muted"
-              }
-            />
-          ) : null}
-          {recording.summary ? (
-            <p className="line-clamp-3 text-[11px] leading-relaxed text-base-content/70">
-              <span className="mr-1 rounded-full bg-accent/20 px-1 py-0.5 text-[9px] font-semibold uppercase text-accent-content">
-                AI
-              </span>
-              {recording.summary}
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-
-      {/* Which crews this recording is filed under. Managers+ only. */}
-      {canAssignTeams ? (
-        <RecordingTeams
-          recordingId={recording.id}
-          teamIds={recording.teamIds}
-          teams={teams}
-        />
-      ) : null}
-    </article>
-  );
-}
-
-function EmptyState() {
-  return (
-    <section className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-base-content/20 bg-base-100 px-6 py-12 text-center">
-      <span className="rounded-full bg-accent/15 px-2.5 py-1 text-xs font-semibold text-accent">
-        No recordings yet
-      </span>
-      <p className="max-w-md text-sm text-base-content/65">
-        Start a live session and tap Record on the phone, or hit Rec on a camera
-        tile on the Live wall. Saved recordings appear here.
-      </p>
-    </section>
   );
 }
 

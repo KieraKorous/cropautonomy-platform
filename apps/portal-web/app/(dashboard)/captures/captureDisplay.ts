@@ -31,6 +31,30 @@ export function statusDisplay(
   }
 }
 
+// Status vocabulary for recordings (kind='session_recording'). Same pipeline as
+// captures, but a recording's terminal state is "Ready" (a playable clip), not a
+// plant identification — so it gets its own labels while sharing the tones.
+export function recordingStatusDisplay(status: CaptureStatus): {
+  pill: { label: string; tone: Tone } | null;
+} {
+  switch (status) {
+    case "analyzed":
+      return { pill: { label: "Ready", tone: "success" } };
+    case "analysis_queued":
+    case "analysis_running":
+      return { pill: { label: "Analyzing", tone: "accent" } };
+    case "uploaded":
+      return { pill: { label: "Queued", tone: "muted" } };
+    case "pending_upload":
+    case "uploading":
+      return { pill: { label: "Uploading", tone: "muted" } };
+    case "failed":
+      return { pill: null };
+    default:
+      return { pill: null };
+  }
+}
+
 export const dateFormat = new Intl.DateTimeFormat("en-US", {
   month: "2-digit",
   day: "2-digit",
@@ -69,6 +93,23 @@ export function severityDisplay(severity: Severity): {
     case "low":
       return { label: "Low", badgeClass: "bg-success/15 text-success", dotClass: "bg-success" };
   }
+}
+
+// Compact byte count (KB/MB). Captures + short recordings never exceed MB.
+export function formatSize(bytes: number | null): string | null {
+  if (bytes == null) return null;
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// "m:ss" clip duration, or null when unknown/zero (still-processing recordings).
+export function formatDuration(ms: number | null): string | null {
+  if (ms == null || ms <= 0) return null;
+  const total = Math.round(ms / 1000);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
 export function mediaLabel(mediaType: CaptureSummary["mediaType"]): string {
