@@ -3,7 +3,7 @@
 import { capture } from "@gaia/analytics";
 import { channels } from "@gaia/realtime/channels";
 import { useRealtimeChannel } from "@gaia/realtime/client";
-import { StatusPill, type Tone } from "@gaia/ui";
+import { MapPinIcon, StatusPill, type Tone } from "@gaia/ui";
 import { useEffect, useRef, useState } from "react";
 
 import type { LiveSessionSummary } from "../../../lib/api";
@@ -16,7 +16,6 @@ export interface CameraTileProps {
   orgId: string;
   viewerUserId: string;
   focused: boolean;
-  compact: boolean;
   onToggleFocus: () => void;
   // Drop this camera off the wall. Called when the camera is disconnected —
   // either by this watcher clicking Disconnect or off the realtime event when
@@ -40,7 +39,6 @@ export function CameraTile({
   orgId,
   viewerUserId,
   focused,
-  compact,
   onToggleFocus,
   onRemove
 }: CameraTileProps) {
@@ -251,22 +249,32 @@ export function CameraTile({
             ) : null}
         </div>
 
-        {/* Device label — non-interactive, clicks fall through to focus. */}
+        {/* Camera label — device + where it's shooting. Non-interactive, clicks
+            fall through to focus. */}
         <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 bg-gradient-to-t from-neutral/90 via-neutral/40 to-transparent px-3 pb-2 pt-8">
           <div className="min-w-0">
             <p className="truncate text-sm font-medium text-base-100">
               {session.deviceName}
             </p>
-            {!compact ? (
-              <p className="truncate text-xs text-base-100/70">
-                {session.fieldName ?? session.farmName ?? "Field session"}
-              </p>
-            ) : null}
+            {/* Which field this feed is from — always shown, even in the compact
+                strip, so focusing one camera never hides where the others are. */}
+            <p className="mt-0.5 flex items-center gap-1 text-xs text-base-100/75">
+              <MapPinIcon size={11} />
+              <span className="truncate">{locationLabel(session)}</span>
+            </p>
           </div>
         </div>
       </div>
     </div>
   );
+}
+
+// The field a live camera is shooting in, for the tile label. The field is the
+// precise answer; the farm is the fallback when the operator only set a farm; a
+// last-resort note when neither is on the session yet (e.g. a just-started feed,
+// before LiveWall's reconcile poll fills the names in).
+function locationLabel(session: LiveSessionSummary): string {
+  return session.fieldName ?? session.farmName ?? "No field set";
 }
 
 function statusBadge(

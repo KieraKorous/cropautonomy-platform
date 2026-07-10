@@ -121,7 +121,6 @@ export function LiveWall({ orgId, viewerUserId, initialSessions }: LiveWallProps
               orgId={orgId}
               viewerUserId={viewerUserId}
               focused={isFocused}
-              compact={hasFocus && !isFocused}
               onToggleFocus={() =>
                 setFocusedId((cur) =>
                   cur === session.sessionId ? null : session.sessionId
