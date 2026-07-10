@@ -18,8 +18,10 @@ import {
   assignEntitiesAction,
   getTeamAction,
   removeTeamMemberAction,
+  setTeamMemberRoleAction,
   unassignEntitiesAction
 } from "./actions";
+import { TEAM_ROLES } from "../members/roles";
 
 const EMPTY_ASSIGNMENTS: TeamAssignments = {
   farm: [],
@@ -226,8 +228,13 @@ export function TeamDetailModal({
               orgMembers={members}
               canManage={canManage}
               busy={busy}
-              onAdd={(userId) => run(() => addTeamMemberAction(team.id, userId))}
+              onAdd={(userId, roleKey) =>
+                run(() => addTeamMemberAction(team.id, userId, roleKey))
+              }
               onRemove={(userId) => run(() => removeTeamMemberAction(team.id, userId))}
+              onSetRole={(userId, roleKey) =>
+                run(() => setTeamMemberRoleAction(team.id, userId, roleKey))
+              }
             />
           ) : (
             <AssignmentsTab
@@ -270,16 +277,20 @@ function MembersTab({
   canManage,
   busy,
   onAdd,
-  onRemove
+  onRemove,
+  onSetRole
 }: {
   roster: TeamMember[];
   orgMembers: OrgMember[];
   canManage: boolean;
   busy: boolean;
-  onAdd: (userId: string) => void;
+  onAdd: (userId: string, roleKey: string) => void;
   onRemove: (userId: string) => void;
+  onSetRole: (userId: string, roleKey: string) => void;
 }) {
   const [pick, setPick] = useState("");
+  // Default new members to Field Scout; the picker never offers Owner (org-level).
+  const [addRole, setAddRole] = useState("technician");
   const onTeam = new Set(roster.map((m) => m.userId));
   const available = orgMembers.filter((m) => !onTeam.has(m.userId));
 
@@ -309,20 +320,39 @@ function MembersTab({
                   <span className="truncate text-xs text-base-content/55">{m.email}</span>
                 ) : null}
               </div>
-              <span className="ml-auto flex-shrink-0 rounded-full bg-base-content/[0.06] px-2 py-0.5 text-xs text-base-content/70">
-                {m.roleName ?? "No role"}
-              </span>
-              {canManage ? (
-                <button
-                  type="button"
-                  onClick={() => onRemove(m.userId)}
-                  disabled={busy}
-                  aria-label={`Remove ${m.displayName ?? m.email ?? "member"}`}
-                  className="rounded-md p-1.5 text-base-content/45 transition-colors hover:bg-error/10 hover:text-error disabled:opacity-50"
-                >
-                  <TrashIcon size={15} />
-                </button>
-              ) : null}
+              <div className="ml-auto flex flex-shrink-0 items-center gap-2">
+                {canManage ? (
+                  <select
+                    value={m.roleKey ?? ""}
+                    onChange={(e) => onSetRole(m.userId, e.target.value)}
+                    disabled={busy}
+                    aria-label={`Role for ${m.displayName ?? m.email ?? "member"}`}
+                    className="rounded-md border border-base-content/15 bg-base-100 px-2 py-1 text-xs text-neutral outline-none transition-colors focus:border-primary/50 disabled:opacity-50"
+                  >
+                    {m.roleKey ? null : <option value="">No role</option>}
+                    {TEAM_ROLES.map((r) => (
+                      <option key={r.key} value={r.key}>
+                        {r.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <span className="rounded-full bg-base-content/[0.06] px-2 py-0.5 text-xs text-base-content/70">
+                    {m.roleName ?? "No role"}
+                  </span>
+                )}
+                {canManage ? (
+                  <button
+                    type="button"
+                    onClick={() => onRemove(m.userId)}
+                    disabled={busy}
+                    aria-label={`Remove ${m.displayName ?? m.email ?? "member"}`}
+                    className="rounded-md p-1.5 text-base-content/45 transition-colors hover:bg-error/10 hover:text-error disabled:opacity-50"
+                  >
+                    <TrashIcon size={15} />
+                  </button>
+                ) : null}
+              </div>
             </li>
           ))}
         </ul>
@@ -345,12 +375,25 @@ function MembersTab({
               </option>
             ))}
           </select>
+          <select
+            value={addRole}
+            onChange={(e) => setAddRole(e.target.value)}
+            disabled={busy || available.length === 0}
+            aria-label="Role for the new member"
+            className="rounded-md border border-base-content/15 bg-base-100 px-2 py-2 text-sm text-neutral outline-none transition-colors focus:border-primary/50 disabled:opacity-50"
+          >
+            {TEAM_ROLES.map((r) => (
+              <option key={r.key} value={r.key}>
+                {r.name}
+              </option>
+            ))}
+          </select>
           <button
             type="button"
             disabled={busy || !pick}
             onClick={() => {
               if (!pick) return;
-              onAdd(pick);
+              onAdd(pick, addRole);
               setPick("");
             }}
             className="rounded-md bg-primary px-3.5 py-2 text-sm font-semibold text-primary-content transition-colors hover:bg-primary/90 disabled:opacity-50"

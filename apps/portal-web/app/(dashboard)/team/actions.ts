@@ -2,13 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import {
-  addTeamMember,
+  addMemberToTeam,
   assignEntities,
   createTeam,
   deleteTeam,
   getTeam,
   removeTeamMember,
   unassignEntities,
+  updateMemberTeamRole,
   updateTeam,
   type AssignmentItem,
   type TeamDetail,
@@ -50,8 +51,27 @@ export async function deleteTeamAction(id: string): Promise<void> {
   revalidatePath("/");
 }
 
-export async function addTeamMemberAction(teamId: string, userId: string): Promise<void> {
-  await addTeamMember(teamId, userId);
+// Add a member to the team with a per-team role. Reuses the member-side per-team
+// role endpoint (POST /v1/members/:userId/teams), which sets team_memberships
+// .role_id and authorizes the team's creator (teamCreatedByCaller) — so editing
+// a team includes choosing its members' roles.
+export async function addTeamMemberAction(
+  teamId: string,
+  userId: string,
+  roleKey: string
+): Promise<void> {
+  await addMemberToTeam(userId, teamId, roleKey);
+  revalidatePath("/team");
+  revalidatePath("/");
+}
+
+// Change an existing member's role on the team (PATCH /v1/members/:userId/teams/:teamId).
+export async function setTeamMemberRoleAction(
+  teamId: string,
+  userId: string,
+  roleKey: string
+): Promise<void> {
+  await updateMemberTeamRole(userId, teamId, roleKey);
   revalidatePath("/team");
   revalidatePath("/");
 }
