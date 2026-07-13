@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-import type { FieldConfig, RobotTelemetry, TimeOfDay } from "../types";
+import type { FieldConfig, RobotTelemetry, TimeOfDay, Waypoint } from "../types";
 
 // Central simulation store. This is the single source of truth for everything the
 // UI can toggle and everything the HUD reads back. The render loop (useFrame)
@@ -20,6 +20,8 @@ const FULL_BATTERY: RobotTelemetry = {
   battery: 1
 };
 
+export type NavMode = "coverage" | "waypoints";
+
 export interface SimState {
   /** Master clock: is the simulation advancing? */
   running: boolean;
@@ -34,6 +36,17 @@ export interface SimState {
   showRows: boolean;
   showCrops: boolean;
   field: FieldConfig;
+
+  /**
+   * How the rover decides where to go:
+   *  - "coverage"  — autonomous boustrophedon sweep of the drive-lanes
+   *  - "waypoints" — drive the user-dropped waypoints in order, then hold
+   */
+  navMode: NavMode;
+  /** User-placed waypoints (world X/Z), driven in order in "waypoints" mode. */
+  waypoints: Waypoint[];
+  /** Bumped whenever `waypoints` changes so the render loop can resync its index. */
+  waypointsVersion: number;
 
   /** Latest robot telemetry for the HUD. */
   telemetry: RobotTelemetry;
@@ -53,6 +66,9 @@ export interface SimState {
   toggleGrid: () => void;
   toggleRows: () => void;
   toggleCrops: () => void;
+  setNavMode: (m: NavMode) => void;
+  addWaypoint: (x: number, z: number) => void;
+  clearWaypoints: () => void;
   /** Called from the render loop with a fresh telemetry sample. */
   pushTelemetry: (t: RobotTelemetry, elapsed: number, fps: number) => void;
 }
@@ -67,6 +83,10 @@ export const useSimStore = create<SimState>((set) => ({
   showRows: true,
   showCrops: true,
   field: DEFAULT_FIELD,
+
+  navMode: "coverage",
+  waypoints: [],
+  waypointsVersion: 0,
 
   telemetry: FULL_BATTERY,
   resetToken: 0,
@@ -85,5 +105,13 @@ export const useSimStore = create<SimState>((set) => ({
   toggleGrid: () => set((s) => ({ showGrid: !s.showGrid })),
   toggleRows: () => set((s) => ({ showRows: !s.showRows })),
   toggleCrops: () => set((s) => ({ showCrops: !s.showCrops })),
+  setNavMode: (navMode) => set({ navMode }),
+  addWaypoint: (x, z) =>
+    set((s) => ({
+      waypoints: [...s.waypoints, { x, z }],
+      waypointsVersion: s.waypointsVersion + 1
+    })),
+  clearWaypoints: () =>
+    set((s) => ({ waypoints: [], waypointsVersion: s.waypointsVersion + 1 })),
   pushTelemetry: (telemetry, elapsed, fps) => set({ telemetry, elapsed, fps })
 }));

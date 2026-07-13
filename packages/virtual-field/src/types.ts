@@ -18,6 +18,12 @@ export interface FieldConfig {
   rowSpacing: number;
 }
 
+/** A user-placed navigation target on the ground plane (world X/Z, metres). */
+export interface Waypoint {
+  x: number;
+  z: number;
+}
+
 /**
  * Live robot state surfaced to the HUD. Updated on a throttled cadence (not every
  * frame) so the React overlay doesn't re-render at 60fps — the mesh itself is

@@ -84,6 +84,7 @@ export function Crops({ field }: { field: FieldConfig }) {
       args={[undefined, undefined, plants.length]}
       castShadow
       receiveShadow
+      raycast={() => null}
     >
       <coneGeometry args={[0.22, BASE_HEIGHT, 6]} />
       <meshStandardMaterial roughness={0.85} metalness={0} />

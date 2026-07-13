@@ -1,8 +1,10 @@
 import { Grid } from "@react-three/drei";
+import type { ThreeEvent } from "@react-three/fiber";
 import { useMemo } from "react";
 
 import type { EnvPreset } from "./environment";
 import { rowHalfLength, rowOffsets } from "./field";
+import { useSimStore } from "../store/simStore";
 import type { FieldConfig } from "../types";
 
 // The field floor: a shadow-receiving soil plane, an optional technical grid
@@ -23,10 +25,20 @@ export function Ground({
   const offsets = useMemo(() => rowOffsets(field), [field]);
   const ridgeLength = rowHalfLength(field) * 2;
 
+  // In waypoints mode, a click on the soil drops a navigation target at the hit
+  // point. Read the store imperatively so the ground doesn't re-render on mode
+  // changes. No-op in coverage mode.
+  const onSoilClick = (e: ThreeEvent<MouseEvent>) => {
+    const { navMode, addWaypoint } = useSimStore.getState();
+    if (navMode !== "waypoints") return;
+    e.stopPropagation();
+    addWaypoint(e.point.x, e.point.z);
+  };
+
   return (
     <group>
       {/* Soil plane */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow onClick={onSoilClick}>
         <planeGeometry args={[field.size, field.size]} />
         <meshStandardMaterial color={preset.soil} roughness={1} metalness={0} />
       </mesh>

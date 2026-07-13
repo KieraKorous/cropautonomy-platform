@@ -4,7 +4,9 @@ import { Crops } from "./Crops";
 import { ENV_PRESETS } from "./environment";
 import { Ground } from "./Ground";
 import { Lighting } from "./Lighting";
+import { OnboardView } from "./OnboardView";
 import { Robot } from "./Robot";
+import { Waypoints } from "./Waypoints";
 import { useSimStore } from "../store/simStore";
 
 // Everything inside the R3F <Canvas>. Reads environment + toggle state from the
@@ -26,7 +28,11 @@ export function Scene() {
       <Lighting preset={preset} />
       <Ground field={field} preset={preset} showGrid={showGrid} showRows={showRows} />
       {showCrops ? <Crops field={field} /> : null}
+      <Waypoints />
       <Robot field={field} />
+
+      {/* Renders the main view + the rover's onboard camera PiP each frame. */}
+      <OnboardView />
 
       <OrbitControls
         makeDefault

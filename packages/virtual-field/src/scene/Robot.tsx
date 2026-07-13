@@ -3,7 +3,9 @@ import { useRef } from "react";
 import type { Group, Mesh } from "three";
 
 import { driveLanes, rowHalfLength } from "./field";
+import { onboardCameraRef } from "./onboardCamera";
 import { useSimStore } from "../store/simStore";
+import type { NavMode } from "../store/simStore";
 import type { FieldConfig } from "../types";
 
 const DRIVE_SPEED = 3.6; // m/s along a row
@@ -54,6 +56,14 @@ export function Robot({ field }: { field: FieldConfig }) {
   });
   const clock = useRef({ elapsed: 0, sample: 0, frames: 0, frameTime: 0 });
   const lastReset = useRef(0);
+
+  // Waypoint-mode cursor. `mode`/`version` detect when to resync: switching modes
+  // or editing the waypoint list restarts the run from the first target.
+  const wp = useRef<{ mode: NavMode; version: number; index: number }>({
+    mode: "coverage",
+    version: -1,
+    index: 0
+  });
 
   // Pick the row nearest the current X and aim at its far end — this is what
   // makes coverage start correctly "no matter where it starts".
@@ -114,13 +124,22 @@ export function Robot({ field }: { field: FieldConfig }) {
     const g = group.current;
     if (!g) return;
 
-    const { running, resetToken, pushTelemetry, elapsed: storeElapsed } =
-      useSimStore.getState();
+    const {
+      running,
+      resetToken,
+      pushTelemetry,
+      elapsed: storeElapsed,
+      navMode,
+      waypoints,
+      waypointsVersion
+    } = useSimStore.getState();
 
     if (resetToken !== lastReset.current) {
       lastReset.current = resetToken;
       pose.current = { x: 0, z: 0, heading: 0, battery: 1 };
       nav.current.ready = false;
+      wp.current.index = 0;
+      wp.current.version = -1; // force a waypoint resync after reset
       clock.current.elapsed = 0;
       g.position.set(0, CHASSIS_Y, 0);
       g.rotation.y = 0;
@@ -134,38 +153,70 @@ export function Robot({ field }: { field: FieldConfig }) {
 
     let speed = 0;
     if (running && p.battery > 0) {
-      if (!nav.current.ready) initNav();
-      const n = nav.current;
+      // Pick this frame's target and what to do on arrival, per nav mode.
+      let tx: number | null = null;
+      let tz = 0;
+      let onArrive: (() => void) | null = null;
 
-      clock.current.elapsed += delta;
+      if (navMode === "waypoints") {
+        wp.current.mode = "waypoints";
+        // Resync the cursor when the list is edited (add/clear bumps version).
+        if (wp.current.version !== waypointsVersion) {
+          wp.current.version = waypointsVersion;
+          wp.current.index = 0;
+        }
+        if (wp.current.index < waypoints.length) {
+          const w = waypoints[wp.current.index];
+          tx = w.x;
+          tz = w.z;
+          onArrive = () => {
+            wp.current.index += 1;
+          };
+        }
+        // No target left → hold position (rover idles at the last waypoint).
+      } else {
+        // Coverage: re-init the sweep when arriving from waypoint mode.
+        if (wp.current.mode !== "coverage") {
+          wp.current.mode = "coverage";
+          nav.current.ready = false;
+        }
+        if (!nav.current.ready) initNav();
+        tx = nav.current.tx;
+        tz = nav.current.tz;
+        onArrive = () => nextWaypoint();
+      }
 
-      // Steer toward the active waypoint. heading 0 = +Z, so the forward vector
-      // is (sin h, cos h) and the bearing to a target is atan2(Δx, Δz).
-      const dx = n.tx - p.x;
-      const dz = n.tz - p.z;
-      const dist = Math.hypot(dx, dz);
-      const desired = Math.atan2(dx, dz);
-      const err = angleTo(p.heading, desired);
+      if (tx !== null) {
+        clock.current.elapsed += delta;
 
-      const maxTurn = TURN_RATE * delta;
-      p.heading += Math.max(-maxTurn, Math.min(maxTurn, err));
+        // Steer toward the target. heading 0 = +Z, so the forward vector is
+        // (sin h, cos h) and the bearing to a target is atan2(Δx, Δz).
+        const dx = tx - p.x;
+        const dz = tz - p.z;
+        const dist = Math.hypot(dx, dz);
+        const desired = Math.atan2(dx, dz);
+        const err = angleTo(p.heading, desired);
 
-      // Slow through sharp turns (steer first, then accelerate down the row).
-      const factor = Math.max(MIN_SPEED_FACTOR, Math.cos(err));
-      speed = DRIVE_SPEED * factor;
+        const maxTurn = TURN_RATE * delta;
+        p.heading += Math.max(-maxTurn, Math.min(maxTurn, err));
 
-      p.x += Math.sin(p.heading) * speed * delta;
-      p.z += Math.cos(p.heading) * speed * delta;
+        // Slow through sharp turns (steer first, then accelerate down the row).
+        const factor = Math.max(MIN_SPEED_FACTOR, Math.cos(err));
+        speed = DRIVE_SPEED * factor;
 
-      if (dist < WAYPOINT_RADIUS) nextWaypoint();
+        p.x += Math.sin(p.heading) * speed * delta;
+        p.z += Math.cos(p.heading) * speed * delta;
 
-      p.battery = Math.max(0, p.battery - BATTERY_DRAIN * delta);
+        if (dist < WAYPOINT_RADIUS && onArrive) onArrive();
 
-      g.position.set(p.x, CHASSIS_Y, p.z);
-      g.rotation.y = p.heading;
+        p.battery = Math.max(0, p.battery - BATTERY_DRAIN * delta);
 
-      const spin = (speed * delta) / 0.45;
-      for (const w of wheels.current) if (w) w.rotation.x += spin;
+        g.position.set(p.x, CHASSIS_Y, p.z);
+        g.rotation.y = p.heading;
+
+        const spin = (speed * delta) / 0.45;
+        for (const w of wheels.current) if (w) w.rotation.x += spin;
+      }
     }
 
     // Throttle telemetry to ~6.7Hz so the HUD isn't re-rendering every frame.
@@ -221,6 +272,19 @@ export function Robot({ field }: { field: FieldConfig }) {
         <cylinderGeometry args={[0.06, 0.06, 0.04, 16]} />
         <meshStandardMaterial color="#8fd0ff" emissive="#2a6f9e" emissiveIntensity={0.6} />
       </mesh>
+      {/* Onboard camera — parented here so it inherits the rover's pose. R3F
+          cameras look down local -Z, so yaw 180° to face the rover's forward
+          (+Z). Rendered as the picture-in-picture feed by <OnboardView />. */}
+      <perspectiveCamera
+        ref={(c) => {
+          onboardCameraRef.current = c;
+        }}
+        position={[0, 1.0, 0.62]}
+        rotation={[0, Math.PI, 0]}
+        fov={62}
+        near={0.1}
+        far={800}
+      />
       {/* Wheels */}
       {wheelPositions.map((wp, i) => (
         <mesh

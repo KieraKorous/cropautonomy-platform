@@ -25,6 +25,8 @@ export function Hud() {
   const showGrid = useSimStore((s) => s.showGrid);
   const showRows = useSimStore((s) => s.showRows);
   const showCrops = useSimStore((s) => s.showCrops);
+  const navMode = useSimStore((s) => s.navMode);
+  const waypointCount = useSimStore((s) => s.waypoints.length);
   const telemetry = useSimStore((s) => s.telemetry);
 
   const toggleRun = useSimStore((s) => s.toggleRun);
@@ -33,6 +35,8 @@ export function Hud() {
   const toggleGrid = useSimStore((s) => s.toggleGrid);
   const toggleRows = useSimStore((s) => s.toggleRows);
   const toggleCrops = useSimStore((s) => s.toggleCrops);
+  const setNavMode = useSimStore((s) => s.setNavMode);
+  const clearWaypoints = useSimStore((s) => s.clearWaypoints);
 
   const batteryPct = Math.round(telemetry.battery * 100);
   const batteryTone =
@@ -63,6 +67,52 @@ export function Hud() {
             {formatClock(elapsed)}
           </span>
         </div>
+
+        {/* Navigation mode */}
+        <div className="pointer-events-auto flex items-center gap-2 rounded-lg border border-base-content/10 bg-base-100/80 px-2.5 py-1.5 backdrop-blur">
+          <span className="text-[11px] uppercase tracking-wide text-base-content/50">Nav</span>
+          <div className="join">
+            <button
+              type="button"
+              onClick={() => setNavMode("coverage")}
+              className={`btn btn-xs join-item ${
+                navMode === "coverage" ? "btn-primary" : "btn-ghost"
+              }`}
+            >
+              Coverage
+            </button>
+            <button
+              type="button"
+              onClick={() => setNavMode("waypoints")}
+              className={`btn btn-xs join-item ${
+                navMode === "waypoints" ? "btn-primary" : "btn-ghost"
+              }`}
+            >
+              Waypoints
+            </button>
+          </div>
+          {navMode === "waypoints" ? (
+            <>
+              <span className="font-mono text-[11px] tabular-nums text-base-content/60">
+                {waypointCount}
+              </span>
+              <button
+                type="button"
+                onClick={clearWaypoints}
+                disabled={waypointCount === 0}
+                className="btn btn-xs btn-ghost disabled:opacity-40"
+              >
+                Clear
+              </button>
+            </>
+          ) : null}
+        </div>
+
+        {navMode === "waypoints" && waypointCount === 0 ? (
+          <span className="rounded-md bg-base-100/70 px-2 py-1 text-[11px] text-base-content/60 backdrop-blur">
+            Click the ground to drop waypoints.
+          </span>
+        ) : null}
       </div>
 
       {/* Top-right: performance */}
@@ -145,6 +195,18 @@ export function Hud() {
           >
             Crops
           </button>
+        </div>
+      </div>
+
+      {/* Bottom-right: onboard camera feed. This is just the labelled frame — the
+          live image is the WebGL picture-in-picture drawn by <OnboardView />,
+          which anchors to the exact same corner + size (see PIP in OnboardView). */}
+      <div className="pointer-events-none absolute bottom-4 right-4 h-[148px] w-[232px] overflow-hidden rounded-md border border-base-content/25 shadow-lg">
+        <div className="absolute left-0 top-0 flex items-center gap-1.5 rounded-br-md bg-base-100/80 px-2 py-1 backdrop-blur">
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-error" />
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-base-content/70">
+            RGB · Rover-01
+          </span>
         </div>
       </div>
     </div>
