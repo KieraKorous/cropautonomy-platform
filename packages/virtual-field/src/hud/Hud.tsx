@@ -24,6 +24,7 @@ export function Hud() {
   const timeOfDay = useSimStore((s) => s.timeOfDay);
   const showGrid = useSimStore((s) => s.showGrid);
   const showRows = useSimStore((s) => s.showRows);
+  const showCrops = useSimStore((s) => s.showCrops);
   const telemetry = useSimStore((s) => s.telemetry);
 
   const toggleRun = useSimStore((s) => s.toggleRun);
@@ -31,6 +32,7 @@ export function Hud() {
   const setTimeOfDay = useSimStore((s) => s.setTimeOfDay);
   const toggleGrid = useSimStore((s) => s.toggleGrid);
   const toggleRows = useSimStore((s) => s.toggleRows);
+  const toggleCrops = useSimStore((s) => s.toggleCrops);
 
   const batteryPct = Math.round(telemetry.battery * 100);
   const batteryTone =
@@ -135,6 +137,13 @@ export function Hud() {
             className={`btn btn-xs ${showRows ? "btn-secondary" : "btn-ghost"}`}
           >
             Rows
+          </button>
+          <button
+            type="button"
+            onClick={toggleCrops}
+            className={`btn btn-xs ${showCrops ? "btn-secondary" : "btn-ghost"}`}
+          >
+            Crops
           </button>
         </div>
       </div>

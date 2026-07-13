@@ -2,82 +2,168 @@ import { useFrame } from "@react-three/fiber";
 import { useRef } from "react";
 import type { Group, Mesh } from "three";
 
+import { driveLanes, rowHalfLength } from "./field";
 import { useSimStore } from "../store/simStore";
 import type { FieldConfig } from "../types";
 
-const DRIVE_SPEED = 3.2; // m/s
-const TURN_RATE = 1.4; // rad/s while re-aligning at a boundary
+const DRIVE_SPEED = 3.6; // m/s along a row
+const TURN_RATE = 2.1; // rad/s max steering rate
+const WAYPOINT_RADIUS = 1.1; // m — "arrived" threshold
+const MIN_SPEED_FACTOR = 0.18; // crawl (not stall) through sharp headland turns
 const BATTERY_DRAIN = 0.004; // charge per second while driving
 const CHASSIS_Y = 0.55; // drive-base height above soil
 
-// Placeholder robot: a low four-wheeled drive base with a sensor mast. Phase 1
-// only needs it to *exist* and prove the sim loop is live, so it drives forward
-// and lane-changes at the field boundary (a stand-in — real waypoint/row-follow
-// navigation is Phase 2). All motion is integrated imperatively in useFrame and
-// applied straight to the mesh; only a throttled sample reaches the React store.
+// Row-follower navigation. The rover drives the alleys between crop rows (the
+// drive-lanes from field.ts), which run along Z. It steers onto the *nearest*
+// lane from wherever it starts, drives its full length, then turns into the
+// adjacent lane and runs it the opposite way — a boustrophedon coverage sweep
+// that bounces at the outer lanes. Two phases:
+//   traverse — drive the length of the current row (Δz)
+//   step     — shuffle across the headland to the next row's centre-line (Δx)
+// Reaching a traverse waypoint is exactly "this row ended" → turn down the next.
+type Phase = "traverse" | "step";
+
+interface Nav {
+  ready: boolean;
+  rowIndex: number; // which row (index into offsets) we're on/heading to
+  stepDir: 1 | -1; // direction we walk through rows; bounces at the ends
+  zDir: 1 | -1; // which end of the row we're driving toward
+  phase: Phase;
+  tx: number; // current waypoint
+  tz: number;
+}
+
+// Shortest signed angle from a to b, in (-π, π].
+function angleTo(a: number, b: number) {
+  return Math.atan2(Math.sin(b - a), Math.cos(b - a));
+}
+
 export function Robot({ field }: { field: FieldConfig }) {
   const group = useRef<Group>(null);
   const wheels = useRef<Mesh[]>([]);
 
-  // Imperative pose state — never triggers a React render.
-  const pose = useRef({ x: 0, z: 0, heading: 0, battery: 1, turning: false });
+  const pose = useRef({ x: 0, z: 0, heading: 0, battery: 1 });
+  const nav = useRef<Nav>({
+    ready: false,
+    rowIndex: 0,
+    stepDir: 1,
+    zDir: 1,
+    phase: "traverse",
+    tx: 0,
+    tz: 0
+  });
   const clock = useRef({ elapsed: 0, sample: 0, frames: 0, frameTime: 0 });
   const lastReset = useRef(0);
+
+  // Pick the row nearest the current X and aim at its far end — this is what
+  // makes coverage start correctly "no matter where it starts".
+  function initNav() {
+    const offsets = driveLanes(field);
+    const half = rowHalfLength(field);
+    const p = pose.current;
+
+    let rowIndex = 0;
+    let best = Infinity;
+    for (let i = 0; i < offsets.length; i++) {
+      const d = Math.abs(offsets[i] - p.x);
+      if (d < best) {
+        best = d;
+        rowIndex = i;
+      }
+    }
+    const zDir: 1 | -1 = p.z <= 0 ? 1 : -1; // drive toward the farther end
+
+    nav.current = {
+      ready: true,
+      rowIndex,
+      stepDir: 1,
+      zDir,
+      phase: "traverse",
+      tx: offsets[rowIndex],
+      tz: zDir > 0 ? half : -half
+    };
+  }
+
+  // Advance the state machine when a waypoint is reached.
+  function nextWaypoint() {
+    const offsets = driveLanes(field);
+    const half = rowHalfLength(field);
+    const n = nav.current;
+
+    if (n.phase === "traverse") {
+      // Row finished: step across the headland to the next row (bounce at ends).
+      let next = n.rowIndex + n.stepDir;
+      if (next < 0 || next > offsets.length - 1) {
+        n.stepDir = (n.stepDir * -1) as 1 | -1;
+        next = n.rowIndex + n.stepDir;
+      }
+      n.rowIndex = next;
+      n.phase = "step";
+      n.tx = offsets[n.rowIndex];
+      n.tz = n.zDir > 0 ? half : -half; // stay at this headland while shuffling over
+    } else {
+      // Arrived at the new row's entry: flip direction and drive its length.
+      n.zDir = (n.zDir * -1) as 1 | -1;
+      n.phase = "traverse";
+      n.tx = offsets[n.rowIndex];
+      n.tz = n.zDir > 0 ? half : -half;
+    }
+  }
 
   useFrame((_, rawDelta) => {
     const g = group.current;
     if (!g) return;
 
-    const {
-      running,
-      resetToken,
-      pushTelemetry,
-      elapsed: storeElapsed
-    } = useSimStore.getState();
+    const { running, resetToken, pushTelemetry, elapsed: storeElapsed } =
+      useSimStore.getState();
 
-    // Honour reset() from the store without reaching into the render loop.
     if (resetToken !== lastReset.current) {
       lastReset.current = resetToken;
-      pose.current = { x: 0, z: 0, heading: 0, battery: 1, turning: false };
+      pose.current = { x: 0, z: 0, heading: 0, battery: 1 };
+      nav.current.ready = false;
       clock.current.elapsed = 0;
       g.position.set(0, CHASSIS_Y, 0);
       g.rotation.y = 0;
     }
 
-    // Clamp delta so a backgrounded tab doesn't teleport the robot on resume.
-    const delta = Math.min(rawDelta, 0.05);
+    const delta = Math.min(rawDelta, 0.05); // don't teleport after a tab-switch
     const p = pose.current;
 
-    // FPS sample (running or not).
     clock.current.frames += 1;
     clock.current.frameTime += rawDelta;
 
     let speed = 0;
     if (running && p.battery > 0) {
+      if (!nav.current.ready) initNav();
+      const n = nav.current;
+
       clock.current.elapsed += delta;
-      speed = DRIVE_SPEED;
 
-      const half = field.size / 2 - 6;
-      const nextZ = p.z + Math.cos(p.heading) * speed * delta;
-      const nextX = p.x + Math.sin(p.heading) * speed * delta;
+      // Steer toward the active waypoint. heading 0 = +Z, so the forward vector
+      // is (sin h, cos h) and the bearing to a target is atan2(Δx, Δz).
+      const dx = n.tx - p.x;
+      const dz = n.tz - p.z;
+      const dist = Math.hypot(dx, dz);
+      const desired = Math.atan2(dx, dz);
+      const err = angleTo(p.heading, desired);
 
-      // At the boundary, sweep the heading around (and nudge a lane over) instead
-      // of driving off the field — a cheap coverage-looking wander for Phase 1.
-      if (Math.abs(nextZ) > half || Math.abs(nextX) > half) {
-        p.heading += TURN_RATE * delta;
-        p.turning = true;
-      } else {
-        p.x = nextX;
-        p.z = nextZ;
-        p.turning = false;
-      }
+      const maxTurn = TURN_RATE * delta;
+      p.heading += Math.max(-maxTurn, Math.min(maxTurn, err));
+
+      // Slow through sharp turns (steer first, then accelerate down the row).
+      const factor = Math.max(MIN_SPEED_FACTOR, Math.cos(err));
+      speed = DRIVE_SPEED * factor;
+
+      p.x += Math.sin(p.heading) * speed * delta;
+      p.z += Math.cos(p.heading) * speed * delta;
+
+      if (dist < WAYPOINT_RADIUS) nextWaypoint();
 
       p.battery = Math.max(0, p.battery - BATTERY_DRAIN * delta);
 
       g.position.set(p.x, CHASSIS_Y, p.z);
       g.rotation.y = p.heading;
 
-      // Spin the wheels proportional to travel.
       const spin = (speed * delta) / 0.45;
       for (const w of wheels.current) if (w) w.rotation.x += spin;
     }

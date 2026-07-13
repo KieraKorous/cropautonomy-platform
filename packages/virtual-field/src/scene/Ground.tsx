@@ -2,6 +2,7 @@ import { Grid } from "@react-three/drei";
 import { useMemo } from "react";
 
 import type { EnvPreset } from "./environment";
+import { rowHalfLength, rowOffsets } from "./field";
 import type { FieldConfig } from "../types";
 
 // The field floor: a shadow-receiving soil plane, an optional technical grid
@@ -19,12 +20,8 @@ export function Ground({
   showGrid: boolean;
   showRows: boolean;
 }) {
-  const rowOffsets = useMemo(() => {
-    const span = (field.rows - 1) * field.rowSpacing;
-    return Array.from({ length: field.rows }, (_, i) => i * field.rowSpacing - span / 2);
-  }, [field.rows, field.rowSpacing]);
-
-  const ridgeLength = Math.min(field.size * 0.9, field.size - 8);
+  const offsets = useMemo(() => rowOffsets(field), [field]);
+  const ridgeLength = rowHalfLength(field) * 2;
 
   return (
     <group>
@@ -54,7 +51,7 @@ export function Ground({
 
       {/* Furrow ridges (crop-row hint) */}
       {showRows
-        ? rowOffsets.map((x, i) => (
+        ? offsets.map((x, i) => (
             <mesh key={i} position={[x, 0.12, 0]} castShadow receiveShadow>
               <boxGeometry args={[0.35, 0.24, ridgeLength]} />
               <meshStandardMaterial

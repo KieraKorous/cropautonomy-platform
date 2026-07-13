@@ -32,6 +32,7 @@ export interface SimState {
   timeOfDay: TimeOfDay;
   showGrid: boolean;
   showRows: boolean;
+  showCrops: boolean;
   field: FieldConfig;
 
   /** Latest robot telemetry for the HUD. */
@@ -51,6 +52,7 @@ export interface SimState {
   setTimeOfDay: (t: TimeOfDay) => void;
   toggleGrid: () => void;
   toggleRows: () => void;
+  toggleCrops: () => void;
   /** Called from the render loop with a fresh telemetry sample. */
   pushTelemetry: (t: RobotTelemetry, elapsed: number, fps: number) => void;
 }
@@ -63,6 +65,7 @@ export const useSimStore = create<SimState>((set) => ({
   timeOfDay: "day",
   showGrid: true,
   showRows: true,
+  showCrops: true,
   field: DEFAULT_FIELD,
 
   telemetry: FULL_BATTERY,
@@ -81,5 +84,6 @@ export const useSimStore = create<SimState>((set) => ({
   setTimeOfDay: (timeOfDay) => set({ timeOfDay }),
   toggleGrid: () => set((s) => ({ showGrid: !s.showGrid })),
   toggleRows: () => set((s) => ({ showRows: !s.showRows })),
+  toggleCrops: () => set((s) => ({ showCrops: !s.showCrops })),
   pushTelemetry: (telemetry, elapsed, fps) => set({ telemetry, elapsed, fps })
 }));

@@ -1,5 +1,6 @@
 import { OrbitControls } from "@react-three/drei";
 
+import { Crops } from "./Crops";
 import { ENV_PRESETS } from "./environment";
 import { Ground } from "./Ground";
 import { Lighting } from "./Lighting";
@@ -12,6 +13,7 @@ export function Scene() {
   const timeOfDay = useSimStore((s) => s.timeOfDay);
   const showGrid = useSimStore((s) => s.showGrid);
   const showRows = useSimStore((s) => s.showRows);
+  const showCrops = useSimStore((s) => s.showCrops);
   const field = useSimStore((s) => s.field);
 
   const preset = ENV_PRESETS[timeOfDay];
@@ -23,6 +25,7 @@ export function Scene() {
 
       <Lighting preset={preset} />
       <Ground field={field} preset={preset} showGrid={showGrid} showRows={showRows} />
+      {showCrops ? <Crops field={field} /> : null}
       <Robot field={field} />
 
       <OrbitControls
