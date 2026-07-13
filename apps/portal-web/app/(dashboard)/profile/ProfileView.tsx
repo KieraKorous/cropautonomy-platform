@@ -1,6 +1,7 @@
 "use client";
 
 import { useClerk, useUser } from "@clerk/nextjs";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 
@@ -76,6 +77,8 @@ export function ProfileView({
         activeOrgId={activeOrgId}
       />
 
+      <LabsSection />
+
       <section className="flex flex-col gap-3 rounded-xl border border-base-content/10 bg-base-100 p-6">
         <div className="flex flex-col gap-1">
           <h2 className="text-base font-semibold text-neutral">Sign out</h2>
@@ -94,6 +97,42 @@ export function ProfileView({
         </div>
       </section>
     </div>
+  );
+}
+
+// Temporary home for the Virtual Field simulator. It lives in the
+// @gaia/virtual-field package and is kept out of the operator sidebar until it
+// moves to its permanent surface; this card is the interim way in. The
+// /virtual-field route stays directly navigable regardless.
+function LabsSection() {
+  return (
+    <section className="flex flex-col gap-4 rounded-xl border border-base-content/10 bg-base-100 p-6">
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center gap-2">
+          <h2 className="text-base font-semibold text-neutral">Labs</h2>
+          <span className="rounded-full bg-accent/10 px-2 py-0.5 text-[11px] font-semibold text-accent">
+            Experimental
+          </span>
+        </div>
+        <p className="text-sm text-base-content/65">
+          Early tools that aren&apos;t part of the main console yet.
+        </p>
+      </div>
+      <div className="flex items-center justify-between gap-4 rounded-md border border-base-content/10 px-3.5 py-3">
+        <div className="flex min-w-0 flex-col">
+          <span className="text-sm font-medium text-neutral">Virtual Field</span>
+          <span className="text-xs text-base-content/55">
+            Browser-based digital-twin simulator — field, robot, and sensors.
+          </span>
+        </div>
+        <Link
+          href="/virtual-field"
+          className="flex-shrink-0 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-content transition-colors hover:bg-primary/90"
+        >
+          Open
+        </Link>
+      </div>
+    </section>
   );
 }
 

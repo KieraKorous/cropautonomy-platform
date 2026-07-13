@@ -15,7 +15,6 @@ import {
   LiveIcon,
   RoverIcon,
   SidebarPulseCard,
-  SimulatorIcon,
   UserIcon,
   UsersIcon,
   type AppShellOrg,
@@ -138,7 +137,6 @@ export function DashboardShell({
       title: "Operations",
       items: [
         { label: "Today's scout list", href: "/scout-list", icon: <ChecklistIcon /> },
-        { label: "Virtual Field", href: "/virtual-field", icon: <SimulatorIcon size={16} /> },
         {
           label: "Team",
           href: "/team",
