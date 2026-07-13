@@ -4,6 +4,7 @@ import type { Group, Mesh } from "three";
 
 import { driveLanes, rowHalfLength } from "./field";
 import { onboardCameraRef } from "./onboardCamera";
+import { roverPose } from "./roverState";
 import { useSimStore } from "../store/simStore";
 import type { NavMode } from "../store/simStore";
 import type { FieldConfig } from "../types";
@@ -14,6 +15,13 @@ const WAYPOINT_RADIUS = 1.1; // m — "arrived" threshold
 const MIN_SPEED_FACTOR = 0.18; // crawl (not stall) through sharp headland turns
 const BATTERY_DRAIN = 0.004; // charge per second while driving
 const CHASSIS_Y = 0.55; // drive-base height above soil
+
+// Reactive obstacle avoidance: obstacles within AVOID_RANGE and inside a forward
+// cone push the desired heading to the opposite side. Layers on top of whatever
+// target (coverage lane or waypoint) the rover is pursuing.
+const AVOID_RANGE = 4.2; // m of clearance at which avoidance kicks in
+const AVOID_CONE = 1.15; // rad half-angle of the "ahead" cone (~66°)
+const AVOID_GAIN = 1.5; // how hard to steer away
 
 // Row-follower navigation. The rover drives the alleys between crop rows (the
 // drive-lanes from field.ts), which run along Z. It steers onto the *nearest*
@@ -131,7 +139,8 @@ export function Robot({ field }: { field: FieldConfig }) {
       elapsed: storeElapsed,
       navMode,
       waypoints,
-      waypointsVersion
+      waypointsVersion,
+      obstacles
     } = useSimStore.getState();
 
     if (resetToken !== lastReset.current) {
@@ -194,7 +203,20 @@ export function Robot({ field }: { field: FieldConfig }) {
         const dx = tx - p.x;
         const dz = tz - p.z;
         const dist = Math.hypot(dx, dz);
-        const desired = Math.atan2(dx, dz);
+        let desired = Math.atan2(dx, dz);
+
+        // Reactive avoidance: bias the heading away from obstacles dead ahead.
+        let avoidBias = 0;
+        for (const o of obstacles) {
+          const clear = Math.hypot(o.x - p.x, o.z - p.z) - o.radius;
+          if (clear > AVOID_RANGE) continue;
+          const rel = angleTo(p.heading, Math.atan2(o.x - p.x, o.z - p.z));
+          if (Math.abs(rel) > AVOID_CONE) continue; // not in our path
+          const strength = (AVOID_RANGE - clear) / AVOID_RANGE; // 0..1, nearer = stronger
+          avoidBias += (rel >= 0 ? -1 : 1) * strength * AVOID_GAIN; // steer opposite side
+        }
+        desired += avoidBias;
+
         const err = angleTo(p.heading, desired);
 
         const maxTurn = TURN_RATE * delta;
@@ -218,6 +240,13 @@ export function Robot({ field }: { field: FieldConfig }) {
         for (const w of wheels.current) if (w) w.rotation.x += spin;
       }
     }
+
+    // Publish live pose for the physics collider + planning (every frame, even
+    // when paused, so the kinematic collider stays put on the rover).
+    roverPose.x = p.x;
+    roverPose.z = p.z;
+    roverPose.heading = p.heading;
+    roverPose.speed = speed;
 
     // Throttle telemetry to ~6.7Hz so the HUD isn't re-rendering every frame.
     clock.current.sample += rawDelta;

@@ -53,6 +53,7 @@ export function Hud() {
   const growthStage = useSimStore((s) => s.growthStage);
   const weather = useSimStore((s) => s.weather);
   const cropCount = useSimStore((s) => s.crops.length);
+  const obstacleCount = useSimStore((s) => s.obstacles.length);
   const telemetry = useSimStore((s) => s.telemetry);
 
   const toggleRun = useSimStore((s) => s.toggleRun);
@@ -67,6 +68,9 @@ export function Hud() {
   const setGrowthStage = useSimStore((s) => s.setGrowthStage);
   const setWeather = useSimStore((s) => s.setWeather);
   const regenerate = useSimStore((s) => s.regenerate);
+  const returnHome = useSimStore((s) => s.returnHome);
+  const regenerateObstacles = useSimStore((s) => s.regenerateObstacles);
+  const clearObstacles = useSimStore((s) => s.clearObstacles);
 
   const batteryPct = Math.round(telemetry.battery * 100);
   const batteryTone =
@@ -207,6 +211,25 @@ export function Hud() {
             >
               ↻ Regenerate field
             </button>
+
+            <div className="mt-1 flex items-center justify-between border-t border-base-content/10 pt-2">
+              <span className="text-[11px] text-base-content/55">
+                Obstacles{" "}
+                <span className="font-mono text-base-content/75">{obstacleCount}</span>
+              </span>
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={regenerateObstacles}
+                  className="btn btn-xs btn-ghost"
+                >
+                  Scatter
+                </button>
+                <button type="button" onClick={clearObstacles} className="btn btn-xs btn-ghost">
+                  Clear
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -242,6 +265,14 @@ export function Hud() {
           </button>
           <button type="button" onClick={reset} className="btn btn-sm btn-ghost">
             Reset
+          </button>
+          <button
+            type="button"
+            onClick={returnHome}
+            className="btn btn-sm btn-ghost"
+            title="Plan an A* route back to the dock and drive it"
+          >
+            ⌂ Home
           </button>
 
           <div className="mx-1 h-6 w-px bg-base-content/10" />

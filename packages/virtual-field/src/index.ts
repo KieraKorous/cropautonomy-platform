@@ -24,3 +24,5 @@ export {
   type Weather,
   type SpeciesDef
 } from "./crop";
+export { generateObstacles, type Obstacle, type ObstacleKind } from "./obstacle";
+export { planPath } from "./nav/astar";

@@ -8,6 +8,9 @@ import {
   type GrowthStage,
   type Weather
 } from "../crop";
+import { planPath } from "../nav/astar";
+import { generateObstacles, type Obstacle } from "../obstacle";
+import { roverPose } from "../scene/roverState";
 import type { FieldConfig, RobotTelemetry, TimeOfDay, Waypoint } from "../types";
 
 // Central simulation store. This is the single source of truth for everything the
@@ -19,6 +22,10 @@ const FIELD_SIZE = 120;
 const DEFAULT_SPECIES: CropSpecies = "corn";
 const DEFAULT_STAGE: GrowthStage = "mature";
 const DEFAULT_FIELD: FieldConfig = fieldForSpecies(FIELD_SIZE, DEFAULT_SPECIES);
+
+const OBSTACLE_COUNT = 12;
+/** The dock the rover starts at and returns to. */
+const HOME: Waypoint = { x: 0, z: 0 };
 
 const FULL_BATTERY: RobotTelemetry = {
   position: { x: 0, y: 0, z: 0 },
@@ -64,6 +71,10 @@ export interface SimState {
   /** Bumped whenever `waypoints` changes so the render loop can resync its index. */
   waypointsVersion: number;
 
+  /** Physics obstacles — dynamic bodies + inputs to avoidance and A* planning. */
+  obstacles: Obstacle[];
+  obstacleSeed: number;
+
   /** Latest robot telemetry for the HUD. */
   telemetry: RobotTelemetry;
 
@@ -89,6 +100,10 @@ export interface SimState {
   setNavMode: (m: NavMode) => void;
   addWaypoint: (x: number, z: number) => void;
   clearWaypoints: () => void;
+  regenerateObstacles: () => void;
+  clearObstacles: () => void;
+  /** Plan an A* route from the rover's current pose back to the dock and drive it. */
+  returnHome: () => void;
   /** Called from the render loop with a fresh telemetry sample. */
   pushTelemetry: (t: RobotTelemetry, elapsed: number, fps: number) => void;
 }
@@ -113,6 +128,9 @@ export const useSimStore = create<SimState>((set) => ({
   navMode: "coverage",
   waypoints: [],
   waypointsVersion: 0,
+
+  obstacles: generateObstacles(DEFAULT_FIELD, OBSTACLE_COUNT, 1),
+  obstacleSeed: 1,
 
   telemetry: FULL_BATTERY,
   resetToken: 0,
@@ -156,5 +174,22 @@ export const useSimStore = create<SimState>((set) => ({
     })),
   clearWaypoints: () =>
     set((s) => ({ waypoints: [], waypointsVersion: s.waypointsVersion + 1 })),
+  regenerateObstacles: () =>
+    set((s) => {
+      const obstacleSeed = s.obstacleSeed + 1;
+      return { obstacleSeed, obstacles: generateObstacles(s.field, OBSTACLE_COUNT, obstacleSeed) };
+    }),
+  clearObstacles: () => set({ obstacles: [] }),
+  returnHome: () =>
+    set((s) => {
+      // A* from the rover's live pose back to the dock, driven as waypoints.
+      const path = planPath(s.field, s.obstacles, { x: roverPose.x, z: roverPose.z }, HOME);
+      return {
+        waypoints: path.length > 0 ? path : [HOME],
+        waypointsVersion: s.waypointsVersion + 1,
+        navMode: "waypoints",
+        running: true
+      };
+    }),
   pushTelemetry: (telemetry, elapsed, fps) => set({ telemetry, elapsed, fps })
 }));

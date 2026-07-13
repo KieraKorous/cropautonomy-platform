@@ -5,6 +5,7 @@ import { applyWeather, ENV_PRESETS } from "./environment";
 import { Ground } from "./Ground";
 import { Lighting } from "./Lighting";
 import { OnboardView } from "./OnboardView";
+import { PhysicsWorld } from "./PhysicsWorld";
 import { Robot } from "./Robot";
 import { Waypoints } from "./Waypoints";
 import { Weather } from "./Weather";
@@ -34,6 +35,9 @@ export function Scene() {
       <Weather />
       <Waypoints />
       <Robot field={field} />
+
+      {/* Rapier world: ground collider, dynamic obstacles, rover collider. */}
+      <PhysicsWorld fieldSize={field.size} />
 
       {/* Renders the main view + the rover's onboard camera PiP each frame. */}
       <OnboardView />
