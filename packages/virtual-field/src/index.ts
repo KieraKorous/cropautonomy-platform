@@ -11,5 +11,16 @@
 export { VirtualField } from "./VirtualField";
 export type { VirtualFieldProps } from "./VirtualField";
 export { useSimStore } from "./store/simStore";
-export type { SimState } from "./store/simStore";
-export type { TimeOfDay, FieldConfig, RobotTelemetry } from "./types";
+export type { SimState, NavMode } from "./store/simStore";
+export type { TimeOfDay, FieldConfig, RobotTelemetry, Waypoint } from "./types";
+export {
+  SPECIES,
+  GROWTH_STAGES,
+  generateCrops,
+  fieldForSpecies,
+  type Crop,
+  type CropSpecies,
+  type GrowthStage,
+  type Weather,
+  type SpeciesDef
+} from "./crop";

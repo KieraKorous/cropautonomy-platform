@@ -1,93 +1,119 @@
-import { useLayoutEffect, useMemo, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { Color, Object3D, type InstancedMesh } from "three";
 
-import { rowHalfLength, rowOffsets } from "./field";
-import type { FieldConfig } from "../types";
+import { SPECIES } from "../crop";
+import { useSimStore } from "../store/simStore";
 
-const PLANT_SPACING = 1.0; // metres between plants along a row
-const HEADLAND_MARGIN = 4; // leave the row ends bare (turning space)
-const BASE_HEIGHT = 0.9; // unscaled plant height
+const SOIL_TOP = 0.12; // beds sit slightly proud of the ground plane
 
-// Deterministic PRNG so plant jitter/scale/colour stay stable across re-renders
-// (a fresh Math.random() every render would make the field shimmer).
-function makeRng(seed: number) {
-  let s = seed >>> 0;
-  return () => {
-    s = (s + 0x6d2b79f5) >>> 0;
-    let t = s;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+// Renders the crop layer *from the entity records* in the store — so what you see
+// is exactly the data the sim holds (and that future sensor/CV phases query).
+// One instanced draw call for the canopy (plus one for trunks on tree species),
+// with per-plant transform + colour derived from the record's growth stage,
+// health, and disease. Change species / growth / regenerate → the store rebuilds
+// the records → this repopulates.
+export function Crops() {
+  const crops = useSimStore((s) => s.crops);
+  const species = useSimStore((s) => s.species);
+  const def = SPECIES[species];
+  const isTree = def.geometry === "tree";
 
-interface Plant {
-  x: number;
-  z: number;
-  scale: number; // height multiplier — stands in for growth-stage variation
-  ry: number; // yaw
-  hue: number; // foliage hue jitter
-}
-
-// Basic crop layer: a plant on every bed (the furrow rows), instanced into a
-// single draw call so thousands of plants stay cheap. This is the visual
-// starting point for the PRD crop system — the full per-plant record (species,
-// growth stage, health, moisture, fruit count, GPS, id) layers on in Phase 3.
-export function Crops({ field }: { field: FieldConfig }) {
-  const ref = useRef<InstancedMesh>(null);
-
-  const plants = useMemo<Plant[]>(() => {
-    const offsets = rowOffsets(field);
-    const usable = rowHalfLength(field) - HEADLAND_MARGIN;
-    if (usable <= 0) return [];
-    const perRow = Math.max(1, Math.floor((usable * 2) / PLANT_SPACING));
-    const rng = makeRng(field.rows * 1000 + Math.round(field.size));
-
-    const out: Plant[] = [];
-    for (const ox of offsets) {
-      for (let i = 0; i <= perRow; i++) {
-        const z = -usable + (i / perRow) * usable * 2;
-        out.push({
-          x: ox + (rng() - 0.5) * 0.25,
-          z: z + (rng() - 0.5) * 0.3,
-          scale: 0.7 + rng() * 0.6,
-          ry: rng() * Math.PI * 2,
-          hue: 0.28 + (rng() - 0.5) * 0.05 // greens, slightly varied
-        });
-      }
-    }
-    return out;
-  }, [field]);
+  const canopyRef = useRef<InstancedMesh>(null);
+  const trunkRef = useRef<InstancedMesh>(null);
 
   useLayoutEffect(() => {
-    const mesh = ref.current;
-    if (!mesh) return;
+    const canopy = canopyRef.current;
+    if (!canopy) return;
     const dummy = new Object3D();
     const color = new Color();
-    plants.forEach((p, i) => {
-      const width = 0.85 + (p.scale - 0.7) * 0.3;
-      dummy.position.set(p.x, 0.12 + (BASE_HEIGHT * p.scale) / 2, p.z);
-      dummy.rotation.set(0, p.ry, 0);
-      dummy.scale.set(width, p.scale, width);
+
+    crops.forEach((c, i) => {
+      const growth = c.height / def.matureHeight;
+
+      if (def.geometry === "cone") {
+        const r = c.boundingRadius;
+        dummy.position.set(c.x, SOIL_TOP + c.height / 2, c.z);
+        dummy.rotation.set(0, c.yaw, 0);
+        dummy.scale.set(r, c.height, r);
+      } else if (def.geometry === "sphere") {
+        const r = c.boundingRadius;
+        dummy.position.set(c.x, SOIL_TOP + r * 0.85, c.z);
+        dummy.rotation.set(0, c.yaw, 0);
+        dummy.scale.set(r, r * 0.9, r);
+      } else {
+        // tree canopy sits atop the trunk
+        const r = c.boundingRadius;
+        const trunk = def.trunkHeight * growth;
+        dummy.position.set(c.x, SOIL_TOP + trunk + r * 0.75, c.z);
+        dummy.rotation.set(0, c.yaw, 0);
+        dummy.scale.set(r, r, r);
+      }
       dummy.updateMatrix();
-      mesh.setMatrixAt(i, dummy.matrix);
-      color.setHSL(p.hue, 0.5, 0.3 + (p.scale - 0.7) * 0.08);
-      mesh.setColorAt(i, color);
+      canopy.setMatrixAt(i, dummy.matrix);
+
+      // Colour: dead → brown; otherwise a green whose hue slides toward yellow and
+      // whose saturation falls as health drops. Disease dulls it further.
+      if (c.growthStage === "dead") {
+        color.setHSL(0.09, 0.35, 0.24);
+      } else {
+        const hue = 0.13 + (def.foliageHue - 0.13) * c.health; // unhealthy → yellow
+        const sat = (c.diseased ? 0.32 : 0.5) * (0.45 + c.health * 0.55);
+        const light = 0.28 + (1 - c.health) * 0.14;
+        color.setHSL(hue, sat, light);
+      }
+      canopy.setColorAt(i, color);
     });
-    mesh.instanceMatrix.needsUpdate = true;
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-  }, [plants]);
+    canopy.instanceMatrix.needsUpdate = true;
+    if (canopy.instanceColor) canopy.instanceColor.needsUpdate = true;
+
+    const trunk = trunkRef.current;
+    if (isTree && trunk) {
+      crops.forEach((c, i) => {
+        const growth = c.height / def.matureHeight;
+        const th = def.trunkHeight * growth;
+        const tr = c.boundingRadius * 0.14;
+        dummy.position.set(c.x, SOIL_TOP + th / 2, c.z);
+        dummy.rotation.set(0, 0, 0);
+        dummy.scale.set(tr, th, tr);
+        dummy.updateMatrix();
+        trunk.setMatrixAt(i, dummy.matrix);
+      });
+      trunk.instanceMatrix.needsUpdate = true;
+    }
+  }, [crops, def, isTree]);
+
+  if (crops.length === 0) return null;
 
   return (
-    <instancedMesh
-      ref={ref}
-      args={[undefined, undefined, plants.length]}
-      castShadow
-      receiveShadow
-      raycast={() => null}
-    >
-      <coneGeometry args={[0.22, BASE_HEIGHT, 6]} />
-      <meshStandardMaterial roughness={0.85} metalness={0} />
-    </instancedMesh>
+    <group>
+      <instancedMesh
+        ref={canopyRef}
+        args={[undefined, undefined, crops.length]}
+        castShadow
+        receiveShadow
+        frustumCulled={false}
+        raycast={() => null}
+      >
+        {def.geometry === "cone" ? (
+          <coneGeometry args={[1, 1, 6]} />
+        ) : (
+          <sphereGeometry args={[1, 10, 8]} />
+        )}
+        <meshStandardMaterial roughness={0.85} metalness={0} />
+      </instancedMesh>
+
+      {isTree ? (
+        <instancedMesh
+          ref={trunkRef}
+          args={[undefined, undefined, crops.length]}
+          castShadow
+          frustumCulled={false}
+          raycast={() => null}
+        >
+          <cylinderGeometry args={[1, 1, 1, 6]} />
+          <meshStandardMaterial color="#6b4f36" roughness={1} metalness={0} />
+        </instancedMesh>
+      ) : null}
+    </group>
   );
 }

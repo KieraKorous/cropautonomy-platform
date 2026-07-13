@@ -1,3 +1,4 @@
+import type { Weather } from "../crop";
 import type { TimeOfDay } from "../types";
 
 // Per-time-of-day lighting + atmosphere presets. Kept asset-free on purpose: sky
@@ -64,3 +65,45 @@ export const ENV_PRESETS: Record<TimeOfDay, EnvPreset> = {
     soil: "#2c2a28"
   }
 };
+
+// Layer a weather condition over the time-of-day base: weather dims the sun,
+// thickens/colours the fog, and tints the sky. Kept as a pure transform of the
+// preset so Lighting/Ground/Scene stay weather-agnostic — they just consume the
+// adjusted preset. Rain/dust *particles* are separate (see Weather.tsx).
+export function applyWeather(p: EnvPreset, w: Weather): EnvPreset {
+  switch (w) {
+    case "clear":
+      return p;
+    case "cloudy":
+      return {
+        ...p,
+        sunIntensity: p.sunIntensity * 0.45,
+        ambientIntensity: p.ambientIntensity * 1.15,
+        hemiIntensity: p.hemiIntensity * 1.1,
+        fog: { ...p.fog, far: p.fog.far * 0.8 }
+      };
+    case "rain":
+      return {
+        ...p,
+        sunIntensity: p.sunIntensity * 0.32,
+        ambientIntensity: p.ambientIntensity * 0.95,
+        fog: { color: "#6b7480", near: p.fog.near * 0.55, far: p.fog.far * 0.45 },
+        background: "#6b7480"
+      };
+    case "fog":
+      return {
+        ...p,
+        sunIntensity: p.sunIntensity * 0.55,
+        fog: { color: "#ccd3d4", near: 6, far: 68 },
+        background: "#ccd3d4"
+      };
+    case "dust":
+      return {
+        ...p,
+        sunIntensity: p.sunIntensity * 0.7,
+        ambientIntensity: p.ambientIntensity * 1.05,
+        fog: { color: "#c7a26a", near: 14, far: 120 },
+        background: "#c19a5f"
+      };
+  }
+}

@@ -1,3 +1,12 @@
+import type { ReactNode } from "react";
+
+import {
+  GROWTH_STAGES,
+  SPECIES,
+  type CropSpecies,
+  type GrowthStage,
+  type Weather
+} from "../crop";
 import { useSimStore } from "../store/simStore";
 import type { TimeOfDay } from "../types";
 
@@ -7,6 +16,19 @@ const TIMES: { id: TimeOfDay; label: string }[] = [
   { id: "dusk", label: "Dusk" },
   { id: "night", label: "Night" }
 ];
+
+const SPECIES_LIST = Object.values(SPECIES);
+const WEATHERS: { id: Weather; label: string }[] = [
+  { id: "clear", label: "Clear" },
+  { id: "cloudy", label: "Cloudy" },
+  { id: "rain", label: "Rain" },
+  { id: "fog", label: "Fog" },
+  { id: "dust", label: "Dust" }
+];
+
+function titleCase(s: string) {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
 
 function formatClock(seconds: number) {
   const m = Math.floor(seconds / 60);
@@ -27,6 +49,10 @@ export function Hud() {
   const showCrops = useSimStore((s) => s.showCrops);
   const navMode = useSimStore((s) => s.navMode);
   const waypointCount = useSimStore((s) => s.waypoints.length);
+  const species = useSimStore((s) => s.species);
+  const growthStage = useSimStore((s) => s.growthStage);
+  const weather = useSimStore((s) => s.weather);
+  const cropCount = useSimStore((s) => s.crops.length);
   const telemetry = useSimStore((s) => s.telemetry);
 
   const toggleRun = useSimStore((s) => s.toggleRun);
@@ -37,6 +63,10 @@ export function Hud() {
   const toggleCrops = useSimStore((s) => s.toggleCrops);
   const setNavMode = useSimStore((s) => s.setNavMode);
   const clearWaypoints = useSimStore((s) => s.clearWaypoints);
+  const setSpecies = useSimStore((s) => s.setSpecies);
+  const setGrowthStage = useSimStore((s) => s.setGrowthStage);
+  const setWeather = useSimStore((s) => s.setWeather);
+  const regenerate = useSimStore((s) => s.regenerate);
 
   const batteryPct = Math.round(telemetry.battery * 100);
   const batteryTone =
@@ -115,11 +145,70 @@ export function Hud() {
         ) : null}
       </div>
 
-      {/* Top-right: performance */}
-      <div className="absolute right-4 top-4 pointer-events-auto rounded-lg border border-base-content/10 bg-base-100/80 px-3 py-1.5 backdrop-blur">
-        <span className="font-mono text-xs tabular-nums text-base-content/70">
-          {fps} FPS
-        </span>
+      {/* Top-right: performance + field/environment controls */}
+      <div className="absolute right-4 top-4 flex w-56 flex-col items-end gap-2">
+        <div className="pointer-events-auto rounded-lg border border-base-content/10 bg-base-100/80 px-3 py-1.5 backdrop-blur">
+          <span className="font-mono text-xs tabular-nums text-base-content/70">{fps} FPS</span>
+        </div>
+
+        <div className="pointer-events-auto w-full rounded-lg border border-base-content/10 bg-base-100/80 p-3 backdrop-blur">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-base-content/60">
+              Field
+            </span>
+            <span className="font-mono text-[11px] tabular-nums text-base-content/50">
+              {cropCount.toLocaleString()} plants
+            </span>
+          </div>
+          <div className="flex flex-col gap-2">
+            <Field label="Crop">
+              <select
+                value={species}
+                onChange={(e) => setSpecies(e.target.value as CropSpecies)}
+                className="select select-xs w-full border-base-content/15 bg-base-100 font-medium"
+              >
+                {SPECIES_LIST.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Growth">
+              <select
+                value={growthStage}
+                onChange={(e) => setGrowthStage(e.target.value as GrowthStage)}
+                className="select select-xs w-full border-base-content/15 bg-base-100 font-medium"
+              >
+                {GROWTH_STAGES.map((g) => (
+                  <option key={g} value={g}>
+                    {titleCase(g)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Weather">
+              <select
+                value={weather}
+                onChange={(e) => setWeather(e.target.value as Weather)}
+                className="select select-xs w-full border-base-content/15 bg-base-100 font-medium"
+              >
+                {WEATHERS.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <button
+              type="button"
+              onClick={regenerate}
+              className="btn btn-xs btn-ghost mt-0.5 justify-start px-1 text-base-content/70"
+            >
+              ↻ Regenerate field
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Bottom-left: robot telemetry */}
@@ -219,5 +308,14 @@ function Metric({ label, value }: { label: string; value: string }) {
       <dt className="text-[10px] uppercase tracking-wide text-base-content/45">{label}</dt>
       <dd className="font-mono tabular-nums text-base-content/85">{value}</dd>
     </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="flex items-center gap-2">
+      <span className="w-14 shrink-0 text-[11px] text-base-content/55">{label}</span>
+      {children}
+    </label>
   );
 }

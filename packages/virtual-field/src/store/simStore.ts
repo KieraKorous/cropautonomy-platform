@@ -1,5 +1,13 @@
 import { create } from "zustand";
 
+import {
+  fieldForSpecies,
+  generateCrops,
+  type Crop,
+  type CropSpecies,
+  type GrowthStage,
+  type Weather
+} from "../crop";
 import type { FieldConfig, RobotTelemetry, TimeOfDay, Waypoint } from "../types";
 
 // Central simulation store. This is the single source of truth for everything the
@@ -7,11 +15,10 @@ import type { FieldConfig, RobotTelemetry, TimeOfDay, Waypoint } from "../types"
 // integrates robot motion imperatively and pushes *throttled* telemetry here — so
 // this store re-renders React a few times a second, not 60x. See Robot.tsx.
 
-const DEFAULT_FIELD: FieldConfig = {
-  size: 120,
-  rows: 28,
-  rowSpacing: 3
-};
+const FIELD_SIZE = 120;
+const DEFAULT_SPECIES: CropSpecies = "corn";
+const DEFAULT_STAGE: GrowthStage = "mature";
+const DEFAULT_FIELD: FieldConfig = fieldForSpecies(FIELD_SIZE, DEFAULT_SPECIES);
 
 const FULL_BATTERY: RobotTelemetry = {
   position: { x: 0, y: 0, z: 0 },
@@ -32,10 +39,19 @@ export interface SimState {
 
   /** Environment. */
   timeOfDay: TimeOfDay;
+  weather: Weather;
   showGrid: boolean;
   showRows: boolean;
   showCrops: boolean;
+
+  /** Field / crop generation. `field` geometry follows the species' spacing. */
   field: FieldConfig;
+  species: CropSpecies;
+  growthStage: GrowthStage;
+  /** Reproducible generation seed — bumped by regenerate(). */
+  seed: number;
+  /** Generated crop records; the renderer and future sensors read from these. */
+  crops: Crop[];
 
   /**
    * How the rover decides where to go:
@@ -63,9 +79,13 @@ export interface SimState {
   toggleRun: () => void;
   reset: () => void;
   setTimeOfDay: (t: TimeOfDay) => void;
+  setWeather: (w: Weather) => void;
   toggleGrid: () => void;
   toggleRows: () => void;
   toggleCrops: () => void;
+  setSpecies: (s: CropSpecies) => void;
+  setGrowthStage: (g: GrowthStage) => void;
+  regenerate: () => void;
   setNavMode: (m: NavMode) => void;
   addWaypoint: (x: number, z: number) => void;
   clearWaypoints: () => void;
@@ -79,10 +99,16 @@ export const useSimStore = create<SimState>((set) => ({
   fps: 0,
 
   timeOfDay: "day",
+  weather: "clear",
   showGrid: true,
   showRows: true,
   showCrops: true,
+
   field: DEFAULT_FIELD,
+  species: DEFAULT_SPECIES,
+  growthStage: DEFAULT_STAGE,
+  seed: 1,
+  crops: generateCrops(DEFAULT_FIELD, DEFAULT_SPECIES, DEFAULT_STAGE, 1),
 
   navMode: "coverage",
   waypoints: [],
@@ -102,9 +128,26 @@ export const useSimStore = create<SimState>((set) => ({
       resetToken: s.resetToken + 1
     })),
   setTimeOfDay: (timeOfDay) => set({ timeOfDay }),
+  setWeather: (weather) => set({ weather }),
   toggleGrid: () => set((s) => ({ showGrid: !s.showGrid })),
   toggleRows: () => set((s) => ({ showRows: !s.showRows })),
   toggleCrops: () => set((s) => ({ showCrops: !s.showCrops })),
+  setSpecies: (species) =>
+    set((s) => {
+      // A new species re-geometries the field (its own row spacing) and replants.
+      const field = fieldForSpecies(s.field.size, species);
+      return { species, field, crops: generateCrops(field, species, s.growthStage, s.seed) };
+    }),
+  setGrowthStage: (growthStage) =>
+    set((s) => ({
+      growthStage,
+      crops: generateCrops(s.field, s.species, growthStage, s.seed)
+    })),
+  regenerate: () =>
+    set((s) => {
+      const seed = s.seed + 1;
+      return { seed, crops: generateCrops(s.field, s.species, s.growthStage, seed) };
+    }),
   setNavMode: (navMode) => set({ navMode }),
   addWaypoint: (x, z) =>
     set((s) => ({

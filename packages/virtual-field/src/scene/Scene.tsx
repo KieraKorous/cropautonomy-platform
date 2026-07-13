@@ -1,24 +1,27 @@
 import { OrbitControls } from "@react-three/drei";
 
 import { Crops } from "./Crops";
-import { ENV_PRESETS } from "./environment";
+import { applyWeather, ENV_PRESETS } from "./environment";
 import { Ground } from "./Ground";
 import { Lighting } from "./Lighting";
 import { OnboardView } from "./OnboardView";
 import { Robot } from "./Robot";
 import { Waypoints } from "./Waypoints";
+import { Weather } from "./Weather";
 import { useSimStore } from "../store/simStore";
 
 // Everything inside the R3F <Canvas>. Reads environment + toggle state from the
 // store; the robot drives itself off the same store inside its own useFrame.
 export function Scene() {
   const timeOfDay = useSimStore((s) => s.timeOfDay);
+  const weather = useSimStore((s) => s.weather);
   const showGrid = useSimStore((s) => s.showGrid);
   const showRows = useSimStore((s) => s.showRows);
   const showCrops = useSimStore((s) => s.showCrops);
   const field = useSimStore((s) => s.field);
 
-  const preset = ENV_PRESETS[timeOfDay];
+  // Time-of-day sets the base atmosphere; weather layers over it.
+  const preset = applyWeather(ENV_PRESETS[timeOfDay], weather);
 
   return (
     <>
@@ -27,7 +30,8 @@ export function Scene() {
 
       <Lighting preset={preset} />
       <Ground field={field} preset={preset} showGrid={showGrid} showRows={showRows} />
-      {showCrops ? <Crops field={field} /> : null}
+      {showCrops ? <Crops /> : null}
+      <Weather />
       <Waypoints />
       <Robot field={field} />
 
