@@ -17,6 +17,7 @@
     "@gaia/domain": "workspace:*",
     "@gaia/realtime": "workspace:*",
     "@gaia/ui": "workspace:*",
+    "@gaia/virtual-field": "workspace:*",
     "@supabase/supabase-js": "2.87.0",
     "@tailwindcss/postcss": "4.3.0",
     "daisyui": "5.5.20",
