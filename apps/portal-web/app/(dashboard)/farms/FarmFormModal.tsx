@@ -93,6 +93,11 @@ export function FarmFormModal({
   // Flips true on any user-driven location change (map click, drag, geocode), so
   // we re-derive the timezone — but not when we seed an existing farm's pin.
   const locationDirtyRef = useRef(false);
+  // The postal code / country we last auto-filled from a geocode. Lets a later
+  // lookup (e.g. after the city changed) refresh them, while never overwriting a
+  // value the operator typed themselves.
+  const autofilledPostalRef = useRef<string | null>(null);
+  const autofilledCountryRef = useRef<string | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -149,6 +154,8 @@ export function FarmFormModal({
     setTeamError(null);
     addressDirtyRef.current = false;
     locationDirtyRef.current = false;
+    autofilledPostalRef.current = null;
+    autofilledCountryRef.current = null;
     dirtyRef.current = false;
     setClosePrompt(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -208,8 +215,11 @@ export function FarmFormModal({
     if (query.length < 4) return;
     const handle = setTimeout(() => void geocodeAddress(query), 700);
     return () => clearTimeout(handle);
+    // Driven by the street/city/state fields only. Postal code + country are
+    // OUTPUTS we auto-fill from the geocode result below, so they're kept out of
+    // the deps — otherwise auto-filling them would re-trigger this lookup.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, addressLine1, addressLocality, addressRegion, addressPostalCode, addressCountry]);
+  }, [open, addressLine1, addressLocality, addressRegion]);
 
   async function geocodeAddress(query: string) {
     setGeocoding(true);
@@ -220,14 +230,45 @@ export function FarmFormModal({
       const res = await fetch(url);
       if (!res.ok) return;
       const data = (await res.json()) as {
-        features?: Array<{ geometry?: { coordinates?: [number, number] } }>;
+        features?: Array<{
+          geometry?: { coordinates?: [number, number] };
+          // v6 returns the resolved address components under properties.context.
+          properties?: {
+            context?: {
+              postcode?: { name?: string };
+              country?: { name?: string };
+            };
+          };
+        }>;
       };
-      const coords = data.features?.[0]?.geometry?.coordinates;
+      const feature = data.features?.[0];
+      const coords = feature?.geometry?.coordinates;
       if (!coords) return;
       const [lng, lat] = coords;
       setLocationFromUser({ lat, lng });
       setRecenter({ lng, lat, zoom: 13 });
       // Timezone is re-derived by the location effect.
+
+      // Backfill the postal code + country the geocoder resolved. Only overwrite
+      // a field that's blank or still holds our own previous auto-fill — a value
+      // the operator typed themselves is left untouched.
+      const ctx = feature?.properties?.context;
+      const postcode = ctx?.postcode?.name?.trim();
+      const country = ctx?.country?.name?.trim();
+      if (postcode) {
+        setAddressPostalCode((cur) => {
+          if (cur.trim() && cur !== autofilledPostalRef.current) return cur;
+          autofilledPostalRef.current = postcode;
+          return postcode;
+        });
+      }
+      if (country) {
+        setAddressCountry((cur) => {
+          if (cur.trim() && cur !== autofilledCountryRef.current) return cur;
+          autofilledCountryRef.current = country;
+          return country;
+        });
+      }
     } catch {
       // Network/geocode failures are non-fatal — the manual pin still works.
     } finally {

@@ -351,6 +351,7 @@ export function ScoutListView({
                   weekEnd={weekEnd}
                   last={idx === group.items.length - 1}
                   fields={fields}
+                  members={members}
                   fieldName={task.fieldId ? (fieldName.get(task.fieldId) ?? null) : null}
                   teams={teams}
                   canAssignTeams={canAssignTeams}
@@ -372,6 +373,7 @@ function TaskRow({
   weekEnd,
   last,
   fields,
+  members,
   fieldName,
   teams,
   canAssignTeams,
@@ -383,6 +385,7 @@ function TaskRow({
   weekEnd: string;
   last: boolean;
   fields: FieldSummary[];
+  members: OrgMember[];
   fieldName: string | null;
   teams: TeamSummary[];
   canAssignTeams: boolean;
@@ -402,7 +405,12 @@ function TaskRow({
           immediate ? "border-l-4 border-l-error bg-error/[0.03]" : "border-l-4 border-l-transparent"
         }`}
       >
-        <EditTaskForm task={task} fields={fields} onDone={() => setEditing(false)} />
+        <EditTaskForm
+          task={task}
+          fields={fields}
+          members={members}
+          onDone={() => setEditing(false)}
+        />
       </li>
     );
   }
@@ -549,20 +557,25 @@ function TaskRow({
   );
 }
 
-// Inline editor for an existing task's title, description, and field. Managers+
-// (scout_tasks.update) only — surfaced via the row's pencil control.
+// Inline editor for an existing task's title, description, field, priority, and
+// assignee. Managers+ (scout_tasks.update — owner / farm manager / agronomist)
+// only, surfaced via the row's pencil control.
 function EditTaskForm({
   task,
   fields,
+  members,
   onDone
 }: {
   task: ScoutTaskSummary;
   fields: FieldSummary[];
+  members: OrgMember[];
   onDone: () => void;
 }) {
   const [title, setTitle] = useState(task.title);
   const [details, setDetails] = useState(task.details ?? "");
   const [fieldId, setFieldId] = useState(task.fieldId ?? "");
+  const [priority, setPriority] = useState<ScoutTaskPriority>(task.priority ?? "normal");
+  const [assigneeUserId, setAssigneeUserId] = useState(task.assignee?.userId ?? "");
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -576,7 +589,9 @@ function EditTaskForm({
       const result = await updateScoutTaskAction(task.id, {
         title: title.trim(),
         details: details.trim() || null,
-        fieldId: fieldId || null
+        fieldId: fieldId || null,
+        priority,
+        assigneeUserId: assigneeUserId || null
       });
       if (result.ok) onDone();
       else setError(result.error);
@@ -604,21 +619,53 @@ function EditTaskForm({
         />
       </label>
 
-      <label className="flex max-w-xs flex-col gap-1.5">
-        <span className="text-xs font-medium text-base-content/65">Field</span>
-        <select
-          value={fieldId}
-          onChange={(e) => setFieldId(e.target.value)}
-          className="rounded-md border border-base-content/15 bg-base-100 px-2.5 py-2 text-sm text-neutral outline-none focus:border-primary/50"
-        >
-          <option value="">No field</option>
-          {fields.map((f) => (
-            <option key={f.id} value={f.id}>
-              {f.name}
-            </option>
-          ))}
-        </select>
-      </label>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <label className="flex flex-col gap-1.5">
+          <span className="text-xs font-medium text-base-content/65">Assignee</span>
+          <select
+            value={assigneeUserId}
+            onChange={(e) => setAssigneeUserId(e.target.value)}
+            className="rounded-md border border-base-content/15 bg-base-100 px-2.5 py-2 text-sm text-neutral outline-none focus:border-primary/50"
+          >
+            <option value="">Unassigned</option>
+            {members.map((m) => (
+              <option key={m.userId} value={m.userId}>
+                {m.displayName ?? m.email ?? m.userId}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-1.5">
+          <span className="text-xs font-medium text-base-content/65">Priority</span>
+          <select
+            value={priority}
+            onChange={(e) => setPriority(e.target.value as ScoutTaskPriority)}
+            className="rounded-md border border-base-content/15 bg-base-100 px-2.5 py-2 text-sm text-neutral outline-none focus:border-primary/50"
+          >
+            <option value="low">Low</option>
+            <option value="normal">Normal</option>
+            <option value="high">High</option>
+            <option value="immediate">Immediate</option>
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-1.5">
+          <span className="text-xs font-medium text-base-content/65">Field</span>
+          <select
+            value={fieldId}
+            onChange={(e) => setFieldId(e.target.value)}
+            className="rounded-md border border-base-content/15 bg-base-100 px-2.5 py-2 text-sm text-neutral outline-none focus:border-primary/50"
+          >
+            <option value="">No field</option>
+            {fields.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
 
       {error ? <p className="text-xs text-error">{error}</p> : null}
 
