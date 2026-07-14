@@ -55,6 +55,11 @@ export function Hud() {
   const cropCount = useSimStore((s) => s.crops.length);
   const obstacleCount = useSimStore((s) => s.obstacles.length);
   const telemetry = useSimStore((s) => s.telemetry);
+  const sensors = useSimStore((s) => s.sensors);
+  const showLidar = useSimStore((s) => s.showLidar);
+  const sensorNoise = useSimStore((s) => s.sensorNoise);
+  const rtk = useSimStore((s) => s.rtk);
+  const cameraMode = useSimStore((s) => s.cameraMode);
 
   const toggleRun = useSimStore((s) => s.toggleRun);
   const reset = useSimStore((s) => s.reset);
@@ -71,6 +76,10 @@ export function Hud() {
   const returnHome = useSimStore((s) => s.returnHome);
   const regenerateObstacles = useSimStore((s) => s.regenerateObstacles);
   const clearObstacles = useSimStore((s) => s.clearObstacles);
+  const toggleLidar = useSimStore((s) => s.toggleLidar);
+  const toggleSensorNoise = useSimStore((s) => s.toggleSensorNoise);
+  const toggleRtk = useSimStore((s) => s.toggleRtk);
+  const setCameraMode = useSimStore((s) => s.setCameraMode);
 
   const batteryPct = Math.round(telemetry.battery * 100);
   const batteryTone =
@@ -249,13 +258,15 @@ export function Hud() {
         </div>
       </div>
 
-      {/* Bottom-left: robot telemetry */}
-      <div className="absolute bottom-4 left-4 pointer-events-auto w-60 rounded-lg border border-base-content/10 bg-base-100/80 p-3.5 backdrop-blur">
+      {/* Bottom-left: rover telemetry + sensors */}
+      <div className="absolute bottom-4 left-4 pointer-events-auto w-64 rounded-lg border border-base-content/10 bg-base-100/80 p-3.5 backdrop-blur">
         <div className="mb-2.5 flex items-center justify-between">
           <span className="text-xs font-semibold uppercase tracking-[0.12em] text-base-content/60">
             Rover-01
           </span>
-          <span className="text-[11px] text-base-content/50">placeholder</span>
+          <span className="font-mono text-[11px] tabular-nums text-base-content/50">
+            {telemetry.battery > 0 ? `${batteryPct}%` : "flat"}
+          </span>
         </div>
         <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
           <Metric label="Position" value={`${telemetry.position.x.toFixed(1)}, ${telemetry.position.z.toFixed(1)}`} />
@@ -265,6 +276,35 @@ export function Hud() {
         </dl>
         <div className="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-base-content/10">
           <div className={`h-full rounded-full ${batteryTone}`} style={{ width: `${batteryPct}%` }} />
+        </div>
+
+        {/* Sensors */}
+        <div className="mt-3 border-t border-base-content/10 pt-2.5">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-base-content/45">
+            Sensors
+          </span>
+          <dl className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+            <Metric
+              label={`GPS ${rtk ? "(RTK)" : ""}`}
+              value={`${sensors.gps.lat.toFixed(5)}, ${sensors.gps.lon.toFixed(5)}`}
+            />
+            <Metric label="Fix ± m" value={sensors.gps.accuracyM.toFixed(2)} />
+            <Metric label="IMU yaw/s" value={`${sensors.yawRateDeg.toFixed(0)}°`} />
+            <Metric label="Odometer" value={`${sensors.odometerM.toFixed(1)} m`} />
+            <Metric
+              label="LiDAR near"
+              value={sensors.lidarNearest === null ? "—" : `${sensors.lidarNearest.toFixed(2)} m`}
+            />
+            <Metric
+              label="Ultrasonic"
+              value={sensors.ultrasonic === null ? "clear" : `${sensors.ultrasonic.toFixed(2)} m`}
+            />
+          </dl>
+          <div className="mt-2.5 flex items-center gap-1">
+            <SensorToggle on={showLidar} onClick={toggleLidar} label="LiDAR" />
+            <SensorToggle on={sensorNoise} onClick={toggleSensorNoise} label="Noise" />
+            <SensorToggle on={rtk} onClick={toggleRtk} label="RTK" />
+          </div>
         </div>
       </div>
 
@@ -340,8 +380,28 @@ export function Hud() {
         <div className="absolute left-0 top-0 flex items-center gap-1.5 rounded-br-md bg-base-100/80 px-2 py-1 backdrop-blur">
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-error" />
           <span className="text-[10px] font-semibold uppercase tracking-wider text-base-content/70">
-            RGB · Rover-01
+            {cameraMode === "depth" ? "Depth" : "RGB"} · Rover-01
           </span>
+        </div>
+        <div className="pointer-events-auto absolute right-0 top-0 flex rounded-bl-md bg-base-100/80 backdrop-blur">
+          <button
+            type="button"
+            onClick={() => setCameraMode("rgb")}
+            className={`px-1.5 py-0.5 text-[10px] font-semibold uppercase ${
+              cameraMode === "rgb" ? "text-primary" : "text-base-content/45"
+            }`}
+          >
+            RGB
+          </button>
+          <button
+            type="button"
+            onClick={() => setCameraMode("depth")}
+            className={`px-1.5 py-0.5 text-[10px] font-semibold uppercase ${
+              cameraMode === "depth" ? "text-primary" : "text-base-content/45"
+            }`}
+          >
+            Depth
+          </button>
         </div>
       </div>
     </div>
@@ -354,6 +414,26 @@ function Metric({ label, value }: { label: string; value: string }) {
       <dt className="text-[10px] uppercase tracking-wide text-base-content/45">{label}</dt>
       <dd className="font-mono tabular-nums text-base-content/85">{value}</dd>
     </div>
+  );
+}
+
+function SensorToggle({
+  on,
+  onClick,
+  label
+}: {
+  on: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`btn btn-xs ${on ? "btn-secondary" : "btn-ghost"}`}
+    >
+      {label}
+    </button>
   );
 }
 

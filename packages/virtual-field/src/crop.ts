@@ -213,9 +213,9 @@ function mulberry32(seed: number) {
 
 // Synthetic geo-referencing: map field metres to lat/lon off a fixed origin
 // (California Central Valley) so every crop carries a plausible GPS fix.
-const GPS_ORIGIN = { lat: 36.58, lon: -120.02 };
+export const GPS_ORIGIN = { lat: 36.58, lon: -120.02 };
 const M_PER_DEG_LAT = 111_320;
-function metersToGps(x: number, z: number) {
+export function metersToGps(x: number, z: number) {
   const lat = GPS_ORIGIN.lat + -z / M_PER_DEG_LAT;
   const lon =
     GPS_ORIGIN.lon + x / (M_PER_DEG_LAT * Math.cos((GPS_ORIGIN.lat * Math.PI) / 180));

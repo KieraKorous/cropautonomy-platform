@@ -153,7 +153,8 @@ export function Robot({ field }: { field: FieldConfig }) {
       waypoints,
       waypointsVersion,
       obstacles,
-      dragging
+      dragging,
+      sensorNoise
     } = useSimStore.getState();
 
     if (resetToken !== lastReset.current) {
@@ -263,10 +264,13 @@ export function Robot({ field }: { field: FieldConfig }) {
         const dz = steerZ - p.z;
         let desired = Math.atan2(dx, dz);
 
-        // Reactive avoidance: bias the heading away from obstacles dead ahead.
+        // Reactive avoidance off the forward proximity sensor: bias the heading
+        // away from obstacles dead ahead. When sensor noise is on, the perceived
+        // clearance is jittered — the rover steers off noisy ranging, not truth.
         let avoidBias = 0;
         for (const o of obstacles) {
-          const clear = Math.hypot(o.x - p.x, o.z - p.z) - o.radius;
+          const trueClear = Math.hypot(o.x - p.x, o.z - p.z) - o.radius;
+          const clear = sensorNoise ? trueClear + (Math.random() - 0.5) * 0.3 : trueClear;
           if (clear > AVOID_RANGE) continue;
           const rel = angleTo(p.heading, Math.atan2(o.x - p.x, o.z - p.z));
           if (Math.abs(rel) > AVOID_CONE) continue; // not in our path

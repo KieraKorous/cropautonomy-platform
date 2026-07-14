@@ -1,6 +1,9 @@
 import { useFrame } from "@react-three/fiber";
+import { useMemo } from "react";
+import { MeshDepthMaterial } from "three";
 
 import { onboardCameraRef } from "./onboardCamera";
+import { useSimStore } from "../store/simStore";
 
 // Picture-in-picture size (CSS px). Kept in sync with the DOM frame the HUD draws
 // around it (CameraFeed in Hud.tsx) — both anchor to the bottom-right with the
@@ -11,7 +14,13 @@ export const PIP = { w: 232, h: 148, margin: 16 };
 // passes each frame: the full orbit view, then the rover's onboard camera into a
 // scissored rectangle in the corner — a live "what the robot sees" feed without a
 // second canvas or an expensive pixel readback.
+// Depth range for the depth-camera view — near/far the depth ramp spans.
+const DEPTH_FAR = 55;
+
 export function OnboardView() {
+  // A depth material used as a scene override for the depth-camera sensor mode.
+  const depthMat = useMemo(() => new MeshDepthMaterial(), []);
+
   useFrame((state) => {
     const { gl, scene, camera, size } = state;
 
@@ -34,7 +43,23 @@ export function OnboardView() {
     gl.setViewport(x, y, PIP.w, PIP.h);
     gl.setScissor(x, y, PIP.w, PIP.h);
     gl.setScissorTest(true);
-    gl.render(scene, cam);
+
+    const depth = useSimStore.getState().cameraMode === "depth";
+    if (depth) {
+      // Compress the camera's far plane so the depth ramp spans the near field,
+      // then render the whole scene with the depth override material.
+      const savedFar = cam.far;
+      cam.far = DEPTH_FAR;
+      cam.updateProjectionMatrix();
+      scene.overrideMaterial = depthMat;
+      gl.render(scene, cam);
+      scene.overrideMaterial = null;
+      cam.far = savedFar;
+      cam.updateProjectionMatrix();
+    } else {
+      gl.render(scene, cam);
+    }
+
     gl.setScissorTest(false);
   }, 1);
 

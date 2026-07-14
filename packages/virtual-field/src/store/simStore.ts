@@ -35,6 +35,26 @@ const FULL_BATTERY: RobotTelemetry = {
 };
 
 export type NavMode = "coverage" | "waypoints" | "manual";
+export type CameraMode = "rgb" | "depth";
+
+/** Latest simulated sensor readings surfaced to the HUD (throttled). */
+export interface SensorReadout {
+  gps: { lat: number; lon: number; accuracyM: number };
+  yawRateDeg: number;
+  odometerM: number;
+  lidarNearest: number | null;
+  lidarPoints: number;
+  ultrasonic: number | null;
+}
+
+const EMPTY_SENSORS: SensorReadout = {
+  gps: { lat: 0, lon: 0, accuracyM: 0 },
+  yawRateDeg: 0,
+  odometerM: 0,
+  lidarNearest: null,
+  lidarPoints: 0,
+  ultrasonic: null
+};
 
 export interface SimState {
   /** Master clock: is the simulation advancing? */
@@ -78,6 +98,13 @@ export interface SimState {
   /** True while the user is dragging the rover — suspends nav + freezes the camera. */
   dragging: boolean;
 
+  /** Sensor simulation. */
+  showLidar: boolean;
+  sensorNoise: boolean; // gaussian noise + dropout on
+  rtk: boolean; // GPS in RTK-fix precision vs standalone
+  cameraMode: CameraMode; // onboard feed: RGB or depth
+  sensors: SensorReadout;
+
   /** Latest robot telemetry for the HUD. */
   telemetry: RobotTelemetry;
 
@@ -106,6 +133,12 @@ export interface SimState {
   regenerateObstacles: () => void;
   clearObstacles: () => void;
   setDragging: (d: boolean) => void;
+  toggleLidar: () => void;
+  toggleSensorNoise: () => void;
+  toggleRtk: () => void;
+  setCameraMode: (m: CameraMode) => void;
+  /** Called from the sensor loop with a fresh (throttled) readout. */
+  pushSensors: (r: SensorReadout) => void;
   /** Plan an A* route from the rover's current pose back to the dock and drive it. */
   returnHome: () => void;
   /** Called from the render loop with a fresh telemetry sample. */
@@ -137,6 +170,12 @@ export const useSimStore = create<SimState>((set) => ({
   obstacleSeed: 1,
 
   dragging: false,
+
+  showLidar: true,
+  sensorNoise: true,
+  rtk: true,
+  cameraMode: "rgb",
+  sensors: EMPTY_SENSORS,
 
   telemetry: FULL_BATTERY,
   resetToken: 0,
@@ -187,6 +226,11 @@ export const useSimStore = create<SimState>((set) => ({
     }),
   clearObstacles: () => set({ obstacles: [] }),
   setDragging: (dragging) => set({ dragging }),
+  toggleLidar: () => set((s) => ({ showLidar: !s.showLidar })),
+  toggleSensorNoise: () => set((s) => ({ sensorNoise: !s.sensorNoise })),
+  toggleRtk: () => set((s) => ({ rtk: !s.rtk })),
+  setCameraMode: (cameraMode) => set({ cameraMode }),
+  pushSensors: (sensors) => set({ sensors }),
   returnHome: () =>
     set((s) => {
       // A* from the rover's live pose back to the dock, driven as waypoints.
