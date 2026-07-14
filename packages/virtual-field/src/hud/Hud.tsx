@@ -124,6 +124,15 @@ export function Hud() {
             >
               Waypoints
             </button>
+            <button
+              type="button"
+              onClick={() => setNavMode("manual")}
+              className={`btn btn-xs join-item ${
+                navMode === "manual" ? "btn-primary" : "btn-ghost"
+              }`}
+            >
+              Manual
+            </button>
           </div>
           {navMode === "waypoints" ? (
             <>
@@ -145,6 +154,12 @@ export function Hud() {
         {navMode === "waypoints" && waypointCount === 0 ? (
           <span className="rounded-md bg-base-100/70 px-2 py-1 text-[11px] text-base-content/60 backdrop-blur">
             Click the ground to drop waypoints.
+          </span>
+        ) : null}
+
+        {navMode === "manual" ? (
+          <span className="rounded-md bg-base-100/70 px-2 py-1 text-[11px] text-base-content/60 backdrop-blur">
+            <span className="font-semibold text-base-content/75">W A S D</span> / arrows to drive.
           </span>
         ) : null}
       </div>

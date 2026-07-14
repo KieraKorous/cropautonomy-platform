@@ -2,9 +2,12 @@ import { useFrame } from "@react-three/fiber";
 import { useRef } from "react";
 import type { Group, Mesh } from "three";
 
+import type { ThreeEvent } from "@react-three/fiber";
+
+import { driveInput } from "./driveInput";
 import { driveLanes, rowHalfLength } from "./field";
 import { onboardCameraRef } from "./onboardCamera";
-import { roverPose } from "./roverState";
+import { dragTarget, roverPose } from "./roverState";
 import { useSimStore } from "../store/simStore";
 import type { NavMode } from "../store/simStore";
 import type { FieldConfig } from "../types";
@@ -22,6 +25,13 @@ const CHASSIS_Y = 0.55; // drive-base height above soil
 const AVOID_RANGE = 4.2; // m of clearance at which avoidance kicks in
 const AVOID_CONE = 1.15; // rad half-angle of the "ahead" cone (~66°)
 const AVOID_GAIN = 1.5; // how hard to steer away
+
+// Manual (keyboard) driving.
+const MANUAL_SPEED = 4.6; // m/s forward
+const MANUAL_REVERSE = 2.6; // m/s in reverse
+const MANUAL_TURN = 1.9; // rad/s
+
+const DRAG_LIFT = 1.4; // how far the rover lifts off the ground while picked up
 
 // Row-follower navigation. The rover drives the alleys between crop rows (the
 // drive-lanes from field.ts), which run along Z. It steers onto the *nearest*
@@ -64,6 +74,7 @@ export function Robot({ field }: { field: FieldConfig }) {
   });
   const clock = useRef({ elapsed: 0, sample: 0, frames: 0, frameTime: 0 });
   const lastReset = useRef(0);
+  const wasDragging = useRef(false);
 
   // Waypoint-mode cursor. `mode`/`version` detect when to resync: switching modes
   // or editing the waypoint list restarts the run from the first target.
@@ -140,7 +151,8 @@ export function Robot({ field }: { field: FieldConfig }) {
       navMode,
       waypoints,
       waypointsVersion,
-      obstacles
+      obstacles,
+      dragging
     } = useSimStore.getState();
 
     if (resetToken !== lastReset.current) {
@@ -161,7 +173,38 @@ export function Robot({ field }: { field: FieldConfig }) {
     clock.current.frameTime += rawDelta;
 
     let speed = 0;
-    if (running && p.battery > 0) {
+    if (dragging) {
+      // Picked up: the rover follows the drag target on the ground and nav is
+      // suspended. It lifts off the ground (applied in the transform write below).
+      p.x = dragTarget.x;
+      p.z = dragTarget.z;
+      wasDragging.current = true;
+    } else {
+      // Just dropped → re-plan from the new spot (nearest lane / restart route).
+      if (wasDragging.current) {
+        wasDragging.current = false;
+        nav.current.ready = false;
+        wp.current.version = -1;
+        wp.current.index = 0;
+      }
+
+      if (navMode === "manual") {
+      // Direct keyboard control — ignores Run/Pause so you can just drive.
+      wp.current.mode = "manual";
+      if (p.battery > 0) {
+        const turn = (driveInput.left ? 1 : 0) - (driveInput.right ? 1 : 0);
+        const throttle = (driveInput.forward ? 1 : 0) - (driveInput.back ? 1 : 0);
+        p.heading += turn * MANUAL_TURN * delta;
+        if (throttle !== 0) {
+          speed = throttle > 0 ? MANUAL_SPEED : -MANUAL_REVERSE;
+          p.x += Math.sin(p.heading) * speed * delta;
+          p.z += Math.cos(p.heading) * speed * delta;
+          p.battery = Math.max(0, p.battery - BATTERY_DRAIN * delta);
+          const spin = (speed * delta) / 0.45;
+          for (const w of wheels.current) if (w) w.rotation.x += spin;
+        }
+      }
+    } else if (running && p.battery > 0) {
       // Pick this frame's target and what to do on arrival, per nav mode.
       let tx: number | null = null;
       let tz = 0;
@@ -233,13 +276,15 @@ export function Robot({ field }: { field: FieldConfig }) {
 
         p.battery = Math.max(0, p.battery - BATTERY_DRAIN * delta);
 
-        g.position.set(p.x, CHASSIS_Y, p.z);
-        g.rotation.y = p.heading;
-
         const spin = (speed * delta) / 0.45;
         for (const w of wheels.current) if (w) w.rotation.x += spin;
       }
+      }
     }
+
+    // Single authoritative transform write — lifts the rover while it's picked up.
+    g.position.set(p.x, dragging ? CHASSIS_Y + DRAG_LIFT : CHASSIS_Y, p.z);
+    g.rotation.y = p.heading;
 
     // Publish live pose for the physics collider + planning (every frame, even
     // when paused, so the kinematic collider stays put on the rover).
@@ -275,8 +320,30 @@ export function Robot({ field }: { field: FieldConfig }) {
     [0.62, -0.2, -0.7]
   ];
 
+  // Pick up the rover: seed the drag target at its current spot and flip the
+  // store into dragging (the drag-catcher plane takes over from here).
+  const onPointerDown = (e: ThreeEvent<PointerEvent>) => {
+    e.stopPropagation();
+    dragTarget.x = pose.current.x;
+    dragTarget.z = pose.current.z;
+    useSimStore.getState().setDragging(true);
+    document.body.style.cursor = "grabbing";
+  };
+  const onPointerOver = () => {
+    if (!useSimStore.getState().dragging) document.body.style.cursor = "grab";
+  };
+  const onPointerOut = () => {
+    if (!useSimStore.getState().dragging) document.body.style.cursor = "";
+  };
+
   return (
-    <group ref={group} position={[0, CHASSIS_Y, 0]}>
+    <group
+      ref={group}
+      position={[0, CHASSIS_Y, 0]}
+      onPointerDown={onPointerDown}
+      onPointerOver={onPointerOver}
+      onPointerOut={onPointerOut}
+    >
       {/* Drive base */}
       <mesh castShadow receiveShadow position={[0, 0, 0]}>
         <boxGeometry args={[1.5, 0.5, 2.1]} />

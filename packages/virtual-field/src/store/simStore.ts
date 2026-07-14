@@ -34,7 +34,7 @@ const FULL_BATTERY: RobotTelemetry = {
   battery: 1
 };
 
-export type NavMode = "coverage" | "waypoints";
+export type NavMode = "coverage" | "waypoints" | "manual";
 
 export interface SimState {
   /** Master clock: is the simulation advancing? */
@@ -75,6 +75,9 @@ export interface SimState {
   obstacles: Obstacle[];
   obstacleSeed: number;
 
+  /** True while the user is dragging the rover — suspends nav + freezes the camera. */
+  dragging: boolean;
+
   /** Latest robot telemetry for the HUD. */
   telemetry: RobotTelemetry;
 
@@ -102,6 +105,7 @@ export interface SimState {
   clearWaypoints: () => void;
   regenerateObstacles: () => void;
   clearObstacles: () => void;
+  setDragging: (d: boolean) => void;
   /** Plan an A* route from the rover's current pose back to the dock and drive it. */
   returnHome: () => void;
   /** Called from the render loop with a fresh telemetry sample. */
@@ -131,6 +135,8 @@ export const useSimStore = create<SimState>((set) => ({
 
   obstacles: generateObstacles(DEFAULT_FIELD, OBSTACLE_COUNT, 1),
   obstacleSeed: 1,
+
+  dragging: false,
 
   telemetry: FULL_BATTERY,
   resetToken: 0,
@@ -180,6 +186,7 @@ export const useSimStore = create<SimState>((set) => ({
       return { obstacleSeed, obstacles: generateObstacles(s.field, OBSTACLE_COUNT, obstacleSeed) };
     }),
   clearObstacles: () => set({ obstacles: [] }),
+  setDragging: (dragging) => set({ dragging }),
   returnHome: () =>
     set((s) => {
       // A* from the rover's live pose back to the dock, driven as waypoints.

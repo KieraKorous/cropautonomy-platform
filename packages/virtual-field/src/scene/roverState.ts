@@ -3,3 +3,7 @@
 // by the kinematic collider that pushes obstacles, and by "return home" planning.
 // A plain mutable object — no React re-renders on the 60fps hot path.
 export const roverPose = { x: 0, z: 0, heading: 0, speed: 0 };
+
+// Where the rover is being dragged to (world X/Z), written by the drag-catcher
+// plane's pointer-move and read by the Robot while `dragging` is set in the store.
+export const dragTarget = { x: 0, z: 0 };

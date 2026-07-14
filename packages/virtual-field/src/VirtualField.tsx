@@ -4,6 +4,7 @@ import { Canvas } from "@react-three/fiber";
 import { Suspense } from "react";
 
 import { Hud } from "./hud/Hud";
+import { useDriveControls } from "./scene/driveInput";
 import { Scene } from "./scene/Scene";
 
 export interface VirtualFieldProps {
@@ -16,6 +17,7 @@ export interface VirtualFieldProps {
 // component is client-only (WebGL) — consumers in Next should load it with
 // `dynamic(..., { ssr: false })`.
 export function VirtualField({ className }: VirtualFieldProps) {
+  useDriveControls(); // WASD / arrow-key manual driving
   return (
     <div className={`relative h-full w-full overflow-hidden ${className ?? ""}`}>
       <Canvas

@@ -1,6 +1,7 @@
 import { OrbitControls } from "@react-three/drei";
 
 import { Crops } from "./Crops";
+import { DragPlane } from "./DragPlane";
 import { applyWeather, ENV_PRESETS } from "./environment";
 import { Ground } from "./Ground";
 import { Lighting } from "./Lighting";
@@ -20,6 +21,7 @@ export function Scene() {
   const showRows = useSimStore((s) => s.showRows);
   const showCrops = useSimStore((s) => s.showCrops);
   const field = useSimStore((s) => s.field);
+  const dragging = useSimStore((s) => s.dragging);
 
   // Time-of-day sets the base atmosphere; weather layers over it.
   const preset = applyWeather(ENV_PRESETS[timeOfDay], weather);
@@ -42,8 +44,12 @@ export function Scene() {
       {/* Renders the main view + the rover's onboard camera PiP each frame. */}
       <OnboardView />
 
+      {/* Invisible catcher that drives the pick-up-and-drop interaction. */}
+      <DragPlane />
+
       <OrbitControls
         makeDefault
+        enabled={!dragging}
         enableDamping
         dampingFactor={0.08}
         minDistance={6}
