@@ -9,6 +9,7 @@ import { OnboardView } from "./OnboardView";
 import { PhysicsWorld } from "./PhysicsWorld";
 import { Robot } from "./Robot";
 import { Sensors } from "./Sensors";
+import { Vision } from "./Vision";
 import { Waypoints } from "./Waypoints";
 import { Weather } from "./Weather";
 import { useSimStore } from "../store/simStore";
@@ -39,6 +40,7 @@ export function Scene() {
       <Waypoints />
       <Sensors />
       <Robot field={field} />
+      <Vision />
 
       {/* Rapier world: ground collider, dynamic obstacles, rover collider. */}
       <PhysicsWorld fieldSize={field.size} />

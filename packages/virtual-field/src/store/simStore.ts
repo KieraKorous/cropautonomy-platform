@@ -11,6 +11,7 @@ import {
 import { planPath } from "../nav/astar";
 import { generateObstacles, type Obstacle } from "../obstacle";
 import { roverPose } from "../scene/roverState";
+import type { Detection } from "../vision/detections";
 import type { FieldConfig, RobotTelemetry, TimeOfDay, Waypoint } from "../types";
 
 // Central simulation store. This is the single source of truth for everything the
@@ -105,6 +106,12 @@ export interface SimState {
   cameraMode: CameraMode; // onboard feed: RGB or depth
   sensors: SensorReadout;
 
+  /** Computer vision: live detection boxes + dataset capture. */
+  showDetections: boolean;
+  detections: Detection[];
+  captureRequested: boolean;
+  captureCount: number;
+
   /** Latest robot telemetry for the HUD. */
   telemetry: RobotTelemetry;
 
@@ -139,6 +146,12 @@ export interface SimState {
   setCameraMode: (m: CameraMode) => void;
   /** Called from the sensor loop with a fresh (throttled) readout. */
   pushSensors: (r: SensorReadout) => void;
+  toggleDetections: () => void;
+  pushDetections: (d: Detection[]) => void;
+  /** Request a dataset frame capture; the Vision component performs it next frame. */
+  requestCapture: () => void;
+  /** Called by the Vision component once a capture has been written out. */
+  markCaptured: () => void;
   /** Plan an A* route from the rover's current pose back to the dock and drive it. */
   returnHome: () => void;
   /** Called from the render loop with a fresh telemetry sample. */
@@ -176,6 +189,11 @@ export const useSimStore = create<SimState>((set) => ({
   rtk: true,
   cameraMode: "rgb",
   sensors: EMPTY_SENSORS,
+
+  showDetections: false,
+  detections: [],
+  captureRequested: false,
+  captureCount: 0,
 
   telemetry: FULL_BATTERY,
   resetToken: 0,
@@ -231,6 +249,11 @@ export const useSimStore = create<SimState>((set) => ({
   toggleRtk: () => set((s) => ({ rtk: !s.rtk })),
   setCameraMode: (cameraMode) => set({ cameraMode }),
   pushSensors: (sensors) => set({ sensors }),
+  toggleDetections: () => set((s) => ({ showDetections: !s.showDetections })),
+  pushDetections: (detections) => set({ detections }),
+  requestCapture: () => set({ captureRequested: true }),
+  markCaptured: () =>
+    set((s) => ({ captureRequested: false, captureCount: s.captureCount + 1 })),
   returnHome: () =>
     set((s) => {
       // A* from the rover's live pose back to the dock, driven as waypoints.

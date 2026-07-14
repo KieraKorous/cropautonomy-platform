@@ -60,6 +60,9 @@ export function Hud() {
   const sensorNoise = useSimStore((s) => s.sensorNoise);
   const rtk = useSimStore((s) => s.rtk);
   const cameraMode = useSimStore((s) => s.cameraMode);
+  const showDetections = useSimStore((s) => s.showDetections);
+  const detections = useSimStore((s) => s.detections);
+  const captureCount = useSimStore((s) => s.captureCount);
 
   const toggleRun = useSimStore((s) => s.toggleRun);
   const reset = useSimStore((s) => s.reset);
@@ -80,6 +83,8 @@ export function Hud() {
   const toggleSensorNoise = useSimStore((s) => s.toggleSensorNoise);
   const toggleRtk = useSimStore((s) => s.toggleRtk);
   const setCameraMode = useSimStore((s) => s.setCameraMode);
+  const toggleDetections = useSimStore((s) => s.toggleDetections);
+  const requestCapture = useSimStore((s) => s.requestCapture);
 
   const batteryPct = Math.round(telemetry.battery * 100);
   const batteryTone =
@@ -256,6 +261,33 @@ export function Hud() {
             </div>
           </div>
         </div>
+
+        {/* Vision / dataset capture */}
+        <div className="pointer-events-auto w-full rounded-lg border border-base-content/10 bg-base-100/80 p-3 backdrop-blur">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-base-content/60">
+              Vision
+            </span>
+            <span className="font-mono text-[11px] tabular-nums text-base-content/50">
+              {captureCount} captured
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={toggleDetections}
+              className={`btn btn-xs ${showDetections ? "btn-secondary" : "btn-ghost"}`}
+            >
+              Detections
+            </button>
+            <button type="button" onClick={requestCapture} className="btn btn-xs btn-primary">
+              Capture frame
+            </button>
+          </div>
+          <p className="mt-1.5 text-[10px] leading-tight text-base-content/45">
+            Downloads the onboard view as PNG + labelled bounding boxes (JSON).
+          </p>
+        </div>
       </div>
 
       {/* Bottom-left: rover telemetry + sensors */}
@@ -377,6 +409,40 @@ export function Hud() {
           live image is the WebGL picture-in-picture drawn by <OnboardView />,
           which anchors to the exact same corner + size (see PIP in OnboardView). */}
       <div className="pointer-events-none absolute bottom-4 right-4 h-[148px] w-[232px] overflow-hidden rounded-md border border-base-content/25 shadow-lg">
+        {showDetections ? (
+          <svg
+            viewBox="0 0 232 148"
+            className="absolute inset-0 h-full w-full"
+            preserveAspectRatio="none"
+          >
+            {detections.map((d, i) => {
+              const color = d.diseased ? "#f6b73c" : "#7fe6ff";
+              const bx = d.x * 232;
+              const by = d.y * 148;
+              const bw = d.w * 232;
+              const bh = d.h * 148;
+              return (
+                <g key={i}>
+                  <rect
+                    x={bx}
+                    y={by}
+                    width={bw}
+                    height={bh}
+                    fill="none"
+                    stroke={color}
+                    strokeWidth={1}
+                    opacity={0.9}
+                  />
+                  {bw > 26 ? (
+                    <text x={bx + 1} y={Math.max(7, by - 1.5)} fill={color} fontSize={6}>
+                      {d.species}
+                    </text>
+                  ) : null}
+                </g>
+              );
+            })}
+          </svg>
+        ) : null}
         <div className="absolute left-0 top-0 flex items-center gap-1.5 rounded-br-md bg-base-100/80 px-2 py-1 backdrop-blur">
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-error" />
           <span className="text-[10px] font-semibold uppercase tracking-wider text-base-content/70">
