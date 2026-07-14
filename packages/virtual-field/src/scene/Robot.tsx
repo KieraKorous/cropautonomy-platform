@@ -15,6 +15,7 @@ import type { FieldConfig } from "../types";
 const DRIVE_SPEED = 3.6; // m/s along a row
 const TURN_RATE = 2.1; // rad/s max steering rate
 const WAYPOINT_RADIUS = 1.1; // m — "arrived" threshold
+const LOOKAHEAD = 4; // m — pure-pursuit carrot distance for rejoining a row
 const MIN_SPEED_FACTOR = 0.18; // crawl (not stall) through sharp headland turns
 const BATTERY_DRAIN = 0.004; // charge per second while driving
 const CHASSIS_Y = 0.55; // drive-base height above soil
@@ -206,8 +207,10 @@ export function Robot({ field }: { field: FieldConfig }) {
       }
     } else if (running && p.battery > 0) {
       // Pick this frame's target and what to do on arrival, per nav mode.
-      let tx: number | null = null;
-      let tz = 0;
+      // Per-mode: the point to steer at, and whether we've arrived (to advance).
+      let steerX: number | null = null;
+      let steerZ = 0;
+      let arrived = false;
       let onArrive: (() => void) | null = null;
 
       if (navMode === "waypoints") {
@@ -219,33 +222,45 @@ export function Robot({ field }: { field: FieldConfig }) {
         }
         if (wp.current.index < waypoints.length) {
           const w = waypoints[wp.current.index];
-          tx = w.x;
-          tz = w.z;
+          steerX = w.x;
+          steerZ = w.z;
+          arrived = Math.hypot(w.x - p.x, w.z - p.z) < WAYPOINT_RADIUS;
           onArrive = () => {
             wp.current.index += 1;
           };
         }
         // No target left → hold position (rover idles at the last waypoint).
       } else {
-        // Coverage: re-init the sweep when arriving from waypoint mode.
+        // Coverage: re-init the sweep when arriving from another mode.
         if (wp.current.mode !== "coverage") {
           wp.current.mode = "coverage";
           nav.current.ready = false;
         }
         if (!nav.current.ready) initNav();
-        tx = nav.current.tx;
-        tz = nav.current.tz;
+        const n = nav.current;
+        if (n.phase === "traverse") {
+          // Pure pursuit: aim at a carrot on the lane centre-line a short way
+          // ahead, so any sideways offset (from avoidance or a drag) is corrected
+          // straight back onto the row — instead of a shallow diagonal to the end.
+          steerX = n.tx; // lane centre-line X
+          steerZ = p.z + n.zDir * LOOKAHEAD;
+          arrived = n.zDir > 0 ? p.z >= n.tz - WAYPOINT_RADIUS : p.z <= n.tz + WAYPOINT_RADIUS;
+        } else {
+          // Headland shuffle across to the next lane — a point target is fine.
+          steerX = n.tx;
+          steerZ = n.tz;
+          arrived = Math.hypot(n.tx - p.x, n.tz - p.z) < WAYPOINT_RADIUS;
+        }
         onArrive = () => nextWaypoint();
       }
 
-      if (tx !== null) {
+      if (steerX !== null) {
         clock.current.elapsed += delta;
 
-        // Steer toward the target. heading 0 = +Z, so the forward vector is
-        // (sin h, cos h) and the bearing to a target is atan2(Δx, Δz).
-        const dx = tx - p.x;
-        const dz = tz - p.z;
-        const dist = Math.hypot(dx, dz);
+        // Steer toward the point. heading 0 = +Z, so the forward vector is
+        // (sin h, cos h) and the bearing to a point is atan2(Δx, Δz).
+        const dx = steerX - p.x;
+        const dz = steerZ - p.z;
         let desired = Math.atan2(dx, dz);
 
         // Reactive avoidance: bias the heading away from obstacles dead ahead.
@@ -272,7 +287,7 @@ export function Robot({ field }: { field: FieldConfig }) {
         p.x += Math.sin(p.heading) * speed * delta;
         p.z += Math.cos(p.heading) * speed * delta;
 
-        if (dist < WAYPOINT_RADIUS && onArrive) onArrive();
+        if (arrived && onArrive) onArrive();
 
         p.battery = Math.max(0, p.battery - BATTERY_DRAIN * delta);
 
