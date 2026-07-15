@@ -70,6 +70,9 @@ export function Hud() {
   const showDetections = useSimStore((s) => s.showDetections);
   const detections = useSimStore((s) => s.detections);
   const captureCount = useSimStore((s) => s.captureCount);
+  const aiRunning = useSimStore((s) => s.aiRunning);
+  const aiPredictions = useSimStore((s) => s.aiPredictions);
+  const aiStats = useSimStore((s) => s.aiStats);
 
   const toggleRun = useSimStore((s) => s.toggleRun);
   const reset = useSimStore((s) => s.reset);
@@ -92,6 +95,8 @@ export function Hud() {
   const setCameraMode = useSimStore((s) => s.setCameraMode);
   const toggleDetections = useSimStore((s) => s.toggleDetections);
   const requestCapture = useSimStore((s) => s.requestCapture);
+  const toggleAi = useSimStore((s) => s.toggleAi);
+  const resetAi = useSimStore((s) => s.resetAi);
 
   const [isFullscreen, setIsFullscreen] = useState(false);
   useEffect(() => {
@@ -104,6 +109,21 @@ export function Hud() {
   const batteryTone =
     batteryPct > 40 ? "bg-success" : batteryPct > 15 ? "bg-warning" : "bg-error";
   const headingDeg = Math.round(((telemetry.heading % (Math.PI * 2)) * 180) / Math.PI);
+
+  // AI analytics derived from the accumulated scan (the sim knows ground truth,
+  // so precision/recall are the model's real scores).
+  const scanned = aiStats.scanned;
+  const diseaseRate = scanned > 0 ? aiStats.predictedDiseased / scanned : 0;
+  const precisionDen = aiStats.truePos + aiStats.falsePos;
+  const recallDen = aiStats.truePos + aiStats.falseNeg;
+  const precision = precisionDen > 0 ? aiStats.truePos / precisionDen : null;
+  const recall = recallDen > 0 ? aiStats.truePos / recallDen : null;
+  const projectedFruit =
+    scanned > 0 && aiStats.estFruit > 0
+      ? Math.round((aiStats.estFruit / scanned) * cropCount)
+      : 0;
+
+  const pct = (v: number | null) => (v === null ? "—" : `${Math.round(v * 100)}%`);
 
   return (
     <div className="pointer-events-none absolute inset-0 select-none">
@@ -310,6 +330,53 @@ export function Hud() {
             Downloads the onboard view as PNG + labelled bounding boxes (JSON).
           </p>
         </div>
+
+        {/* AI perception layer */}
+        <div className="pointer-events-auto w-full rounded-lg border border-base-content/10 bg-base-100/80 p-3 backdrop-blur">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-base-content/60">
+              AI scout
+            </span>
+            <span
+              className={`flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                aiRunning ? "bg-success/15 text-success" : "bg-base-content/10 text-base-content/55"
+              }`}
+            >
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${
+                  aiRunning ? "animate-pulse bg-success" : "bg-base-content/40"
+                }`}
+              />
+              {aiRunning ? "Inferring" : "Idle"}
+            </span>
+          </div>
+          <div className="mb-2 flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={toggleAi}
+              className={`btn btn-xs ${aiRunning ? "btn-neutral" : "btn-primary"}`}
+            >
+              {aiRunning ? "Stop" : "Run scout"}
+            </button>
+            <button type="button" onClick={resetAi} className="btn btn-xs btn-ghost">
+              Reset
+            </button>
+          </div>
+          <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
+            <Metric label="Scanned" value={scanned.toLocaleString()} />
+            <Metric label="Disease" value={pct(diseaseRate)} />
+            <Metric label="Precision" value={pct(precision)} />
+            <Metric label="Recall" value={pct(recall)} />
+            <Metric
+              label="Est. fruit"
+              value={aiStats.estFruit > 0 ? aiStats.estFruit.toLocaleString() : "—"}
+            />
+            <Metric
+              label="Proj. field"
+              value={projectedFruit > 0 ? projectedFruit.toLocaleString() : "—"}
+            />
+          </dl>
+        </div>
       </div>
 
       {/* Bottom-left: rover telemetry + sensors */}
@@ -434,7 +501,40 @@ export function Hud() {
         className="pointer-events-none absolute bottom-4 right-4 overflow-hidden rounded-md border border-base-content/25 shadow-lg"
         style={{ width: PIP.w, height: PIP.h }}
       >
-        {showDetections ? (
+        {aiRunning ? (
+          <svg
+            viewBox={`0 0 ${PIP.w} ${PIP.h}`}
+            className="absolute inset-0 h-full w-full"
+            preserveAspectRatio="none"
+          >
+            {aiPredictions.map((p, i) => {
+              const color = p.predictedDiseased ? "#ef6f5e" : "#6fe0a0";
+              const bx = p.x * PIP.w;
+              const by = p.y * PIP.h;
+              const bw = p.w * PIP.w;
+              const bh = p.h * PIP.h;
+              return (
+                <g key={i}>
+                  <rect
+                    x={bx}
+                    y={by}
+                    width={bw}
+                    height={bh}
+                    fill="none"
+                    stroke={color}
+                    strokeWidth={1}
+                    opacity={0.92}
+                  />
+                  {bw > 30 ? (
+                    <text x={bx + 1} y={Math.max(7, by - 1.5)} fill={color} fontSize={6}>
+                      {p.predictedDiseased ? "disease" : p.species} {Math.round(p.confidence * 100)}%
+                    </text>
+                  ) : null}
+                </g>
+              );
+            })}
+          </svg>
+        ) : showDetections ? (
           <svg
             viewBox={`0 0 ${PIP.w} ${PIP.h}`}
             className="absolute inset-0 h-full w-full"

@@ -10,6 +10,7 @@ import type { Crop, CropSpecies, GrowthStage } from "../crop";
 // on-screen overlay and any capture resolution.
 
 export interface Detection {
+  id: string; // crop id — lets the AI layer key stable per-plant predictions
   x: number; // left, 0..1
   y: number; // top, 0..1
   w: number;
@@ -91,6 +92,7 @@ export function projectDetections(
     if (w * h < opts.minArea) continue;
 
     out.push({
+      id: c.id,
       x,
       y,
       w,

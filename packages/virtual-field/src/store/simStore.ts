@@ -8,6 +8,8 @@ import {
   type GrowthStage,
   type Weather
 } from "../crop";
+import { blankStats, type AiStats } from "../ai/analytics";
+import type { Prediction } from "../ai/inference";
 import { planPath } from "../nav/astar";
 import { generateObstacles, type Obstacle } from "../obstacle";
 import { roverPose } from "../scene/roverState";
@@ -112,6 +114,13 @@ export interface SimState {
   captureRequested: boolean;
   captureCount: number;
 
+  /** AI perception layer: runs the model on the scan + accumulates analytics. */
+  aiRunning: boolean;
+  aiPredictions: Prediction[];
+  aiStats: AiStats;
+  /** Bumped by resetAi() so the scene layer can clear the analytics accumulator. */
+  aiResetToken: number;
+
   /** Latest robot telemetry for the HUD. */
   telemetry: RobotTelemetry;
 
@@ -152,6 +161,10 @@ export interface SimState {
   requestCapture: () => void;
   /** Called by the Vision component once a capture has been written out. */
   markCaptured: () => void;
+  toggleAi: () => void;
+  /** Called from the scan loop with the current predictions + accumulated stats. */
+  pushAi: (predictions: Prediction[], stats: AiStats) => void;
+  resetAi: () => void;
   /** Plan an A* route from the rover's current pose back to the dock and drive it. */
   returnHome: () => void;
   /** Called from the render loop with a fresh telemetry sample. */
@@ -194,6 +207,11 @@ export const useSimStore = create<SimState>((set) => ({
   detections: [],
   captureRequested: false,
   captureCount: 0,
+
+  aiRunning: false,
+  aiPredictions: [],
+  aiStats: blankStats(),
+  aiResetToken: 0,
 
   telemetry: FULL_BATTERY,
   resetToken: 0,
@@ -254,6 +272,14 @@ export const useSimStore = create<SimState>((set) => ({
   requestCapture: () => set({ captureRequested: true }),
   markCaptured: () =>
     set((s) => ({ captureRequested: false, captureCount: s.captureCount + 1 })),
+  toggleAi: () => set((s) => ({ aiRunning: !s.aiRunning })),
+  pushAi: (aiPredictions, aiStats) => set({ aiPredictions, aiStats }),
+  resetAi: () =>
+    set((s) => ({
+      aiPredictions: [],
+      aiStats: blankStats(),
+      aiResetToken: s.aiResetToken + 1
+    })),
   returnHome: () =>
     set((s) => {
       // A* from the rover's live pose back to the dock, driven as waypoints.

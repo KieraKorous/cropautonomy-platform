@@ -3,6 +3,8 @@ import { useRef } from "react";
 import { WebGLRenderTarget } from "three";
 import type { PerspectiveCamera, Scene, WebGLRenderer } from "three";
 
+import { observeAi, resetAnalytics } from "../ai/analytics";
+import { runInference } from "../ai/inference";
 import { onboardCameraRef } from "./onboardCamera";
 import { PIP } from "./OnboardView";
 import type { Crop } from "../crop";
@@ -106,20 +108,44 @@ function captureFrame(gl: WebGLRenderer, scene: Scene, cam: PerspectiveCamera, c
 // on-demand capture that writes a labelled frame to disk.
 export function Vision() {
   const acc = useRef(0);
+  const resetSeen = useRef({ sim: 0, ai: 0 });
 
   useFrame((state, delta) => {
     const cam = onboardCameraRef.current;
     if (!cam) return;
-    const { showDetections, captureRequested, crops, pushDetections, markCaptured } =
-      useSimStore.getState();
+    const {
+      showDetections,
+      aiRunning,
+      captureRequested,
+      crops,
+      pushDetections,
+      pushAi,
+      markCaptured,
+      resetToken,
+      aiResetToken
+    } = useSimStore.getState();
 
-    if (showDetections) {
+    // Clear the accumulated scan on a sim reset or an explicit AI reset.
+    if (resetToken !== resetSeen.current.sim || aiResetToken !== resetSeen.current.ai) {
+      resetSeen.current.sim = resetToken;
+      resetSeen.current.ai = aiResetToken;
+      resetAnalytics();
+    }
+
+    if (showDetections || aiRunning) {
       acc.current += delta;
       if (acc.current >= OVERLAY_INTERVAL) {
         acc.current = 0;
-        pushDetections(
-          projectDetections(cam, crops, { maxDistance: 22, maxCount: 80, minArea: 0.0006 })
-        );
+        const dets = projectDetections(cam, crops, {
+          maxDistance: 22,
+          maxCount: 80,
+          minArea: 0.0006
+        });
+        if (showDetections) pushDetections(dets);
+        if (aiRunning) {
+          const preds = runInference(dets);
+          pushAi(preds, observeAi(preds));
+        }
       }
     }
 
