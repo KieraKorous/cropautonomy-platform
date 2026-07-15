@@ -121,7 +121,13 @@ export interface SimState {
   /** Bumped by resetAi() so the scene layer can clear the analytics accumulator. */
   aiResetToken: number;
 
-  /** Latest robot telemetry for the HUD. */
+  /** Fleet: number of rovers, which one is active (camera/sensors/HUD focus). */
+  roverCount: number;
+  activeRover: number;
+  /** Per-rover telemetry (index-aligned); `telemetry` mirrors the active one. */
+  fleet: RobotTelemetry[];
+
+  /** Latest telemetry of the active rover, for the HUD. */
   telemetry: RobotTelemetry;
 
   /**
@@ -167,9 +173,13 @@ export interface SimState {
   resetAi: () => void;
   /** Plan an A* route from the rover's current pose back to the dock and drive it. */
   returnHome: () => void;
-  /** Called from the render loop with a fresh telemetry sample. */
-  pushTelemetry: (t: RobotTelemetry, elapsed: number, fps: number) => void;
+  setRoverCount: (n: number) => void;
+  setActiveRover: (i: number) => void;
+  /** Called from each rover's render loop with a fresh telemetry sample. */
+  pushTelemetry: (index: number, t: RobotTelemetry, elapsed: number, fps: number) => void;
 }
+
+const MAX_ROVERS = 4;
 
 export const useSimStore = create<SimState>((set) => ({
   running: false,
@@ -213,6 +223,9 @@ export const useSimStore = create<SimState>((set) => ({
   aiStats: blankStats(),
   aiResetToken: 0,
 
+  roverCount: 1,
+  activeRover: 0,
+  fleet: [FULL_BATTERY],
   telemetry: FULL_BATTERY,
   resetToken: 0,
 
@@ -224,6 +237,7 @@ export const useSimStore = create<SimState>((set) => ({
       running: false,
       elapsed: 0,
       telemetry: FULL_BATTERY,
+      fleet: s.fleet.map(() => FULL_BATTERY),
       resetToken: s.resetToken + 1
     })),
   setTimeOfDay: (timeOfDay) => set({ timeOfDay }),
@@ -291,5 +305,26 @@ export const useSimStore = create<SimState>((set) => ({
         running: true
       };
     }),
-  pushTelemetry: (telemetry, elapsed, fps) => set({ telemetry, elapsed, fps })
+  setRoverCount: (n) =>
+    set((s) => {
+      const roverCount = Math.max(1, Math.min(MAX_ROVERS, Math.round(n)));
+      const fleet = Array.from({ length: roverCount }, (_, i) => s.fleet[i] ?? FULL_BATTERY);
+      // Resizing the fleet re-docks everyone (re-spreads start positions).
+      return {
+        roverCount,
+        fleet,
+        activeRover: Math.min(s.activeRover, roverCount - 1),
+        resetToken: s.resetToken + 1
+      };
+    }),
+  setActiveRover: (i) =>
+    set((s) => ({ activeRover: Math.max(0, Math.min(s.roverCount - 1, i)) })),
+  pushTelemetry: (index, telemetry, elapsed, fps) =>
+    set((s) => {
+      const fleet = s.fleet.slice();
+      fleet[index] = telemetry;
+      // The active rover drives the headline telemetry + clock/fps.
+      if (index === s.activeRover) return { fleet, telemetry, elapsed, fps };
+      return { fleet };
+    })
 }));

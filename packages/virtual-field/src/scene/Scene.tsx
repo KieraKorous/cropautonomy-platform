@@ -10,7 +10,7 @@ import { VIZ_LAYER } from "./layers";
 import { Lighting } from "./Lighting";
 import { OnboardView } from "./OnboardView";
 import { PhysicsWorld } from "./PhysicsWorld";
-import { Robot } from "./Robot";
+import { Fleet } from "./Robot";
 import { Sensors } from "./Sensors";
 import { Vision } from "./Vision";
 import { Waypoints } from "./Waypoints";
@@ -49,7 +49,7 @@ export function Scene() {
       <Weather />
       <Waypoints />
       <Sensors />
-      <Robot field={field} />
+      <Fleet />
       <Vision />
 
       {/* Rapier world: ground collider, dynamic obstacles, rover collider. */}

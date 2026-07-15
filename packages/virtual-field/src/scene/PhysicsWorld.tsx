@@ -8,24 +8,25 @@ import {
 import { useMemo, useRef } from "react";
 import { Quaternion, Vector3 } from "three";
 
-import { roverPose } from "./roverState";
+import { roverRuntimes } from "./roverState";
 import type { Obstacle } from "../obstacle";
 import { useSimStore } from "../store/simStore";
 
-// An invisible kinematic body that mirrors the rover's nav pose. The rover mesh
-// itself is drawn (and driven) by <Robot> outside physics; this collider is what
-// actually shoves dynamic obstacles. Kinematic targets are set in the
-// before-step hook so Rapier applies them on the same tick.
-function RoverCollider() {
+// An invisible kinematic body that mirrors one rover's nav pose. The rover mesh
+// itself is drawn (and driven) by <Rover> outside physics; this collider is what
+// actually shoves dynamic obstacles. Kinematic targets are set in the before-step
+// hook so Rapier applies them on the same tick.
+function RoverCollider({ index }: { index: number }) {
   const ref = useRef<RapierRigidBody>(null);
   const q = useMemo(() => new Quaternion(), []);
   const yAxis = useMemo(() => new Vector3(0, 1, 0), []);
 
   useBeforePhysicsStep(() => {
     const rb = ref.current;
-    if (!rb) return;
-    rb.setNextKinematicTranslation({ x: roverPose.x, y: 0.55, z: roverPose.z });
-    q.setFromAxisAngle(yAxis, roverPose.heading);
+    const rt = roverRuntimes.get(index);
+    if (!rb || !rt) return;
+    rb.setNextKinematicTranslation({ x: rt.x, y: 0.55, z: rt.z });
+    q.setFromAxisAngle(yAxis, rt.heading);
     rb.setNextKinematicRotation(q);
   });
 
@@ -68,6 +69,7 @@ function ObstacleBody({ o }: { o: Obstacle }) {
 // separately in <Ground>), the dynamic obstacles, and the rover collider.
 export function PhysicsWorld({ fieldSize }: { fieldSize: number }) {
   const obstacles = useSimStore((s) => s.obstacles);
+  const roverCount = useSimStore((s) => s.roverCount);
 
   return (
     <Physics gravity={[0, -9.81, 0]}>
@@ -77,7 +79,9 @@ export function PhysicsWorld({ fieldSize }: { fieldSize: number }) {
       {obstacles.map((o) => (
         <ObstacleBody key={o.id} o={o} />
       ))}
-      <RoverCollider />
+      {Array.from({ length: roverCount }, (_, i) => (
+        <RoverCollider key={i} index={i} />
+      ))}
     </Physics>
   );
 }

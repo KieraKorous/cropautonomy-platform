@@ -29,3 +29,15 @@ export function driveLanes(field: FieldConfig): number[] {
   }
   return lanes;
 }
+
+/**
+ * The drive-lanes assigned to rover `index` of a `count`-rover fleet: a
+ * contiguous block, so each rover works its own spatially-separated region of the
+ * field (coordinated coverage). An index with no lanes left just idles.
+ */
+export function blockLanes(field: FieldConfig, index: number, count: number): number[] {
+  const lanes = driveLanes(field);
+  if (count <= 1) return lanes;
+  const per = Math.ceil(lanes.length / count);
+  return lanes.slice(index * per, index * per + per);
+}

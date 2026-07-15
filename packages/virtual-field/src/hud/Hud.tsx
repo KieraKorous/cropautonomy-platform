@@ -73,6 +73,9 @@ export function Hud() {
   const aiRunning = useSimStore((s) => s.aiRunning);
   const aiPredictions = useSimStore((s) => s.aiPredictions);
   const aiStats = useSimStore((s) => s.aiStats);
+  const roverCount = useSimStore((s) => s.roverCount);
+  const activeRover = useSimStore((s) => s.activeRover);
+  const fleet = useSimStore((s) => s.fleet);
 
   const toggleRun = useSimStore((s) => s.toggleRun);
   const reset = useSimStore((s) => s.reset);
@@ -97,6 +100,8 @@ export function Hud() {
   const requestCapture = useSimStore((s) => s.requestCapture);
   const toggleAi = useSimStore((s) => s.toggleAi);
   const resetAi = useSimStore((s) => s.resetAi);
+  const setRoverCount = useSimStore((s) => s.setRoverCount);
+  const setActiveRover = useSimStore((s) => s.setActiveRover);
 
   const [isFullscreen, setIsFullscreen] = useState(false);
   useEffect(() => {
@@ -218,6 +223,49 @@ export function Hud() {
             <span className="font-semibold text-base-content/75">W A S D</span> / arrows to drive.
           </span>
         ) : null}
+
+        {/* Fleet: rover count + active rover selector */}
+        <div className="pointer-events-auto flex items-center gap-2 rounded-lg border border-base-content/10 bg-base-100/80 px-2.5 py-1.5 backdrop-blur">
+          <span className="text-[11px] uppercase tracking-wide text-base-content/50">Fleet</span>
+          <div className="join">
+            <button
+              type="button"
+              onClick={() => setRoverCount(roverCount - 1)}
+              disabled={roverCount <= 1}
+              className="btn btn-xs join-item btn-ghost disabled:opacity-40"
+            >
+              −
+            </button>
+            <span className="join-item flex items-center bg-base-content/[0.06] px-2 font-mono text-[11px] tabular-nums text-base-content/70">
+              {roverCount}
+            </span>
+            <button
+              type="button"
+              onClick={() => setRoverCount(roverCount + 1)}
+              disabled={roverCount >= 4}
+              className="btn btn-xs join-item btn-ghost disabled:opacity-40"
+            >
+              +
+            </button>
+          </div>
+          {roverCount > 1 ? (
+            <div className="join">
+              {fleet.map((r, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setActiveRover(i)}
+                  title={`Rover ${i + 1} · ${Math.round(r.battery * 100)}%`}
+                  className={`btn btn-xs join-item ${
+                    activeRover === i ? "btn-primary" : "btn-ghost"
+                  }`}
+                >
+                  {i + 1}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
       </div>
 
       {/* Top-right: performance + field/environment controls */}
@@ -383,7 +431,7 @@ export function Hud() {
       <div className="absolute bottom-4 left-4 pointer-events-auto w-64 rounded-lg border border-base-content/10 bg-base-100/80 p-3.5 backdrop-blur">
         <div className="mb-2.5 flex items-center justify-between">
           <span className="text-xs font-semibold uppercase tracking-[0.12em] text-base-content/60">
-            Rover-01
+            Rover-{String(activeRover + 1).padStart(2, "0")}
           </span>
           <span className="font-mono text-[11px] tabular-nums text-base-content/50">
             {telemetry.battery > 0 ? `${batteryPct}%` : "flat"}
@@ -571,7 +619,7 @@ export function Hud() {
         <div className="absolute left-0 top-0 flex items-center gap-1.5 rounded-br-md bg-base-100/80 px-2 py-1 backdrop-blur">
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-error" />
           <span className="text-[10px] font-semibold uppercase tracking-wider text-base-content/70">
-            {cameraMode === "depth" ? "Depth" : "RGB"} · Rover-01
+            {cameraMode === "depth" ? "Depth" : "RGB"} · Rover-{String(activeRover + 1).padStart(2, "0")}
           </span>
         </div>
         <div className="pointer-events-auto absolute right-0 top-0 flex rounded-bl-md bg-base-100/80 backdrop-blur">
