@@ -4,11 +4,13 @@ import { useLayoutEffect, useMemo, useRef } from "react";
 import type { Group, Mesh, PerspectiveCamera } from "three";
 
 import { driveInput } from "./driveInput";
-import { blockLanes, rowHalfLength } from "./field";
+import { blockLanes, roverDock, rowHalfLength } from "./field";
 import { onboardCameraRef } from "./onboardCamera";
 import { dragTarget, roverPose, roverRuntimes, type RoverRuntime } from "./roverState";
+import { planPath } from "../nav/astar";
 import { useSimStore } from "../store/simStore";
 import type { NavMode } from "../store/simStore";
+import type { Waypoint } from "../types";
 
 const DRIVE_SPEED = 3.6; // m/s along a row
 const TURN_RATE = 2.1; // rad/s max steering rate
@@ -32,7 +34,7 @@ const MANUAL_TURN = 1.9;
 const DRAG_LIFT = 1.4;
 
 export const MAX_ROVERS = 4;
-const ROVER_COLORS = ["#3f6f5f", "#c1734a", "#4a6fa5", "#9c6b3f"];
+export const ROVER_COLORS = ["#3f6f5f", "#c1734a", "#4a6fa5", "#9c6b3f"];
 
 // Row-follower navigation over the rover's *assigned* lane block. It steers onto
 // the nearest assigned lane, drives its length, then turns into the next — a
@@ -56,11 +58,6 @@ function angleTo(a: number, b: number) {
   return Math.atan2(Math.sin(b - a), Math.cos(b - a));
 }
 
-// Spread the rovers along the dock edge so they don't start stacked.
-function startX(lanes: number[], index: number, count: number) {
-  return lanes.length ? lanes[0] : (index - (count - 1) / 2) * 4;
-}
-
 function Rover({ index }: { index: number }) {
   const group = useRef<Group>(null);
   const wheels = useRef<Mesh[]>([]);
@@ -76,9 +73,10 @@ function Rover({ index }: { index: number }) {
     () => blockLanes(field, index, roverCount),
     [field, index, roverCount]
   );
+  // Spawn (and return) at the dock on the field's near edge.
   const start = useMemo(
-    () => ({ x: startX(lanes, index, roverCount), z: 0 }),
-    [lanes, index, roverCount]
+    () => roverDock(field, index, roverCount),
+    [field, index, roverCount]
   );
 
   const pose = useRef({ x: start.x, z: start.z, heading: 0, battery: 1 });
@@ -99,6 +97,12 @@ function Rover({ index }: { index: number }) {
     version: -1,
     index: 0
   });
+
+  // "Return home" state: a planned A* route back to this rover's dock.
+  const lastHome = useRef(0);
+  const homing = useRef(false);
+  const homeIndex = useRef(0);
+  const homePath = useRef<Waypoint[]>([]);
 
   // Register this rover's live pose so fleetmates can avoid it + it gets a collider.
   const runtime = useRef<RoverRuntime>({ x: start.x, z: start.z, heading: 0, speed: 0 });
@@ -174,7 +178,8 @@ function Rover({ index }: { index: number }) {
       waypointsVersion,
       obstacles,
       dragging,
-      sensorNoise
+      sensorNoise,
+      homeToken
     } = useSimStore.getState();
 
     const isDragged = dragging && isActive;
@@ -194,6 +199,11 @@ function Rover({ index }: { index: number }) {
     clock.current.frameTime += rawDelta;
 
     let speed = 0;
+    let steerX: number | null = null;
+    let steerZ = 0;
+    let arrived = false;
+    let onArrive: (() => void) | null = null;
+
     if (isDragged) {
       p.x = dragTarget.x;
       p.z = dragTarget.z;
@@ -206,7 +216,31 @@ function Rover({ index }: { index: number }) {
         wp.current.index = 0;
       }
 
-      if (navMode === "manual") {
+      // Return-home command: plan an A* route to this rover's dock once, then
+      // drive it. Overrides the current nav mode until it arrives + docks.
+      if (homeToken !== lastHome.current) {
+        lastHome.current = homeToken;
+        const dock = roverDock(field, index, roverCount);
+        homePath.current = planPath(field, obstacles, { x: p.x, z: p.z }, dock);
+        homeIndex.current = 0;
+        homing.current = homePath.current.length > 0;
+      }
+
+      if (homing.current && p.battery > 0) {
+        const path = homePath.current;
+        if (homeIndex.current < path.length) {
+          const w = path[homeIndex.current];
+          steerX = w.x;
+          steerZ = w.z;
+          arrived = Math.hypot(w.x - p.x, w.z - p.z) < WAYPOINT_RADIUS;
+          onArrive = () => {
+            homeIndex.current += 1;
+            if (homeIndex.current >= path.length) homing.current = false; // docked
+          };
+        } else {
+          homing.current = false;
+        }
+      } else if (navMode === "manual") {
         // Only the active rover takes the keyboard; the rest hold position.
         wp.current.mode = "manual";
         if (isActive && p.battery > 0) {
@@ -223,11 +257,6 @@ function Rover({ index }: { index: number }) {
           }
         }
       } else if (running && p.battery > 0) {
-        let steerX: number | null = null;
-        let steerZ = 0;
-        let arrived = false;
-        let onArrive: (() => void) | null = null;
-
         if (navMode === "waypoints") {
           // Waypoints steer the active rover only; fleetmates hold.
           wp.current.mode = "waypoints";
@@ -265,43 +294,44 @@ function Rover({ index }: { index: number }) {
           }
           onArrive = () => nextWaypoint();
         }
+      }
 
-        if (steerX !== null) {
-          clock.current.elapsed += delta;
-          const dx = steerX - p.x;
-          const dz = steerZ - p.z;
-          let desired = Math.atan2(dx, dz);
+      // Shared steering — drive toward the chosen target (coverage lane /
+      // waypoint / home), biasing away from obstacles + fleetmates.
+      if (steerX !== null && p.battery > 0) {
+        clock.current.elapsed += delta;
+        const dx = steerX - p.x;
+        const dz = steerZ - p.z;
+        let desired = Math.atan2(dx, dz);
 
-          // Avoid obstacles + fleetmates ahead.
-          let avoidBias = 0;
-          const avoid = (ax: number, az: number, radius: number) => {
-            const trueClear = Math.hypot(ax - p.x, az - p.z) - radius;
-            const clear = sensorNoise ? trueClear + (Math.random() - 0.5) * 0.3 : trueClear;
-            if (clear > AVOID_RANGE) return;
-            const rel = angleTo(p.heading, Math.atan2(ax - p.x, az - p.z));
-            if (Math.abs(rel) > AVOID_CONE) return;
-            const strength = (AVOID_RANGE - clear) / AVOID_RANGE;
-            avoidBias += (rel >= 0 ? -1 : 1) * strength * AVOID_GAIN;
-          };
-          for (const o of obstacles) avoid(o.x, o.z, o.radius);
-          for (const [j, r] of roverRuntimes) {
-            if (j !== index) avoid(r.x, r.z, ROVER_RADIUS);
-          }
-          desired += avoidBias;
-
-          const err = angleTo(p.heading, desired);
-          const maxTurn = TURN_RATE * delta;
-          p.heading += Math.max(-maxTurn, Math.min(maxTurn, err));
-          const factor = Math.max(MIN_SPEED_FACTOR, Math.cos(err));
-          speed = DRIVE_SPEED * factor;
-          p.x += Math.sin(p.heading) * speed * delta;
-          p.z += Math.cos(p.heading) * speed * delta;
-
-          if (arrived && onArrive) onArrive();
-          p.battery = Math.max(0, p.battery - BATTERY_DRAIN * delta);
-          const spin = (speed * delta) / 0.45;
-          for (const w of wheels.current) if (w) w.rotation.x += spin;
+        let avoidBias = 0;
+        const avoid = (ax: number, az: number, radius: number) => {
+          const trueClear = Math.hypot(ax - p.x, az - p.z) - radius;
+          const clear = sensorNoise ? trueClear + (Math.random() - 0.5) * 0.3 : trueClear;
+          if (clear > AVOID_RANGE) return;
+          const rel = angleTo(p.heading, Math.atan2(ax - p.x, az - p.z));
+          if (Math.abs(rel) > AVOID_CONE) return;
+          const strength = (AVOID_RANGE - clear) / AVOID_RANGE;
+          avoidBias += (rel >= 0 ? -1 : 1) * strength * AVOID_GAIN;
+        };
+        for (const o of obstacles) avoid(o.x, o.z, o.radius);
+        for (const [j, r] of roverRuntimes) {
+          if (j !== index) avoid(r.x, r.z, ROVER_RADIUS);
         }
+        desired += avoidBias;
+
+        const err = angleTo(p.heading, desired);
+        const maxTurn = TURN_RATE * delta;
+        p.heading += Math.max(-maxTurn, Math.min(maxTurn, err));
+        const factor = Math.max(MIN_SPEED_FACTOR, Math.cos(err));
+        speed = DRIVE_SPEED * factor;
+        p.x += Math.sin(p.heading) * speed * delta;
+        p.z += Math.cos(p.heading) * speed * delta;
+
+        if (arrived && onArrive) onArrive();
+        p.battery = Math.max(0, p.battery - BATTERY_DRAIN * delta);
+        const spin = (speed * delta) / 0.45;
+        for (const w of wheels.current) if (w) w.rotation.x += spin;
       }
     }
 

@@ -41,3 +41,24 @@ export function blockLanes(field: FieldConfig, index: number, count: number): nu
   const per = Math.ceil(lanes.length / count);
   return lanes.slice(index * per, index * per + per);
 }
+
+/**
+ * The dock for rover `index`: parked at the near (headland) edge of the field,
+ * lined up with the centre of its assigned lane block, facing into the field.
+ * This is both the spawn point and the target of "Return home".
+ */
+export function roverDock(field: FieldConfig, index: number, count: number): { x: number; z: number } {
+  const lanes = blockLanes(field, index, count);
+  const x = lanes.length
+    ? lanes[Math.floor(lanes.length / 2)]
+    : (index - (count - 1) / 2) * 4;
+  return { x, z: -(rowHalfLength(field) + 2) };
+}
+
+/** The X extent [min, max] a rover's assigned section spans, for the tint overlay. */
+export function blockExtent(field: FieldConfig, index: number, count: number): [number, number] | null {
+  const block = blockLanes(field, index, count);
+  if (block.length === 0) return null;
+  const pad = field.rowSpacing / 2;
+  return [block[0] - pad, block[block.length - 1] + pad];
+}

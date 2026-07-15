@@ -10,9 +10,7 @@ import {
 } from "../crop";
 import { blankStats, type AiStats } from "../ai/analytics";
 import type { Prediction } from "../ai/inference";
-import { planPath } from "../nav/astar";
 import { generateObstacles, type Obstacle } from "../obstacle";
-import { roverPose } from "../scene/roverState";
 import type { Detection } from "../vision/detections";
 import type { FieldConfig, RobotTelemetry, TimeOfDay, Waypoint } from "../types";
 
@@ -27,8 +25,6 @@ const DEFAULT_STAGE: GrowthStage = "mature";
 const DEFAULT_FIELD: FieldConfig = fieldForSpecies(FIELD_SIZE, DEFAULT_SPECIES);
 
 const OBSTACLE_COUNT = 12;
-/** The dock the rover starts at and returns to. */
-const HOME: Waypoint = { x: 0, z: 0 };
 
 const FULL_BATTERY: RobotTelemetry = {
   position: { x: 0, y: 0, z: 0 },
@@ -135,6 +131,8 @@ export interface SimState {
    * pose refs without the store needing to reach into the render loop.
    */
   resetToken: number;
+  /** Bumped by returnHome(); each rover replans a route to its own dock. */
+  homeToken: number;
 
   // --- actions ---
   play: () => void;
@@ -228,6 +226,7 @@ export const useSimStore = create<SimState>((set) => ({
   fleet: [FULL_BATTERY],
   telemetry: FULL_BATTERY,
   resetToken: 0,
+  homeToken: 0,
 
   play: () => set({ running: true }),
   pause: () => set({ running: false }),
@@ -295,16 +294,8 @@ export const useSimStore = create<SimState>((set) => ({
       aiResetToken: s.aiResetToken + 1
     })),
   returnHome: () =>
-    set((s) => {
-      // A* from the rover's live pose back to the dock, driven as waypoints.
-      const path = planPath(s.field, s.obstacles, { x: roverPose.x, z: roverPose.z }, HOME);
-      return {
-        waypoints: path.length > 0 ? path : [HOME],
-        waypointsVersion: s.waypointsVersion + 1,
-        navMode: "waypoints",
-        running: true
-      };
-    }),
+    // Each rover independently A*-plans a route to its own dock (see Rover).
+    set((s) => ({ homeToken: s.homeToken + 1, running: true })),
   setRoverCount: (n) =>
     set((s) => {
       const roverCount = Math.max(1, Math.min(MAX_ROVERS, Math.round(n)));

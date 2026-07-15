@@ -5,6 +5,7 @@ import { useLayoutEffect } from "react";
 import { Crops } from "./Crops";
 import { DragPlane } from "./DragPlane";
 import { applyWeather, ENV_PRESETS } from "./environment";
+import { FieldSections } from "./FieldSections";
 import { Ground } from "./Ground";
 import { VIZ_LAYER } from "./layers";
 import { Lighting } from "./Lighting";
@@ -45,6 +46,7 @@ export function Scene() {
 
       <Lighting preset={preset} />
       <Ground field={field} preset={preset} showGrid={showGrid} showRows={showRows} />
+      <FieldSections />
       {showCrops ? <Crops /> : null}
       <Weather />
       <Waypoints />
