@@ -1,5 +1,8 @@
 import { Line } from "@react-three/drei";
+import { useLayoutEffect, useRef } from "react";
+import type { Group } from "three";
 
+import { VIZ_LAYER } from "./layers";
 import { useSimStore } from "../store/simStore";
 
 const NEVER_RAYCAST = () => null;
@@ -12,13 +15,19 @@ const ACCENT = "#8fd0ff";
 export function Waypoints() {
   const waypoints = useSimStore((s) => s.waypoints);
   const navMode = useSimStore((s) => s.navMode);
+  const groupRef = useRef<Group>(null);
+
+  // Keep the path + pins off the rover's onboard camera / captures.
+  useLayoutEffect(() => {
+    groupRef.current?.traverse((o) => o.layers.set(VIZ_LAYER));
+  });
 
   if (navMode !== "waypoints" || waypoints.length === 0) return null;
 
   const path = waypoints.map((w) => [w.x, 0.25, w.z] as [number, number, number]);
 
   return (
-    <group>
+    <group ref={groupRef}>
       {path.length >= 2 ? (
         <Line points={path} color={ACCENT} lineWidth={2} dashed dashSize={0.7} gapSize={0.4} />
       ) : null}

@@ -1,7 +1,8 @@
 import { useFrame } from "@react-three/fiber";
-import { useMemo, useRef } from "react";
+import { useLayoutEffect, useMemo, useRef } from "react";
 import type { Mesh, Points } from "three";
 
+import { VIZ_LAYER } from "./layers";
 import { roverPose } from "./roverState";
 import { metersToGps } from "../crop";
 import { lidarScan } from "../sensors/lidar";
@@ -41,6 +42,12 @@ export function Sensors() {
     lastHeading: 0,
     lastReset: 0
   });
+
+  // Sim-only viz: keep it off the rover's onboard camera + captures.
+  useLayoutEffect(() => {
+    pointsRef.current?.layers.set(VIZ_LAYER);
+    ringRef.current?.layers.set(VIZ_LAYER);
+  }, []);
 
   useFrame((_, rawDelta) => {
     const { x, z, heading } = roverPose;

@@ -19,7 +19,10 @@ export interface VirtualFieldProps {
 export function VirtualField({ className }: VirtualFieldProps) {
   useDriveControls(); // WASD / arrow-key manual driving
   return (
-    <div className={`relative h-full w-full overflow-hidden ${className ?? ""}`}>
+    <div
+      id="virtual-field-root"
+      className={`relative h-full w-full overflow-hidden bg-base-200 ${className ?? ""}`}
+    >
       <Canvas
         shadows
         dpr={[1, 2]}

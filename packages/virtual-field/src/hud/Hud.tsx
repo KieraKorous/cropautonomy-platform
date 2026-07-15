@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import {
   GROWTH_STAGES,
@@ -7,8 +7,15 @@ import {
   type GrowthStage,
   type Weather
 } from "../crop";
+import { PIP } from "../scene/OnboardView";
 import { useSimStore } from "../store/simStore";
 import type { TimeOfDay } from "../types";
+
+function toggleFullscreen() {
+  const el = document.getElementById("virtual-field-root");
+  if (!document.fullscreenElement) el?.requestFullscreen?.();
+  else document.exitFullscreen?.();
+}
 
 const TIMES: { id: TimeOfDay; label: string }[] = [
   { id: "dawn", label: "Dawn" },
@@ -86,6 +93,13 @@ export function Hud() {
   const toggleDetections = useSimStore((s) => s.toggleDetections);
   const requestCapture = useSimStore((s) => s.requestCapture);
 
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+
   const batteryPct = Math.round(telemetry.battery * 100);
   const batteryTone =
     batteryPct > 40 ? "bg-success" : batteryPct > 15 ? "bg-warning" : "bg-error";
@@ -114,6 +128,14 @@ export function Hud() {
           <span className="font-mono text-xs tabular-nums text-base-content/70">
             {formatClock(elapsed)}
           </span>
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+            className="btn btn-ghost btn-xs -mr-1 px-1 text-base-content/60"
+          >
+            {isFullscreen ? "⤢ Exit" : "⤢ Full"}
+          </button>
         </div>
 
         {/* Navigation mode */}
@@ -408,19 +430,22 @@ export function Hud() {
       {/* Bottom-right: onboard camera feed. This is just the labelled frame — the
           live image is the WebGL picture-in-picture drawn by <OnboardView />,
           which anchors to the exact same corner + size (see PIP in OnboardView). */}
-      <div className="pointer-events-none absolute bottom-4 right-4 h-[148px] w-[232px] overflow-hidden rounded-md border border-base-content/25 shadow-lg">
+      <div
+        className="pointer-events-none absolute bottom-4 right-4 overflow-hidden rounded-md border border-base-content/25 shadow-lg"
+        style={{ width: PIP.w, height: PIP.h }}
+      >
         {showDetections ? (
           <svg
-            viewBox="0 0 232 148"
+            viewBox={`0 0 ${PIP.w} ${PIP.h}`}
             className="absolute inset-0 h-full w-full"
             preserveAspectRatio="none"
           >
             {detections.map((d, i) => {
               const color = d.diseased ? "#f6b73c" : "#7fe6ff";
-              const bx = d.x * 232;
-              const by = d.y * 148;
-              const bw = d.w * 232;
-              const bh = d.h * 148;
+              const bx = d.x * PIP.w;
+              const by = d.y * PIP.h;
+              const bw = d.w * PIP.w;
+              const bh = d.h * PIP.h;
               return (
                 <g key={i}>
                   <rect

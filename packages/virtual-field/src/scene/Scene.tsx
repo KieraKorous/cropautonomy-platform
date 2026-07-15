@@ -1,9 +1,12 @@
 import { OrbitControls } from "@react-three/drei";
+import { useThree } from "@react-three/fiber";
+import { useLayoutEffect } from "react";
 
 import { Crops } from "./Crops";
 import { DragPlane } from "./DragPlane";
 import { applyWeather, ENV_PRESETS } from "./environment";
 import { Ground } from "./Ground";
+import { VIZ_LAYER } from "./layers";
 import { Lighting } from "./Lighting";
 import { OnboardView } from "./OnboardView";
 import { PhysicsWorld } from "./PhysicsWorld";
@@ -24,6 +27,13 @@ export function Scene() {
   const showCrops = useSimStore((s) => s.showCrops);
   const field = useSimStore((s) => s.field);
   const dragging = useSimStore((s) => s.dragging);
+
+  // The main/orbit camera also renders sim-only viz (LiDAR, waypoints); the rover
+  // camera doesn't, keeping its feed + captures clean RGB.
+  const mainCamera = useThree((s) => s.camera);
+  useLayoutEffect(() => {
+    mainCamera.layers.enable(VIZ_LAYER);
+  }, [mainCamera]);
 
   // Time-of-day sets the base atmosphere; weather layers over it.
   const preset = applyWeather(ENV_PRESETS[timeOfDay], weather);

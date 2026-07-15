@@ -8,7 +8,7 @@ import { useSimStore } from "../store/simStore";
 // Picture-in-picture size (CSS px). Kept in sync with the DOM frame the HUD draws
 // around it (CameraFeed in Hud.tsx) — both anchor to the bottom-right with the
 // same 16px margin, so the WebGL feed sits exactly inside the labelled frame.
-export const PIP = { w: 232, h: 148, margin: 16 };
+export const PIP = { w: 340, h: 210, margin: 16 };
 
 // Takes over the render loop (priority 1 disables R3F's auto-render) to draw two
 // passes each frame: the full orbit view, then the rover's onboard camera into a
