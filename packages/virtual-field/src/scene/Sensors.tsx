@@ -3,8 +3,9 @@ import { useLayoutEffect, useMemo, useRef } from "react";
 import type { Mesh, Points } from "three";
 
 import { VIZ_LAYER } from "./layers";
-import { roverPose } from "./roverState";
+import { devicePose } from "./deviceState";
 import { metersToGps } from "../crop";
+import { deviceSpec } from "../device";
 import { lidarScan } from "../sensors/lidar";
 import { buildTargetIndex } from "../sensors/targetIndex";
 import { useSimStore } from "../store/simStore";
@@ -36,6 +37,7 @@ export function Sensors() {
 
   const acc = useRef({
     prevX: 0,
+    prevY: 0,
     prevZ: 0,
     odo: 0,
     scanT: 0,
@@ -50,41 +52,49 @@ export function Sensors() {
   }, []);
 
   useFrame((_, rawDelta) => {
-    const { x, z, heading } = roverPose;
+    const { x, y, z, heading, kind } = devicePose;
     const { sensorNoise, rtk, resetToken, pushSensors } = useSimStore.getState();
+    const spec = deviceSpec(kind);
     const a = acc.current;
 
     if (resetToken !== a.lastReset) {
       a.lastReset = resetToken;
       a.odo = 0;
       a.prevX = x;
+      a.prevY = y;
       a.prevZ = z;
       a.lastHeading = heading;
     }
 
-    // Wheel odometry: integrate travelled distance every frame.
-    a.odo += Math.hypot(x - a.prevX, z - a.prevZ);
+    // Odometry: integrate travelled distance every frame. 3D, so a drone's climb
+    // counts too (its odometry is GPS/visual, not wheels).
+    a.odo += Math.hypot(x - a.prevX, y - a.prevY, z - a.prevZ);
     a.prevX = x;
+    a.prevY = y;
     a.prevZ = z;
 
-    // Range ring follows the rover.
-    if (ringRef.current) ringRef.current.position.set(x, 0.06, z);
+    // Range ring follows the device at its own height.
+    if (ringRef.current) ringRef.current.position.set(x, y - spec.restY + 0.06, z);
 
     a.scanT += rawDelta;
     if (a.scanT < SCAN_INTERVAL) return;
     const dtScan = a.scanT;
     a.scanT = 0;
 
-    const res = lidarScan(index, x, z, heading, {
-      rayCount: RAYS,
-      maxRange: MAX_RANGE,
-      noise: sensorNoise,
-      dropout: sensorNoise ? 0.05 : 0,
-      forwardCone: FORWARD_CONE
-    });
+    // A 2D ground-plane sweep from 12m up is physically meaningless, so devices
+    // without a LiDAR report nothing rather than confidently reporting nonsense.
+    const res = spec.lidar
+      ? lidarScan(index, x, z, heading, {
+          rayCount: RAYS,
+          maxRange: MAX_RANGE,
+          noise: sensorNoise,
+          dropout: sensorNoise ? 0.05 : 0,
+          forwardCone: FORWARD_CONE
+        })
+      : null;
 
     // Point-cloud viz: place a point at each ray hit; hide misses far below.
-    if (showLidar && pointsRef.current) {
+    if (res && showLidar && pointsRef.current) {
       for (let i = 0; i < RAYS; i++) {
         const ray = res.rays[i];
         if (ray.hit) {
@@ -114,9 +124,10 @@ export function Sensors() {
       gps: { lat: gps.lat, lon: gps.lon, accuracyM },
       yawRateDeg: (yawRate * 180) / Math.PI,
       odometerM: a.odo,
-      lidarNearest: res.nearest,
-      lidarPoints: res.rays.reduce((n, r) => n + (r.hit ? 1 : 0), 0),
-      ultrasonic: res.forward
+      altitudeAgl: y - spec.restY,
+      lidarNearest: res?.nearest ?? null,
+      lidarPoints: res ? res.rays.reduce((n, r) => n + (r.hit ? 1 : 0), 0) : 0,
+      ultrasonic: res?.forward ?? null
     });
   });
 

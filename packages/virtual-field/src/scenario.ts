@@ -1,6 +1,7 @@
 import type { CropSpecies, GrowthStage, Weather } from "./crop";
+import { deviceSpec, type DeviceKind } from "./device";
 import type { Obstacle } from "./obstacle";
-import { roverRuntimes } from "./scene/roverState";
+import { deviceRuntimes } from "./scene/deviceState";
 import type { CameraMode, NavMode } from "./store/simStore";
 import { useSimStore } from "./store/simStore";
 import type { TimeOfDay, Waypoint } from "./types";
@@ -13,10 +14,16 @@ import type { TimeOfDay, Waypoint } from "./types";
 // exact same field — every plant, its health, disease, and fruit count included.
 // That keeps scenarios tiny and diff-able while remaining bit-for-bit reproducible.
 
-export const SCENARIO_VERSION = 1;
+// v2 added per-device `kind` + altitude (`y`). v1 files still load: a missing kind
+// means a ground rover, and a missing y means its rest height.
+export const SCENARIO_VERSION = 2;
 
-export interface RoverPoseSnapshot {
+export interface DevicePoseSnapshot {
+  /** Omitted in v1 scenarios → treated as "gaia_r". */
+  kind?: DeviceKind;
   x: number;
+  /** Omitted in v1 scenarios → treated as the device's rest height. */
+  y?: number;
   z: number;
   heading: number;
   battery: number;
@@ -36,7 +43,7 @@ export interface Scenario {
   /** Deterministic seed triple — rebuilds the identical crop layout. */
   field: { species: CropSpecies; growthStage: GrowthStage; seed: number };
   obstacles: Obstacle[];
-  fleet: { count: number; active: number; poses: RoverPoseSnapshot[] };
+  fleet: { count: number; active: number; poses: DevicePoseSnapshot[] };
   tasks: { navMode: NavMode; waypoints: Waypoint[]; running: boolean };
   sensors: { showLidar: boolean; sensorNoise: boolean; rtk: boolean; cameraMode: CameraMode };
   vision: { showDetections: boolean; aiRunning: boolean };
@@ -46,11 +53,14 @@ export interface Scenario {
 export function captureScenario(name = "scenario"): Scenario {
   const s = useSimStore.getState();
 
-  const poses: RoverPoseSnapshot[] = [];
-  for (let i = 0; i < s.roverCount; i++) {
-    const rt = roverRuntimes.get(i);
+  const poses: DevicePoseSnapshot[] = [];
+  for (let i = 0; i < s.devices.length; i++) {
+    const kind = s.devices[i];
+    const rt = deviceRuntimes.get(i);
     poses.push({
+      kind,
       x: rt?.x ?? 0,
+      y: rt?.y ?? deviceSpec(kind).restY,
       z: rt?.z ?? 0,
       heading: rt?.heading ?? 0,
       battery: s.fleet[i]?.battery ?? 1
@@ -70,7 +80,7 @@ export function captureScenario(name = "scenario"): Scenario {
     },
     field: { species: s.species, growthStage: s.growthStage, seed: s.seed },
     obstacles: s.obstacles,
-    fleet: { count: s.roverCount, active: s.activeRover, poses },
+    fleet: { count: s.devices.length, active: s.activeDevice, poses },
     tasks: { navMode: s.navMode, waypoints: s.waypoints, running: s.running },
     sensors: {
       showLidar: s.showLidar,

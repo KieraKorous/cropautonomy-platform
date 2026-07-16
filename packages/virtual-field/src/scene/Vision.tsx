@@ -5,9 +5,11 @@ import type { PerspectiveCamera, Scene, WebGLRenderer } from "three";
 
 import { observeAi, resetAnalytics } from "../ai/analytics";
 import { runInference } from "../ai/inference";
+import { devicePose } from "./deviceState";
 import { onboardCameraRef } from "./onboardCamera";
 import { PIP } from "./OnboardView";
 import type { Crop } from "../crop";
+import { deviceSpec, type DeviceSpec } from "../device";
 import { useSimStore } from "../store/simStore";
 import { projectDetections } from "../vision/detections";
 
@@ -27,7 +29,13 @@ function triggerDownload(href: string, filename: string) {
 // Renders the onboard camera to an offscreen target, reads it back as a PNG, and
 // pairs it with exact bounding-box labels projected from the crop records — one
 // labelled dataset frame, downloaded as image + COCO-ish JSON.
-function captureFrame(gl: WebGLRenderer, scene: Scene, cam: PerspectiveCamera, crops: Crop[]) {
+function captureFrame(
+  gl: WebGLRenderer,
+  scene: Scene,
+  cam: PerspectiveCamera,
+  crops: Crop[],
+  detect: DeviceSpec["detect"]
+) {
   const rt = new WebGLRenderTarget(CAPTURE_W, CAPTURE_H);
   const savedAspect = cam.aspect;
   cam.aspect = CAPTURE_W / CAPTURE_H;
@@ -41,11 +49,12 @@ function captureFrame(gl: WebGLRenderer, scene: Scene, cam: PerspectiveCamera, c
   gl.setRenderTarget(null);
   rt.dispose();
 
-  // Labels from the same camera pose (matrices are fresh post-render).
+  // Labels from the same camera pose (matrices are fresh post-render). Capture
+  // reaches a little further and finer than the live overlay.
   const dets = projectDetections(cam, crops, {
-    maxDistance: 26,
-    maxCount: 300,
-    minArea: 0.0004
+    maxDistance: detect.maxDistance * 1.2,
+    maxCount: detect.maxCount * 3,
+    minArea: detect.minArea * 0.7
   });
   cam.aspect = savedAspect;
   cam.updateProjectionMatrix();
@@ -132,15 +141,16 @@ export function Vision() {
       resetAnalytics();
     }
 
+    // Projection thresholds are per-device: a nadir camera at 12m frames far more,
+    // far smaller plants than a rover's 1m forward camera — with the rover's
+    // values a drone would detect almost nothing.
+    const detect = deviceSpec(devicePose.kind).detect;
+
     if (showDetections || aiRunning) {
       acc.current += delta;
       if (acc.current >= OVERLAY_INTERVAL) {
         acc.current = 0;
-        const dets = projectDetections(cam, crops, {
-          maxDistance: 22,
-          maxCount: 80,
-          minArea: 0.0006
-        });
+        const dets = projectDetections(cam, crops, detect);
         if (showDetections) pushDetections(dets);
         if (aiRunning) {
           const preds = runInference(dets);
@@ -150,7 +160,7 @@ export function Vision() {
     }
 
     if (captureRequested) {
-      captureFrame(state.gl, state.scene, cam, crops);
+      captureFrame(state.gl, state.scene, cam, crops, detect);
       markCaptured();
     }
   });

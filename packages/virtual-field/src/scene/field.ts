@@ -43,16 +43,47 @@ export function blockLanes(field: FieldConfig, index: number, count: number): nu
 }
 
 /**
- * The dock for rover `index`: parked at the near (headland) edge of the field,
- * lined up with the centre of its assigned lane block, facing into the field.
- * This is both the spawn point and the target of "Return home".
+ * The dock/pad for a device: parked at the near (headland) edge of the field,
+ * lined up with the centre of its assigned block, facing into the field. Both the
+ * spawn point and the target of "Return home".
+ *
+ * `setback` comes from the device spec so different classes park on different pad
+ * rows — otherwise a lone rover and a lone drone (which each own the whole field
+ * under peer-class partitioning) would spawn inside each other.
  */
-export function roverDock(field: FieldConfig, index: number, count: number): { x: number; z: number } {
-  const lanes = blockLanes(field, index, count);
+export function deviceDock(
+  field: FieldConfig,
+  ordinal: number,
+  count: number,
+  setback: number
+): { x: number; z: number } {
+  const lanes = blockLanes(field, ordinal, count);
   const x = lanes.length
     ? lanes[Math.floor(lanes.length / 2)]
-    : (index - (count - 1) / 2) * 4;
-  return { x, z: -(rowHalfLength(field) + 2) };
+    : (ordinal - (count - 1) / 2) * 4;
+  return { x, z: -(rowHalfLength(field) + setback) };
+}
+
+/**
+ * Survey strips for an aerial device: X centre-lines across its assigned block,
+ * spaced by `swath` (its camera's ground footprint at cruise) rather than by crop
+ * alleys — a drone doesn't drive between rows. Derived from the same block
+ * partition as `blockLanes`, so mixed fleets need no extra partition logic.
+ */
+export function surveyLanes(
+  field: FieldConfig,
+  ordinal: number,
+  count: number,
+  swath: number
+): number[] {
+  const extent = blockExtent(field, ordinal, count);
+  if (!extent || swath <= 0) return [];
+  const [minX, maxX] = extent;
+  const width = maxX - minX;
+  const strips = Math.max(1, Math.round(width / swath));
+  const step = width / strips;
+  // Centre of each strip, so the outermost passes stay inside the block.
+  return Array.from({ length: strips }, (_, i) => minX + step * (i + 0.5));
 }
 
 /** The X extent [min, max] a rover's assigned section spans, for the tint overlay. */

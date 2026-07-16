@@ -9,6 +9,7 @@ import {
   type GrowthStage,
   type Weather
 } from "../crop";
+import { DEVICE_SPECS, MAX_DEVICES, deviceName, deviceSpec } from "../device";
 import { PIP } from "../scene/OnboardView";
 import { useSimStore } from "../store/simStore";
 import type { TimeOfDay } from "../types";
@@ -75,8 +76,9 @@ export function Hud() {
   const aiRunning = useSimStore((s) => s.aiRunning);
   const aiPredictions = useSimStore((s) => s.aiPredictions);
   const aiStats = useSimStore((s) => s.aiStats);
-  const roverCount = useSimStore((s) => s.roverCount);
-  const activeRover = useSimStore((s) => s.activeRover);
+  const devices = useSimStore((s) => s.devices);
+  const activeDevice = useSimStore((s) => s.activeDevice);
+  const activeSpec = deviceSpec(devices[activeDevice] ?? "gaia_r");
   const fleet = useSimStore((s) => s.fleet);
 
   const toggleRun = useSimStore((s) => s.toggleRun);
@@ -104,8 +106,9 @@ export function Hud() {
   const seed = useSimStore((s) => s.seed);
   const toggleAi = useSimStore((s) => s.toggleAi);
   const resetAi = useSimStore((s) => s.resetAi);
-  const setRoverCount = useSimStore((s) => s.setRoverCount);
-  const setActiveRover = useSimStore((s) => s.setActiveRover);
+  const setActiveDevice = useSimStore((s) => s.setActiveDevice);
+  const addDevice = useSimStore((s) => s.addDevice);
+  const removeDevice = useSimStore((s) => s.removeDevice);
 
   const [isFullscreen, setIsFullscreen] = useState(false);
   useEffect(() => {
@@ -245,50 +248,70 @@ export function Hud() {
 
         {navMode === "manual" ? (
           <span className="rounded-md bg-base-100/70 px-2 py-1 text-[11px] text-base-content/60 backdrop-blur">
-            <span className="font-semibold text-base-content/75">W A S D</span> / arrows to drive.
+            {activeSpec.manualHint}
           </span>
         ) : null}
 
-        {/* Fleet: rover count + active rover selector */}
+        {/* Fleet: one chip per slot (device type + battery), click to select. */}
         <div className="pointer-events-auto flex items-center gap-2 rounded-lg border border-base-content/10 bg-base-100/80 px-2.5 py-1.5 backdrop-blur">
           <span className="text-[11px] uppercase tracking-wide text-base-content/50">Fleet</span>
-          <div className="join">
-            <button
-              type="button"
-              onClick={() => setRoverCount(roverCount - 1)}
-              disabled={roverCount <= 1}
-              className="btn btn-xs join-item btn-ghost disabled:opacity-40"
-            >
-              −
-            </button>
-            <span className="join-item flex items-center bg-base-content/[0.06] px-2 font-mono text-[11px] tabular-nums text-base-content/70">
-              {roverCount}
-            </span>
-            <button
-              type="button"
-              onClick={() => setRoverCount(roverCount + 1)}
-              disabled={roverCount >= 4}
-              className="btn btn-xs join-item btn-ghost disabled:opacity-40"
-            >
-              +
-            </button>
-          </div>
-          {roverCount > 1 ? (
-            <div className="join">
-              {fleet.map((r, i) => (
+          <div className="flex items-center gap-1">
+            {devices.map((kind, i) => {
+              const spec = deviceSpec(kind);
+              return (
                 <button
                   key={i}
                   type="button"
-                  onClick={() => setActiveRover(i)}
-                  title={`Rover ${i + 1} · ${Math.round(r.battery * 100)}%`}
-                  className={`btn btn-xs join-item ${
-                    activeRover === i ? "btn-primary" : "btn-ghost"
-                  }`}
+                  onClick={() => setActiveDevice(i)}
+                  title={`${deviceName(kind, i)} · ${Math.round((fleet[i]?.battery ?? 1) * 100)}%`}
+                  className={`btn btn-xs ${
+                    activeDevice === i ? "btn-primary" : "btn-ghost"
+                  } font-mono`}
                 >
+                  {spec.short.replace("GAIA-", "")}
                   {i + 1}
                 </button>
+              );
+            })}
+          </div>
+
+          {/* Add a device — the menu is derived from the spec table, so a new
+              GAIA device type appears here the moment it's added to DEVICE_SPECS. */}
+          <div className="dropdown dropdown-end">
+            <button
+              tabIndex={0}
+              type="button"
+              disabled={devices.length >= MAX_DEVICES}
+              className="btn btn-xs btn-ghost disabled:opacity-40"
+            >
+              +
+            </button>
+            <ul
+              tabIndex={0}
+              className="menu dropdown-content z-10 mt-1 w-40 rounded-md border border-base-content/10 bg-base-100 p-1 shadow-lg"
+            >
+              {Object.values(DEVICE_SPECS).map((s) => (
+                <li key={s.kind}>
+                  <button
+                    type="button"
+                    className="text-xs"
+                    onClick={() => addDevice(s.kind)}
+                  >
+                    {s.label}
+                  </button>
+                </li>
               ))}
-            </div>
+            </ul>
+          </div>
+          {devices.length > 1 ? (
+            <button
+              type="button"
+              onClick={() => removeDevice(activeDevice)}
+              title={`Remove ${deviceName(devices[activeDevice] ?? "gaia_r", activeDevice)}`}
+              className="btn btn-xs btn-ghost text-base-content/50"
+            >
+              ×
+            </button>
           ) : null}
         </div>
       </div>
@@ -491,7 +514,7 @@ export function Hud() {
       <div className="absolute bottom-4 left-4 pointer-events-auto w-64 rounded-lg border border-base-content/10 bg-base-100/80 p-3.5 backdrop-blur">
         <div className="mb-2.5 flex items-center justify-between">
           <span className="text-xs font-semibold uppercase tracking-[0.12em] text-base-content/60">
-            Rover-{String(activeRover + 1).padStart(2, "0")}
+            {deviceName(devices[activeDevice] ?? "gaia_r", activeDevice)}
           </span>
           <span className="font-mono text-[11px] tabular-nums text-base-content/50">
             {telemetry.battery > 0 ? `${batteryPct}%` : "flat"}
@@ -501,7 +524,11 @@ export function Hud() {
           <Metric label="Position" value={`${telemetry.position.x.toFixed(1)}, ${telemetry.position.z.toFixed(1)}`} />
           <Metric label="Heading" value={`${headingDeg}°`} />
           <Metric label="Speed" value={`${telemetry.speed.toFixed(1)} m/s`} />
-          <Metric label="Battery" value={`${batteryPct}%`} />
+          {activeSpec.flies ? (
+            <Metric label="Altitude" value={`${telemetry.position.y.toFixed(1)} m`} />
+          ) : (
+            <Metric label="Battery" value={`${batteryPct}%`} />
+          )}
         </dl>
         <div className="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-base-content/10">
           <div className={`h-full rounded-full ${batteryTone}`} style={{ width: `${batteryPct}%` }} />
@@ -520,17 +547,28 @@ export function Hud() {
             <Metric label="Fix ± m" value={sensors.gps.accuracyM.toFixed(2)} />
             <Metric label="IMU yaw/s" value={`${sensors.yawRateDeg.toFixed(0)}°`} />
             <Metric label="Odometer" value={`${sensors.odometerM.toFixed(1)} m`} />
-            <Metric
-              label="LiDAR near"
-              value={sensors.lidarNearest === null ? "—" : `${sensors.lidarNearest.toFixed(2)} m`}
-            />
-            <Metric
-              label="Ultrasonic"
-              value={sensors.ultrasonic === null ? "clear" : `${sensors.ultrasonic.toFixed(2)} m`}
-            />
+            <Metric label="Alt AGL" value={`${sensors.altitudeAgl.toFixed(1)} m`} />
+            {activeSpec.lidar ? (
+              <Metric
+                label="LiDAR near"
+                value={sensors.lidarNearest === null ? "—" : `${sensors.lidarNearest.toFixed(2)} m`}
+              />
+            ) : null}
+            {activeSpec.lidar ? (
+              <Metric
+                label="Ultrasonic"
+                value={sensors.ultrasonic === null ? "clear" : `${sensors.ultrasonic.toFixed(2)} m`}
+              />
+            ) : null}
           </dl>
           <div className="mt-2.5 flex items-center gap-1">
-            <SensorToggle on={showLidar} onClick={toggleLidar} label="LiDAR" />
+            <SensorToggle
+              on={showLidar && activeSpec.lidar}
+              onClick={toggleLidar}
+              label="LiDAR"
+              disabled={!activeSpec.lidar}
+              title={activeSpec.lidar ? undefined : `${activeSpec.label} carries no LiDAR`}
+            />
             <SensorToggle on={sensorNoise} onClick={toggleSensorNoise} label="Noise" />
             <SensorToggle on={rtk} onClick={toggleRtk} label="RTK" />
           </div>
@@ -679,7 +717,8 @@ export function Hud() {
         <div className="absolute left-0 top-0 flex items-center gap-1.5 rounded-br-md bg-base-100/80 px-2 py-1 backdrop-blur">
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-error" />
           <span className="text-[10px] font-semibold uppercase tracking-wider text-base-content/70">
-            {cameraMode === "depth" ? "Depth" : "RGB"} · Rover-{String(activeRover + 1).padStart(2, "0")}
+            {cameraMode === "depth" ? "Depth" : "RGB"}
+            {activeSpec.flies ? " · Nadir" : ""} · {deviceName(devices[activeDevice] ?? "gaia_r", activeDevice)}
           </span>
         </div>
         <div className="pointer-events-auto absolute right-0 top-0 flex rounded-bl-md bg-base-100/80 backdrop-blur">
@@ -719,17 +758,24 @@ function Metric({ label, value }: { label: string; value: string }) {
 function SensorToggle({
   on,
   onClick,
-  label
+  label,
+  disabled,
+  title
 }: {
   on: boolean;
   onClick: () => void;
   label: string;
+  /** Devices that don't carry the sensor get a dead-but-explained switch. */
+  disabled?: boolean;
+  title?: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`btn btn-xs ${on ? "btn-secondary" : "btn-ghost"}`}
+      disabled={disabled}
+      title={title}
+      className={`btn btn-xs ${on ? "btn-secondary" : "btn-ghost"} disabled:opacity-40`}
     >
       {label}
     </button>

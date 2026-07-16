@@ -7,11 +7,12 @@ import { DragPlane } from "./DragPlane";
 import { applyWeather, ENV_PRESETS } from "./environment";
 import { FieldSections } from "./FieldSections";
 import { Ground } from "./Ground";
+import { LandingPads } from "./LandingPads";
 import { VIZ_LAYER } from "./layers";
 import { Lighting } from "./Lighting";
 import { OnboardView } from "./OnboardView";
 import { PhysicsWorld } from "./PhysicsWorld";
-import { Fleet } from "./Robot";
+import { Fleet } from "./Device";
 import { Sensors } from "./Sensors";
 import { Vision } from "./Vision";
 import { Waypoints } from "./Waypoints";
@@ -47,6 +48,7 @@ export function Scene() {
       <Lighting preset={preset} />
       <Ground field={field} preset={preset} showGrid={showGrid} showRows={showRows} />
       <FieldSections />
+      <LandingPads />
       {showCrops ? <Crops /> : null}
       <Weather />
       <Waypoints />

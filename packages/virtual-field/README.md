@@ -41,6 +41,8 @@ src/
   index.ts             public exports
   types.ts             shared domain types
   crop.ts              crop entity system — species catalog + deterministic generator
+  device.ts            GAIA device types — DeviceKind + DeviceSpec table (see below)
+  devices/fleet.ts     peer-class partition (rovers split among rovers, drones among drones)
   obstacle.ts          obstacle entities + generator
   scenario.ts          Scenario Manager — capture / download / parse a whole world
   store/simStore.ts    Zustand store — single source of truth + throttled telemetry
@@ -53,20 +55,22 @@ src/
     environment.ts     time-of-day presets + applyWeather() (asset-free)
     Lighting.tsx       procedural sky + sun + fill
     Ground.tsx         soil plane + technical grid + furrow beds
-    field.ts           row/lane/dock geometry — single source of truth
+    field.ts           row/lane/dock/survey geometry — single source of truth
     Crops.tsx          instanced crop layer rendered FROM the entity records
     Weather.tsx        rain / dust particle layers
-    Robot.tsx          Rover (nav + drive) and Fleet; ROVER_COLORS
+    Device.tsx         Device (shared nav/steering/airframe) + Fleet
+    bodies/            RoverBody · DroneBody — meshes that own their own effectors
     FieldSections.tsx  per-rover coverage-section tint
+    LandingPads.tsx    dock / helipad markers
     PhysicsWorld.tsx   Rapier: ground collider, obstacles, rover colliders
     Sensors.tsx        LiDAR sweep + GPS/IMU/odometry + point-cloud viz
     OnboardView.tsx    picture-in-picture rover camera (PIP sizing lives here)
     Vision.tsx         detections, dataset capture, AI inference loop
     Waypoints.tsx      waypoint path + markers
     DragPlane.tsx      pick-up-and-drop catcher
-    layers.ts          VIZ_LAYER — sim-only viz, hidden from the rover camera
-    roverState.ts      live pose registry + drag target (no React churn)
-    driveInput.ts      WASD / arrow manual-drive input
+    layers.ts          VIZ_LAYER — sim-only viz, hidden from the device camera
+    deviceState.ts     live pose registry (kind + altitude) + drag target (no React churn)
+    driveInput.ts      manual input — WASD/arrows, Q/E strafe, R/F climb
   hud/Hud.tsx          DOM overlay: status, nav, telemetry, sensors, vision, AI, scenario
 ```
 
@@ -81,8 +85,40 @@ src/
   read the same `Crop` records, so what you see is exactly what the sim knows.
 - **Determinism.** Crop layout is a pure function of `(species, growthStage, seed)`,
   which is why a scenario file stores three values instead of thousands of plants.
-- **Sim-only viz lives on `VIZ_LAYER`** so the rover camera feed and captured
+- **Sim-only viz lives on `VIZ_LAYER`** so the device camera feed and captured
   dataset frames stay clean RGB.
+
+## Device model
+
+The fleet is a list of GAIA devices (`store.devices: DeviceKind[]`), one per slot.
+**`DeviceKind` uses the platform's authoritative `device_family` literals**
+(`gaia_r`, `gaia_d`; `gaia_s` next) from `packages/db/migrations/0012_*.sql` — not
+sim-local names — so a simulated device maps 1:1 to a real registered one.
+
+Everything that differs between device types lives in one `DEVICE_SPECS` table in
+[`device.ts`](src/device.ts): speeds, battery model, collider, camera mount, avoidance,
+manual rates, detection thresholds, dock setback, colors. `Device.tsx` owns only what
+they share — pose, nav, the steering core, the reset/restore/home token protocol,
+telemetry, drag. Adding a device type is a table entry plus a body component; the
+fleet's add-menu is derived from the table, so it appears in the HUD automatically.
+
+Invariants worth knowing:
+
+- **Altitude is real, and ground devices are pinned arithmetically.** `climbRate` /
+  `descentRate` are `0` for `gaia_r`, so its `y` provably cannot move no matter what a
+  nav command asks for — the rover path is unchanged by the drone's existence.
+- **Coverage splits among peers of the same class** (`devices/fleet.ts`). Rovers divide
+  the field between rovers, drones between drones — so 1 rover + 1 drone each cover
+  everything, which is what you'd actually want. Different classes dock on different pad
+  rows (`dockSetback`) so they don't spawn inside each other.
+- **The drone's survey swath is derived, not tuned.** `surveySwath()` computes its
+  camera's ground footprint at cruise, so changing the altitude changes the flight plan
+  to match (~12m strips at 12m vs the rover's ~0.75m alleys).
+- **Detection thresholds are per-device** (`spec.detect`). A nadir camera at altitude
+  frames far more, far smaller plants; the rover's values would make the drone detect
+  almost nothing.
+- **Bodies own their own moving parts.** Wheels and rotors spin from each body's own
+  `useFrame` reading its runtime speed, so the steering code knows nothing about either.
 
 ## Roadmap (from the PRD) — complete
 
@@ -96,5 +132,12 @@ src/
 8 ✅ multi-robot coordination (fleet, split coverage, per-rover docks)
 9 ✅ full digital twin (Scenario Manager: save/load the world)
 
-Not yet built (PRD backlog): stereo/thermal/multispectral cameras, segmentation
-masks + optical flow, radar, RRT, SLAM, calibration/latency modelling.
+Beyond the roadmap: **GAIA-D (aerial drone)** — flies a camera-derived serpentine
+survey at altitude with a nadir camera feeding the same CV/AI pipeline, overflies
+obstacles, and auto-lands on low battery.
+
+Not yet built: **GAIA-S (sensor station)** — the next device, and where soil /
+microclimate monitoring belongs. (There is no "soil sampler" in GAIA; the letter
+taxonomy is reserved for GAIAbots hardware — see `docs/brand/gaiabots-brand-brief.md`.)
+Also outstanding from the PRD backlog: stereo/thermal/multispectral cameras,
+segmentation masks + optical flow, radar, RRT, SLAM, calibration/latency modelling.

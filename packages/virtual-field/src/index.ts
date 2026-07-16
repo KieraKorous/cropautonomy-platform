@@ -24,6 +24,17 @@ export {
   type Weather,
   type SpeciesDef
 } from "./crop";
+// GAIA device types. `DeviceKind` uses the platform's authoritative device_family
+// literals (gaia_r / gaia_d), so a simulated device maps 1:1 to a registered one.
+export {
+  DEVICE_SPECS,
+  MAX_DEVICES,
+  deviceSpec,
+  deviceName,
+  surveySwath,
+  type DeviceKind,
+  type DeviceSpec
+} from "./device";
 export { generateObstacles, type Obstacle, type ObstacleKind } from "./obstacle";
 export { planPath } from "./nav/astar";
 // Scenario Manager — snapshot/restore the whole world (digital-twin support).
@@ -33,5 +44,5 @@ export {
   parseScenario,
   SCENARIO_VERSION,
   type Scenario,
-  type RoverPoseSnapshot
+  type DevicePoseSnapshot
 } from "./scenario";

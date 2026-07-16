@@ -141,9 +141,19 @@ jobs:
                   location: us-west1-a
 
             - name: Install kustomize
-              uses: imranismail/setup-kustomize@v2
-              with:
-                  kustomize-version: "5.4.3"
+              # Installed straight from the release tarball rather than via
+              # setup-kustomize: that action resolves versions through a GitHub
+              # endpoint that now answers with an HTML error page, so every run
+              # died on "Could not satisfy version range".
+              env:
+                  KUSTOMIZE_VERSION: "5.4.3"
+              run: |
+                  set -euo pipefail
+                  mkdir -p "$RUNNER_TEMP/kustomize"
+                  curl -fsSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv${KUSTOMIZE_VERSION}/kustomize_v${KUSTOMIZE_VERSION}_linux_amd64.tar.gz" \
+                    | tar -xz -C "$RUNNER_TEMP/kustomize" kustomize
+                  echo "$RUNNER_TEMP/kustomize" >> "$GITHUB_PATH"
+                  "$RUNNER_TEMP/kustomize/kustomize" version
 
             - name: Ensure namespace, ServiceAccount, and ConfigMap exist
               run: |

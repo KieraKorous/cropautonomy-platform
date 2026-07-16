@@ -10,10 +10,11 @@ import {
 } from "../crop";
 import { blankStats, type AiStats } from "../ai/analytics";
 import type { Prediction } from "../ai/inference";
+import { deviceSpec, MAX_DEVICES, type DeviceKind } from "../device";
 import { generateObstacles, type Obstacle } from "../obstacle";
 // Type-only (erased at build), so this doesn't create a runtime import cycle
 // with scenario.ts, which imports the store to snapshot it.
-import type { RoverPoseSnapshot, Scenario } from "../scenario";
+import type { DevicePoseSnapshot, Scenario } from "../scenario";
 import type { Detection } from "../vision/detections";
 import type { FieldConfig, RobotTelemetry, TimeOfDay, Waypoint } from "../types";
 
@@ -44,6 +45,9 @@ export interface SensorReadout {
   gps: { lat: number; lon: number; accuracyM: number };
   yawRateDeg: number;
   odometerM: number;
+  /** Downward rangefinder — height above ground. Constant for ground devices. */
+  altitudeAgl: number;
+  /** Null on devices that carry no LiDAR (e.g. the drone). */
   lidarNearest: number | null;
   lidarPoints: number;
   ultrasonic: number | null;
@@ -53,6 +57,7 @@ const EMPTY_SENSORS: SensorReadout = {
   gps: { lat: 0, lon: 0, accuracyM: 0 },
   yawRateDeg: 0,
   odometerM: 0,
+  altitudeAgl: 0,
   lidarNearest: null,
   lidarPoints: 0,
   ultrasonic: null
@@ -121,8 +126,10 @@ export interface SimState {
   aiResetToken: number;
 
   /** Fleet: number of rovers, which one is active (camera/sensors/HUD focus). */
-  roverCount: number;
-  activeRover: number;
+  /** One entry per fleet slot — the GAIA device type occupying it. */
+  devices: DeviceKind[];
+  /** Index of the device the camera, sensors, HUD + manual control follow. */
+  activeDevice: number;
   /** Per-rover telemetry (index-aligned); `telemetry` mirrors the active one. */
   fleet: RobotTelemetry[];
 
@@ -138,7 +145,7 @@ export interface SimState {
   homeToken: number;
   /** Bumped by loadScenario(); each rover teleports to its saved pose. */
   restoreToken: number;
-  restorePoses: RoverPoseSnapshot[];
+  restorePoses: DevicePoseSnapshot[];
 
   // --- actions ---
   play: () => void;
@@ -179,13 +186,17 @@ export interface SimState {
   returnHome: () => void;
   /** Replace the entire world with a saved scenario (digital-twin restore). */
   loadScenario: (scenario: Scenario) => void;
-  setRoverCount: (n: number) => void;
-  setActiveRover: (i: number) => void;
+  setDeviceCount: (n: number) => void;
+  /** Swap the GAIA device type in a fleet slot (e.g. rover → drone). */
+  setDeviceKind: (index: number, kind: DeviceKind) => void;
+  /** Add a device of `kind` to the fleet and select it. */
+  addDevice: (kind: DeviceKind) => void;
+  removeDevice: (index: number) => void;
+  setActiveDevice: (i: number) => void;
   /** Called from each rover's render loop with a fresh telemetry sample. */
   pushTelemetry: (index: number, t: RobotTelemetry, elapsed: number, fps: number) => void;
 }
 
-const MAX_ROVERS = 4;
 
 export const useSimStore = create<SimState>((set) => ({
   running: false,
@@ -229,8 +240,8 @@ export const useSimStore = create<SimState>((set) => ({
   aiStats: blankStats(),
   aiResetToken: 0,
 
-  roverCount: 1,
-  activeRover: 0,
+  devices: ["gaia_r"],
+  activeDevice: 0,
   fleet: [FULL_BATTERY],
   telemetry: FULL_BATTERY,
   resetToken: 0,
@@ -313,19 +324,25 @@ export const useSimStore = create<SimState>((set) => ({
       const field = fieldForSpecies(s.field.size, species);
       const crops = generateCrops(field, species, growthStage, seed);
 
-      const count = Math.max(1, Math.min(MAX_ROVERS, Math.round(sc.fleet.count ?? 1)));
+      const count = Math.max(1, Math.min(MAX_DEVICES, Math.round(sc.fleet.count ?? 1)));
       const active = Math.max(0, Math.min(count - 1, sc.fleet.active ?? 0));
       const poses = sc.fleet.poses ?? [];
+      // v1 scenarios predate device kinds + altitude: default to a ground rover
+      // parked at its rest height.
+      const devices = Array.from(
+        { length: count },
+        (_, i): DeviceKind => poses[i]?.kind ?? "gaia_r"
+      );
       const fleet = Array.from({ length: count }, (_, i) => {
         const p = poses[i];
-        return p
-          ? {
-              position: { x: p.x, y: 0.55, z: p.z },
-              heading: p.heading,
-              speed: 0,
-              battery: p.battery
-            }
-          : FULL_BATTERY;
+        if (!p) return FULL_BATTERY;
+        const spec = deviceSpec(devices[i]);
+        return {
+          position: { x: p.x, y: p.y ?? spec.restY, z: p.z },
+          heading: p.heading,
+          speed: 0,
+          battery: p.battery
+        };
       });
 
       // Tolerate scenarios written by older/partial exports.
@@ -352,8 +369,8 @@ export const useSimStore = create<SimState>((set) => ({
         crops,
         obstacles: sc.obstacles ?? [],
 
-        roverCount: count,
-        activeRover: active,
+        devices,
+        activeDevice: active,
         fleet,
         telemetry: fleet[active] ?? FULL_BATTERY,
 
@@ -381,26 +398,65 @@ export const useSimStore = create<SimState>((set) => ({
         restorePoses: poses
       };
     }),
-  setRoverCount: (n) =>
+  setDeviceCount: (n) =>
     set((s) => {
-      const roverCount = Math.max(1, Math.min(MAX_ROVERS, Math.round(n)));
-      const fleet = Array.from({ length: roverCount }, (_, i) => s.fleet[i] ?? FULL_BATTERY);
+      const count = Math.max(1, Math.min(MAX_DEVICES, Math.round(n)));
+      // New slots default to a ground rover; existing slots keep their kind.
+      const devices = Array.from({ length: count }, (_, i) => s.devices[i] ?? "gaia_r");
+      const fleet = Array.from({ length: count }, (_, i) => s.fleet[i] ?? FULL_BATTERY);
       // Resizing the fleet re-docks everyone (re-spreads start positions).
       return {
-        roverCount,
+        devices,
         fleet,
-        activeRover: Math.min(s.activeRover, roverCount - 1),
+        activeDevice: Math.min(s.activeDevice, count - 1),
         resetToken: s.resetToken + 1
       };
     }),
-  setActiveRover: (i) =>
-    set((s) => ({ activeRover: Math.max(0, Math.min(s.roverCount - 1, i)) })),
+  setDeviceKind: (index, kind) =>
+    set((s) => {
+      if (!s.devices[index] || s.devices[index] === kind) return {};
+      const devices = s.devices.slice();
+      devices[index] = kind;
+      const fleet = s.fleet.slice();
+      fleet[index] = FULL_BATTERY;
+      // Swapping the hardware in a slot re-docks the fleet so the new device
+      // spawns on the right pad with a fresh nav plan.
+      return { devices, fleet, resetToken: s.resetToken + 1 };
+    }),
+  addDevice: (kind) =>
+    set((s) => {
+      if (s.devices.length >= MAX_DEVICES) return {};
+      const devices = [...s.devices, kind];
+      const fleet = [...s.fleet, FULL_BATTERY];
+      // Adding hardware re-docks the fleet: peer-class partitioning means the
+      // existing devices' assigned blocks (and pads) just changed.
+      return {
+        devices,
+        fleet,
+        activeDevice: devices.length - 1,
+        resetToken: s.resetToken + 1
+      };
+    }),
+  removeDevice: (index) =>
+    set((s) => {
+      if (s.devices.length <= 1) return {};
+      const devices = s.devices.filter((_, i) => i !== index);
+      const fleet = s.fleet.filter((_, i) => i !== index);
+      return {
+        devices,
+        fleet,
+        activeDevice: Math.min(s.activeDevice, devices.length - 1),
+        resetToken: s.resetToken + 1
+      };
+    }),
+  setActiveDevice: (i) =>
+    set((s) => ({ activeDevice: Math.max(0, Math.min(s.devices.length - 1, i)) })),
   pushTelemetry: (index, telemetry, elapsed, fps) =>
     set((s) => {
       const fleet = s.fleet.slice();
       fleet[index] = telemetry;
       // The active rover drives the headline telemetry + clock/fps.
-      if (index === s.activeRover) return { fleet, telemetry, elapsed, fps };
+      if (index === s.activeDevice) return { fleet, telemetry, elapsed, fps };
       return { fleet };
     })
 }));
