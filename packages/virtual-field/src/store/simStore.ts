@@ -11,6 +11,9 @@ import {
 import { blankStats, type AiStats } from "../ai/analytics";
 import type { Prediction } from "../ai/inference";
 import { generateObstacles, type Obstacle } from "../obstacle";
+// Type-only (erased at build), so this doesn't create a runtime import cycle
+// with scenario.ts, which imports the store to snapshot it.
+import type { RoverPoseSnapshot, Scenario } from "../scenario";
 import type { Detection } from "../vision/detections";
 import type { FieldConfig, RobotTelemetry, TimeOfDay, Waypoint } from "../types";
 
@@ -133,6 +136,9 @@ export interface SimState {
   resetToken: number;
   /** Bumped by returnHome(); each rover replans a route to its own dock. */
   homeToken: number;
+  /** Bumped by loadScenario(); each rover teleports to its saved pose. */
+  restoreToken: number;
+  restorePoses: RoverPoseSnapshot[];
 
   // --- actions ---
   play: () => void;
@@ -171,6 +177,8 @@ export interface SimState {
   resetAi: () => void;
   /** Plan an A* route from the rover's current pose back to the dock and drive it. */
   returnHome: () => void;
+  /** Replace the entire world with a saved scenario (digital-twin restore). */
+  loadScenario: (scenario: Scenario) => void;
   setRoverCount: (n: number) => void;
   setActiveRover: (i: number) => void;
   /** Called from each rover's render loop with a fresh telemetry sample. */
@@ -227,6 +235,8 @@ export const useSimStore = create<SimState>((set) => ({
   telemetry: FULL_BATTERY,
   resetToken: 0,
   homeToken: 0,
+  restoreToken: 0,
+  restorePoses: [],
 
   play: () => set({ running: true }),
   pause: () => set({ running: false }),
@@ -296,6 +306,81 @@ export const useSimStore = create<SimState>((set) => ({
   returnHome: () =>
     // Each rover independently A*-plans a route to its own dock (see Rover).
     set((s) => ({ homeToken: s.homeToken + 1, running: true })),
+  loadScenario: (sc) =>
+    set((s) => {
+      // Crops are rebuilt from the seed triple — identical field, no plant records.
+      const { species, growthStage, seed } = sc.field;
+      const field = fieldForSpecies(s.field.size, species);
+      const crops = generateCrops(field, species, growthStage, seed);
+
+      const count = Math.max(1, Math.min(MAX_ROVERS, Math.round(sc.fleet.count ?? 1)));
+      const active = Math.max(0, Math.min(count - 1, sc.fleet.active ?? 0));
+      const poses = sc.fleet.poses ?? [];
+      const fleet = Array.from({ length: count }, (_, i) => {
+        const p = poses[i];
+        return p
+          ? {
+              position: { x: p.x, y: 0.55, z: p.z },
+              heading: p.heading,
+              speed: 0,
+              battery: p.battery
+            }
+          : FULL_BATTERY;
+      });
+
+      // Tolerate scenarios written by older/partial exports.
+      const tasks = sc.tasks ?? { navMode: s.navMode, waypoints: [], running: false };
+      const sensors = sc.sensors ?? {
+        showLidar: s.showLidar,
+        sensorNoise: s.sensorNoise,
+        rtk: s.rtk,
+        cameraMode: s.cameraMode
+      };
+      const vision = sc.vision ?? { showDetections: s.showDetections, aiRunning: s.aiRunning };
+
+      return {
+        timeOfDay: sc.environment.timeOfDay,
+        weather: sc.environment.weather,
+        showGrid: sc.environment.showGrid,
+        showRows: sc.environment.showRows,
+        showCrops: sc.environment.showCrops,
+
+        species,
+        growthStage,
+        seed,
+        field,
+        crops,
+        obstacles: sc.obstacles ?? [],
+
+        roverCount: count,
+        activeRover: active,
+        fleet,
+        telemetry: fleet[active] ?? FULL_BATTERY,
+
+        navMode: tasks.navMode,
+        waypoints: tasks.waypoints ?? [],
+        waypointsVersion: s.waypointsVersion + 1,
+        running: tasks.running,
+
+        showLidar: sensors.showLidar,
+        sensorNoise: sensors.sensorNoise,
+        rtk: sensors.rtk,
+        cameraMode: sensors.cameraMode,
+        showDetections: vision.showDetections,
+        aiRunning: vision.aiRunning,
+
+        // A new world invalidates the accumulated scan + current-frame results.
+        aiResetToken: s.aiResetToken + 1,
+        aiStats: blankStats(),
+        aiPredictions: [],
+        detections: [],
+        elapsed: 0,
+
+        // Teleport each rover to its saved pose.
+        restoreToken: s.restoreToken + 1,
+        restorePoses: poses
+      };
+    }),
   setRoverCount: (n) =>
     set((s) => {
       const roverCount = Math.max(1, Math.min(MAX_ROVERS, Math.round(n)));

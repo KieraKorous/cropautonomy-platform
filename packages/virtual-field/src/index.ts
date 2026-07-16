@@ -26,3 +26,12 @@ export {
 } from "./crop";
 export { generateObstacles, type Obstacle, type ObstacleKind } from "./obstacle";
 export { planPath } from "./nav/astar";
+// Scenario Manager — snapshot/restore the whole world (digital-twin support).
+export {
+  captureScenario,
+  downloadScenario,
+  parseScenario,
+  SCENARIO_VERSION,
+  type Scenario,
+  type RoverPoseSnapshot
+} from "./scenario";

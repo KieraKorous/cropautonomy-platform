@@ -100,6 +100,7 @@ function Rover({ index }: { index: number }) {
 
   // "Return home" state: a planned A* route back to this rover's dock.
   const lastHome = useRef(0);
+  const lastRestore = useRef(0);
   const homing = useRef(false);
   const homeIndex = useRef(0);
   const homePath = useRef<Waypoint[]>([]);
@@ -179,7 +180,9 @@ function Rover({ index }: { index: number }) {
       obstacles,
       dragging,
       sensorNoise,
-      homeToken
+      homeToken,
+      restoreToken,
+      restorePoses
     } = useSimStore.getState();
 
     const isDragged = dragging && isActive;
@@ -190,6 +193,25 @@ function Rover({ index }: { index: number }) {
       nav.current.ready = false;
       wp.current.index = 0;
       wp.current.version = -1;
+      homing.current = false;
+      clock.current.elapsed = 0;
+    }
+
+    // Scenario load: teleport to the saved pose (or this rover's dock if the
+    // scenario had fewer rovers) and re-plan from there.
+    if (restoreToken !== lastRestore.current) {
+      lastRestore.current = restoreToken;
+      const snap = restorePoses[index];
+      pose.current = {
+        x: snap?.x ?? start.x,
+        z: snap?.z ?? start.z,
+        heading: snap?.heading ?? 0,
+        battery: snap?.battery ?? 1
+      };
+      nav.current.ready = false;
+      wp.current.index = 0;
+      wp.current.version = -1;
+      homing.current = false;
       clock.current.elapsed = 0;
     }
 

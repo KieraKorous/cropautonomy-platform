@@ -1,4 +1,6 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
+
+import { captureScenario, downloadScenario, parseScenario } from "../scenario";
 
 import {
   GROWTH_STAGES,
@@ -98,6 +100,8 @@ export function Hud() {
   const setCameraMode = useSimStore((s) => s.setCameraMode);
   const toggleDetections = useSimStore((s) => s.toggleDetections);
   const requestCapture = useSimStore((s) => s.requestCapture);
+  const loadScenario = useSimStore((s) => s.loadScenario);
+  const seed = useSimStore((s) => s.seed);
   const toggleAi = useSimStore((s) => s.toggleAi);
   const resetAi = useSimStore((s) => s.resetAi);
   const setRoverCount = useSimStore((s) => s.setRoverCount);
@@ -109,6 +113,27 @@ export function Hud() {
     document.addEventListener("fullscreenchange", onChange);
     return () => document.removeEventListener("fullscreenchange", onChange);
   }, []);
+
+  // Scenario save/load (digital-twin snapshot of the whole world).
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [scenarioError, setScenarioError] = useState<string | null>(null);
+
+  const onSaveScenario = () => {
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+    downloadScenario(captureScenario(`virtual-field-${stamp}`));
+  };
+  const onLoadScenario = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // let the same file be picked again
+    if (!file) return;
+    const scenario = parseScenario(await file.text());
+    if (!scenario) {
+      setScenarioError("Not a valid scenario file.");
+      return;
+    }
+    setScenarioError(null);
+    loadScenario(scenario);
+  };
 
   const batteryPct = Math.round(telemetry.battery * 100);
   const batteryTone =
@@ -424,6 +449,41 @@ export function Hud() {
               value={projectedFruit > 0 ? projectedFruit.toLocaleString() : "—"}
             />
           </dl>
+        </div>
+
+        {/* Scenario manager — snapshot / restore the whole world */}
+        <div className="pointer-events-auto w-full rounded-lg border border-base-content/10 bg-base-100/80 p-3 backdrop-blur">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-base-content/60">
+              Scenario
+            </span>
+            <span className="font-mono text-[10px] tabular-nums text-base-content/45">
+              seed {seed}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button type="button" onClick={onSaveScenario} className="btn btn-xs btn-secondary">
+              Save
+            </button>
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              className="btn btn-xs btn-ghost"
+            >
+              Load
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={onLoadScenario}
+            />
+          </div>
+          <p className="mt-1.5 text-[10px] leading-tight text-base-content/45">
+            Saves the whole world — field, weather, obstacles, fleet poses, tasks.
+          </p>
+          {scenarioError ? <p className="mt-1 text-[10px] text-error">{scenarioError}</p> : null}
         </div>
       </div>
 
