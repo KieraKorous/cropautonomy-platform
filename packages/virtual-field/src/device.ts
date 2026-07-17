@@ -48,6 +48,8 @@ export interface DeviceSpec {
   batteryHover: number;
   /** Auto-land below this charge so a dead drone doesn't hang in the air (0 = n/a). */
   failsafeBattery: number;
+  /** Charge per second gained while docked in the depot. */
+  chargeRate: number;
   /** Treated as this-radius by fleetmates' avoidance. */
   radius: number;
   /** "Arrived" threshold, m. */
@@ -86,8 +88,6 @@ export interface DeviceSpec {
    */
   detect: { maxDistance: number; minArea: number; maxCount: number };
 
-  /** How far behind the headland this device's pad sits (keeps pads from overlapping). */
-  dockSetback: number;
   /** How far the body lifts while picked up. */
   dragLift: number;
   /** Per-index accent palette. */
@@ -111,6 +111,7 @@ export const DEVICE_SPECS: Record<DeviceKind, DeviceSpec> = {
     batteryDrain: 0.004,
     batteryHover: 0,
     failsafeBattery: 0,
+    chargeRate: 0.06, // ~17s from flat on the depot's charge post
     radius: 1.1,
     waypointRadius: 1.1,
     lookahead: 4,
@@ -122,7 +123,6 @@ export const DEVICE_SPECS: Record<DeviceKind, DeviceSpec> = {
     manualHint: "W A S D / arrows to drive.",
     lidar: true,
     detect: { maxDistance: 22, minArea: 0.0006, maxCount: 80 },
-    dockSetback: 2,
     dragLift: 1.4,
     colors: ["#3f6f5f", "#c1734a", "#4a6fa5", "#9c6b3f"]
   },
@@ -141,6 +141,7 @@ export const DEVICE_SPECS: Record<DeviceKind, DeviceSpec> = {
     batteryDrain: 0.009,
     batteryHover: 0.004, // staying up costs even when stationary
     failsafeBattery: 0.05, // auto-land rather than hang in the air dead
+    chargeRate: 0.08, // charges faster on the roof pad than a rover does
     radius: 1.4,
     waypointRadius: 2.2, // looser — it's moving fast and high
     lookahead: 9,
@@ -154,7 +155,6 @@ export const DEVICE_SPECS: Record<DeviceKind, DeviceSpec> = {
     lidar: false, // a 2D ground sweep from 12m would be physically meaningless
     // Off-nadir crops at 12m reach ~20m slant range and frame far smaller.
     detect: { maxDistance: 30, minArea: 0.00008, maxCount: 220 },
-    dockSetback: 6, // pad row sits behind the rover dock line
     dragLift: 0, // it already flies; no lift affordance needed
     colors: ["#4a6fa5", "#7a5aa8", "#3f8fa5", "#5a6fb8"] // cool tones vs the rover's earth
   }

@@ -42,6 +42,7 @@ src/
   types.ts             shared domain types
   crop.ts              crop entity system — species catalog + deterministic generator
   device.ts            GAIA device types — DeviceKind + DeviceSpec table (see below)
+  depot.ts             the shed that houses + charges the fleet; bay/helipad layout
   devices/fleet.ts     peer-class partition (rovers split among rovers, drones among drones)
   obstacle.ts          obstacle entities + generator
   scenario.ts          Scenario Manager — capture / download / parse a whole world
@@ -61,7 +62,7 @@ src/
     Device.tsx         Device (shared nav/steering/airframe) + Fleet
     bodies/            RoverBody · DroneBody — meshes that own their own effectors
     FieldSections.tsx  per-rover coverage-section tint
-    LandingPads.tsx    dock / helipad markers
+    Depot.tsx          the shed — bays, roof helipads, charge posts
     PhysicsWorld.tsx   Rapier: ground collider, obstacles, rover colliders
     Sensors.tsx        LiDAR sweep + GPS/IMU/odometry + point-cloud viz
     OnboardView.tsx    picture-in-picture rover camera (PIP sizing lives here)
@@ -109,8 +110,14 @@ Invariants worth knowing:
   nav command asks for — the rover path is unchanged by the drone's existence.
 - **Coverage splits among peers of the same class** (`devices/fleet.ts`). Rovers divide
   the field between rovers, drones between drones — so 1 rover + 1 drone each cover
-  everything, which is what you'd actually want. Different classes dock on different pad
-  rows (`dockSetback`) so they don't spawn inside each other.
+  everything, which is what you'd actually want.
+- **Home is a real place.** The depot ([`depot.ts`](src/depot.ts)) is a shed at the
+  headland: ground devices park in its open-fronted bays, aerial devices land on roof
+  helipads directly above them (so the two classes stack vertically rather than fight
+  for floor space). It's the spawn point, the "⌂ Depot" target, and where devices
+  **recharge** (`spec.chargeRate`) — which is what makes the battery model matter.
+  Unlike the sim-only overlays, the shed renders on the default layer: it's a real
+  structure, so device cameras and captured frames see it.
 - **The drone's survey swath is derived, not tuned.** `surveySwath()` computes its
   camera's ground footprint at cruise, so changing the altitude changes the flight plan
   to match (~12m strips at 12m vs the rover's ~0.75m alleys).

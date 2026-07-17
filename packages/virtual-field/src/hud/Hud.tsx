@@ -516,9 +516,16 @@ export function Hud() {
           <span className="text-xs font-semibold uppercase tracking-[0.12em] text-base-content/60">
             {deviceName(devices[activeDevice] ?? "gaia_r", activeDevice)}
           </span>
-          <span className="font-mono text-[11px] tabular-nums text-base-content/50">
-            {telemetry.battery > 0 ? `${batteryPct}%` : "flat"}
-          </span>
+          {telemetry.charging ? (
+            <span className="flex items-center gap-1 rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-semibold text-success">
+              <span className="animate-pulse">⚡</span>
+              {batteryPct}%
+            </span>
+          ) : (
+            <span className="font-mono text-[11px] tabular-nums text-base-content/50">
+              {telemetry.battery > 0 ? `${batteryPct}%` : "flat"}
+            </span>
+          )}
         </div>
         <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
           <Metric label="Position" value={`${telemetry.position.x.toFixed(1)}, ${telemetry.position.z.toFixed(1)}`} />
@@ -592,9 +599,9 @@ export function Hud() {
             type="button"
             onClick={returnHome}
             className="btn btn-sm btn-ghost"
-            title="Plan an A* route back to the dock and drive it"
+            title="Send the fleet back to the depot to dock and recharge"
           >
-            ⌂ Home
+            ⌂ Depot
           </button>
 
           <div className="mx-1 h-6 w-px bg-base-content/10" />

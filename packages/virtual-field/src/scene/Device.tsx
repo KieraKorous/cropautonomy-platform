@@ -6,9 +6,10 @@ import type { Group, PerspectiveCamera } from "three";
 import { DroneBody } from "./bodies/DroneBody";
 import { RoverBody } from "./bodies/RoverBody";
 import { deviceRuntimes, devicePose, dragTarget, type DeviceRuntime } from "./deviceState";
-import { blockLanes, deviceDock, rowHalfLength, surveyLanes } from "./field";
+import { blockLanes, rowHalfLength, surveyLanes } from "./field";
 import { driveInput } from "./driveInput";
 import { onboardCameraRef } from "./onboardCamera";
+import { depotBay } from "../depot";
 import { deviceSpec, surveySwath, type DeviceKind, type DeviceSpec } from "../device";
 import { peerIndex } from "../devices/fleet";
 import { planPath } from "../nav/astar";
@@ -75,13 +76,14 @@ function Device({ index, kind }: { index: number; kind: DeviceKind }) {
     [field, peer.ordinal, peer.count, spec]
   );
 
-  // Spawn (and return) at this device's pad on the field's near edge.
+  // Spawn (and return) at this device's bay in the depot: ground devices park
+  // inside the shed, aerial ones on a roof helipad — so `start.y` differs by kind.
   const start = useMemo(
-    () => deviceDock(field, peer.ordinal, peer.count, spec.dockSetback),
-    [field, peer.ordinal, peer.count, spec.dockSetback]
+    () => depotBay(field, peer.ordinal, peer.count, spec),
+    [field, peer.ordinal, peer.count, spec]
   );
 
-  const pose = useRef({ x: start.x, y: spec.restY, z: start.z, heading: 0, battery: 1 });
+  const pose = useRef({ x: start.x, y: start.y, z: start.z, heading: 0, battery: 1 });
   const nav = useRef<Nav>({
     ready: false,
     rowIndex: 0,
@@ -118,7 +120,7 @@ function Device({ index, kind }: { index: number; kind: DeviceKind }) {
   const runtime = useRef<DeviceRuntime>({
     kind,
     x: start.x,
-    y: spec.restY,
+    y: start.y,
     z: start.z,
     heading: 0,
     speed: 0
@@ -220,7 +222,8 @@ function Device({ index, kind }: { index: number; kind: DeviceKind }) {
 
     if (resetToken !== lastReset.current) {
       lastReset.current = resetToken;
-      pose.current = { x: start.x, y: spec.restY, z: start.z, heading: 0, battery: 1 };
+      // Reset returns everything to its depot bay, charged.
+      pose.current = { x: start.x, y: start.y, z: start.z, heading: 0, battery: 1 };
       flight.current = "grounded";
       clock.current.elapsed = 0;
       replan();
@@ -233,7 +236,7 @@ function Device({ index, kind }: { index: number; kind: DeviceKind }) {
       const snap = restorePoses[index];
       pose.current = {
         x: snap?.x ?? start.x,
-        y: snap?.y ?? spec.restY,
+        y: snap?.y ?? start.y,
         z: snap?.z ?? start.z,
         heading: snap?.heading ?? 0,
         battery: snap?.battery ?? 1
@@ -393,11 +396,11 @@ function Device({ index, kind }: { index: number; kind: DeviceKind }) {
           arrived = false;
           onArrive = null;
           if (overPad) {
-            allowLateral = false; // straight down onto the pad
-            targetY = spec.restY;
-            if (p.y <= spec.restY + 0.05) {
+            allowLateral = false; // straight down onto the depot's roof helipad
+            targetY = start.y;
+            if (p.y <= start.y + 0.05) {
               flight.current = "grounded";
-              docked.current = true;
+              docked.current = true; // on the pad → charging
             }
           } else {
             targetY = spec.cruiseY; // fly back at altitude, then descend
@@ -415,7 +418,7 @@ function Device({ index, kind }: { index: number; kind: DeviceKind }) {
           }
         } else {
           // Nothing to do → hover in place (a paused drone hangs, as it should).
-          targetY = flight.current === "grounded" ? spec.restY : p.y;
+          targetY = flight.current === "grounded" ? start.y : p.y;
         }
       }
 
@@ -464,10 +467,14 @@ function Device({ index, kind }: { index: number; kind: DeviceKind }) {
       }
     }
 
-    // --- Energy, in one place for every mode. Moving costs; for an aerial device
-    // merely staying up costs too.
-    if (!isDragged && p.battery > 0) {
+    // --- Energy, in one place for every mode. Docked in the depot it charges;
+    // otherwise moving costs, and for an aerial device merely staying up costs too.
+    if (docked.current) {
+      p.battery = Math.min(1, p.battery + spec.chargeRate * delta);
+    } else if (!isDragged && p.battery > 0) {
       const load = Math.abs(speed) > 0.01 ? spec.batteryDrain : 0;
+      // Keyed off `docked`, not height: a drone parked on the *roof* is high up
+      // but isn't holding itself there, so it must not pay to hover.
       const hover = spec.flies && p.y > spec.restY + 0.05 ? spec.batteryHover : 0;
       p.battery = Math.max(0, p.battery - (load + hover) * delta);
     }
@@ -503,7 +510,8 @@ function Device({ index, kind }: { index: number; kind: DeviceKind }) {
           position: { x: p.x, y: p.y, z: p.z },
           heading: p.heading,
           speed,
-          battery: p.battery
+          battery: p.battery,
+          charging: docked.current && p.battery < 1
         },
         running ? clock.current.elapsed : storeElapsed,
         Number.isFinite(fps) ? Math.round(fps) : 0

@@ -30,7 +30,7 @@ export interface Waypoint {
  * driven imperatively inside the render loop.
  */
 export interface RobotTelemetry {
-  /** World position, metres. y is fixed to the drive base height in Phase 1. */
+  /** World position, metres. `y` is real altitude — a drone's climbs. */
   position: { x: number; y: number; z: number };
   /** Heading in radians, 0 = +Z. */
   heading: number;
@@ -38,4 +38,6 @@ export interface RobotTelemetry {
   speed: number;
   /** Battery charge, 0–1. */
   battery: number;
+  /** Docked in the depot and taking charge. */
+  charging?: boolean;
 }

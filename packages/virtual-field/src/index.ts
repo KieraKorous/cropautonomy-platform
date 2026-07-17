@@ -35,6 +35,8 @@ export {
   type DeviceKind,
   type DeviceSpec
 } from "./device";
+// The depot — the shed that houses + charges the fleet, and the target of "Depot".
+export { DEPOT, DEPOT_ROOF_Y, depotBay, depotCenter, depotFrontZ } from "./depot";
 export { generateObstacles, type Obstacle, type ObstacleKind } from "./obstacle";
 export { planPath } from "./nav/astar";
 // Scenario Manager — snapshot/restore the whole world (digital-twin support).

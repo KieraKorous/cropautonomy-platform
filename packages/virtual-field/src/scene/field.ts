@@ -43,28 +43,6 @@ export function blockLanes(field: FieldConfig, index: number, count: number): nu
 }
 
 /**
- * The dock/pad for a device: parked at the near (headland) edge of the field,
- * lined up with the centre of its assigned block, facing into the field. Both the
- * spawn point and the target of "Return home".
- *
- * `setback` comes from the device spec so different classes park on different pad
- * rows — otherwise a lone rover and a lone drone (which each own the whole field
- * under peer-class partitioning) would spawn inside each other.
- */
-export function deviceDock(
-  field: FieldConfig,
-  ordinal: number,
-  count: number,
-  setback: number
-): { x: number; z: number } {
-  const lanes = blockLanes(field, ordinal, count);
-  const x = lanes.length
-    ? lanes[Math.floor(lanes.length / 2)]
-    : (ordinal - (count - 1) / 2) * 4;
-  return { x, z: -(rowHalfLength(field) + setback) };
-}
-
-/**
  * Survey strips for an aerial device: X centre-lines across its assigned block,
  * spaced by `swath` (its camera's ground footprint at cruise) rather than by crop
  * alleys — a drone doesn't drive between rows. Derived from the same block
