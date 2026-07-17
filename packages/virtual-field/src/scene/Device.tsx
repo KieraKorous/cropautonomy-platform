@@ -6,6 +6,7 @@ import type { Group, PerspectiveCamera } from "three";
 import { DroneBody } from "./bodies/DroneBody";
 import { RoverBody } from "./bodies/RoverBody";
 import { deviceRuntimes, devicePose, dragTarget, type DeviceRuntime } from "./deviceState";
+import { solarFactor } from "./environment";
 import { blockLanes, driveLanes, rowHalfLength, surveyLanes } from "./field";
 import { driveInput } from "./driveInput";
 import { onboardCameraRef } from "./onboardCamera";
@@ -61,6 +62,12 @@ function Device({ index, kind }: { index: number; kind: DeviceKind }) {
   const isActive = activeDevice === index;
   const accent = spec.colors[index % spec.colors.length];
 
+  // How much sun the panels get right now. Changes rarely (time of day / weather),
+  // so it's a memo off selectors rather than a per-frame recompute.
+  const timeOfDay = useSimStore((s) => s.timeOfDay);
+  const weather = useSimStore((s) => s.weather);
+  const solarGain = useMemo(() => solarFactor(timeOfDay, weather), [timeOfDay, weather]);
+
   // Coverage is split among peers of the same class (rovers vs drones), so a lone
   // rover and a lone drone each cover the whole field rather than half each.
   const peer = useMemo(() => peerIndex(devices, index), [devices, index]);
@@ -114,6 +121,8 @@ function Device({ index, kind }: { index: number; kind: DeviceKind }) {
   const covered = useRef<boolean[]>([]);
   /** Section fully covered → it has headed home. */
   const swept = useRef(false);
+  /** Came home on reserve rather than finishing — resume once recharged. */
+  const lowBattery = useRef(false);
 
   const flight = useRef<FlightPhase>("grounded");
 
@@ -266,6 +275,7 @@ function Device({ index, kind }: { index: number; kind: DeviceKind }) {
     homing.current = false;
     docked.current = false;
     swept.current = false; // initNav rebuilds `covered`
+    lowBattery.current = false;
   }
 
   useFrame((_, rawDelta) => {
@@ -359,11 +369,18 @@ function Device({ index, kind }: { index: number; kind: DeviceKind }) {
         beginReturn();
       }
 
-      // Battery failsafe: bring a dying drone down under control rather than
-      // leaving it hanging in the air.
-      if (spec.flies && p.battery <= spec.failsafeBattery && p.y > spec.restY + 0.05) {
-        homing.current = false;
-        flight.current = "landing";
+      // Low battery → abandon the task and head back to the depot to charge. The
+      // reserve is sized to actually get it home from the far corner of its
+      // section. Manual is exempt: don't wrestle the controls off the operator.
+      if (
+        navMode !== "manual" &&
+        !docked.current &&
+        !homing.current &&
+        p.battery > 0 &&
+        p.battery <= spec.reserveBattery
+      ) {
+        lowBattery.current = true;
+        beginReturn();
       }
 
       if (homing.current && p.battery > 0) {
@@ -490,6 +507,14 @@ function Device({ index, kind }: { index: number; kind: DeviceKind }) {
           // Nothing to do → hover in place (a paused drone hangs, as it should).
           targetY = flight.current === "grounded" ? start.y : p.y;
         }
+
+        // Truly flat mid-air (e.g. hand-flown past the reserve) → sink to the
+        // ground rather than hang there like a brick. Altitude integrates outside
+        // the battery gate, so this still works with a dead battery.
+        if (p.battery <= 0 && p.y > spec.restY) {
+          targetY = spec.restY;
+          allowLateral = false;
+        }
       }
 
       // --- Shared steering: turn toward the target and drive, biasing away from
@@ -537,16 +562,23 @@ function Device({ index, kind }: { index: number; kind: DeviceKind }) {
       }
     }
 
-    // --- Energy, in one place for every mode. Docked in the depot it charges;
-    // otherwise moving costs, and for an aerial device merely staying up costs too.
+    // --- Energy, in one place for every mode. Docked in the depot it charges off
+    // mains; out in the field the solar panels offset the draw, scaled by how much
+    // sun there actually is (time of day + weather).
     if (docked.current) {
       p.battery = Math.min(1, p.battery + spec.chargeRate * delta);
-    } else if (!isDragged && p.battery > 0) {
+      // Recharged after coming home on reserve → go finish the job.
+      if (lowBattery.current && running && p.battery >= 1) {
+        lowBattery.current = false;
+        docked.current = false;
+      }
+    } else if (!isDragged) {
       const load = Math.abs(speed) > 0.01 ? spec.batteryDrain : 0;
       // Keyed off `docked`, not height: a drone parked on the *roof* is high up
       // but isn't holding itself there, so it must not pay to hover.
       const hover = spec.flies && p.y > spec.restY + 0.05 ? spec.batteryHover : 0;
-      p.battery = Math.max(0, p.battery - (load + hover) * delta);
+      const solar = spec.solarRate * solarGain;
+      p.battery = Math.max(0, Math.min(1, p.battery + (solar - load - hover) * delta));
     }
 
     // Single authoritative transform write — lifts a ground device while picked up.
@@ -581,7 +613,8 @@ function Device({ index, kind }: { index: number; kind: DeviceKind }) {
           heading: p.heading,
           speed,
           battery: p.battery,
-          charging: docked.current && p.battery < 1
+          charging: docked.current && p.battery < 1,
+          returning: lowBattery.current && !docked.current
         },
         running ? clock.current.elapsed : storeElapsed,
         Number.isFinite(fps) ? Math.round(fps) : 0

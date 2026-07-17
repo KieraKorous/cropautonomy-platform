@@ -46,10 +46,21 @@ export interface DeviceSpec {
   batteryDrain: number;
   /** Extra charge per second merely to stay airborne (0 for ground devices). */
   batteryHover: number;
-  /** Auto-land below this charge so a dead drone doesn't hang in the air (0 = n/a). */
-  failsafeBattery: number;
-  /** Charge per second gained while docked in the depot. */
+  /**
+   * Return-to-depot reserve: at or below this charge the device abandons its task
+   * and heads home to recharge. Sized to get it back from the far corner of its
+   * section with margin — the point is to arrive, not to die trying.
+   */
+  reserveBattery: number;
+  /** Charge per second gained while docked in the depot (mains). */
   chargeRate: number;
+  /**
+   * Charge per second from the onboard solar panels in *full* sun. Scaled by the
+   * live sun intensity, so time of day and weather change how long a device can
+   * stay out. It offsets draw rather than replacing it — a drone can't fly on
+   * solar, but a rover can stretch a shift considerably on a clear day.
+   */
+  solarRate: number;
   /** Treated as this-radius by fleetmates' avoidance. */
   radius: number;
   /** "Arrived" threshold, m. */
@@ -110,8 +121,10 @@ export const DEVICE_SPECS: Record<DeviceKind, DeviceSpec> = {
     minSpeedFactor: 0.18,
     batteryDrain: 0.004,
     batteryHover: 0,
-    failsafeBattery: 0,
+    // ~19% gets it home from the far corner (≈170m of alley + headland); 22% for margin.
+    reserveBattery: 0.22,
     chargeRate: 0.06, // ~17s from flat on the depot's charge post
+    solarRate: 0.0015, // deck panels — stretches a clear-day shift by ~60%
     radius: 1.1,
     waypointRadius: 1.1,
     lookahead: 4,
@@ -140,8 +153,9 @@ export const DEVICE_SPECS: Record<DeviceKind, DeviceSpec> = {
     minSpeedFactor: 0.35,
     batteryDrain: 0.009,
     batteryHover: 0.004, // staying up costs even when stationary
-    failsafeBattery: 0.05, // auto-land rather than hang in the air dead
+    reserveBattery: 0.2, // it burns ~0.013/s in flight — leave real margin to get back
     chargeRate: 0.08, // charges faster on the roof pad than a rover does
+    solarRate: 0.0006, // token panel area against a heavy draw — you can't fly on solar
     radius: 1.4,
     waypointRadius: 2.2, // looser — it's moving fast and high
     lookahead: 9,

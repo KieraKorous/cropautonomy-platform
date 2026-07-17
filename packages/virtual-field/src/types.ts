@@ -40,4 +40,6 @@ export interface RobotTelemetry {
   battery: number;
   /** Docked in the depot and taking charge. */
   charging?: boolean;
+  /** Came off task on low battery and is heading back to the depot. */
+  returning?: boolean;
 }

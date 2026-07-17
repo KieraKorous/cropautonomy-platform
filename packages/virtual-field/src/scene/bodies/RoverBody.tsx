@@ -53,6 +53,18 @@ export function RoverBody({
           metalness={0.3}
         />
       </mesh>
+      {/* Solar array across the deck — trickle-charges it out in the field */}
+      <mesh castShadow position={[0, 0.35, -0.05]}>
+        <boxGeometry args={[1.16, 0.03, 1.5]} />
+        <meshStandardMaterial color="#111a2e" roughness={0.25} metalness={0.55} />
+      </mesh>
+      {/* Cell dividers, so it reads as a panel rather than a black slab */}
+      {[-0.5, -0.17, 0.16, 0.49].map((z) => (
+        <mesh key={z} position={[0, 0.37, z]}>
+          <boxGeometry args={[1.16, 0.006, 0.02]} />
+          <meshStandardMaterial color="#3d5680" roughness={0.4} metalness={0.5} />
+        </mesh>
+      ))}
       {/* Sensor mast + camera head (forward = +Z) */}
       <mesh castShadow position={[0, 0.75, 0.35]}>
         <cylinderGeometry args={[0.06, 0.06, 0.7, 12]} />

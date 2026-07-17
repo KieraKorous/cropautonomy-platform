@@ -10,6 +10,7 @@ import {
   type Weather
 } from "../crop";
 import { DEVICE_SPECS, MAX_DEVICES, deviceName, deviceSpec } from "../device";
+import { solarFactor } from "../scene/environment";
 
 import { useSimStore } from "../store/simStore";
 import type { TimeOfDay } from "../types";
@@ -81,6 +82,8 @@ export function Hud() {
   const devices = useSimStore((s) => s.devices);
   const activeDevice = useSimStore((s) => s.activeDevice);
   const activeSpec = deviceSpec(devices[activeDevice] ?? "gaia_r");
+  // Same value that drives the panels — and the scene's lighting.
+  const solarGain = solarFactor(timeOfDay, weather);
   const fleet = useSimStore((s) => s.fleet);
 
   const toggleRun = useSimStore((s) => s.toggleRun);
@@ -583,6 +586,14 @@ export function Hud() {
               <span className="animate-pulse">⚡</span>
               {batteryPct}%
             </span>
+          ) : telemetry.returning ? (
+            <span
+              className="flex items-center gap-1 rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-semibold text-warning"
+              title="Low battery — returning to the depot to charge"
+            >
+              <span className="animate-pulse">⌂</span>
+              {batteryPct}% · RTD
+            </span>
           ) : (
             <span className="font-mono text-[11px] tabular-nums text-base-content/50">
               {telemetry.battery > 0 ? `${batteryPct}%` : "flat"}
@@ -617,6 +628,10 @@ export function Hud() {
             <Metric label="IMU yaw/s" value={`${sensors.yawRateDeg.toFixed(0)}°`} />
             <Metric label="Odometer" value={`${sensors.odometerM.toFixed(1)} m`} />
             <Metric label="Alt AGL" value={`${sensors.altitudeAgl.toFixed(1)} m`} />
+            <Metric
+              label="Solar"
+              value={`${Math.round(solarGain * 100)}%`}
+            />
             {activeSpec.lidar ? (
               <Metric
                 label="LiDAR near"

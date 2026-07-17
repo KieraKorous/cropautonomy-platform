@@ -84,6 +84,12 @@ export function DroneBody({
           metalness={0.35}
         />
       </mesh>
+      {/* Solar skin on the canopy. Token area against a heavy flight draw — it
+          stretches a hover, it doesn't keep it up. */}
+      <mesh position={[0, 0.185, 0.05]}>
+        <boxGeometry args={[0.3, 0.012, 0.38]} />
+        <meshStandardMaterial color="#111a2e" roughness={0.25} metalness={0.55} />
+      </mesh>
       {/* Arms — an X frame under the rotors */}
       {[1, -1].map((s) => (
         <mesh key={s} position={[0, 0.05, 0]} rotation={[0, (s * Math.PI) / 4, 0]} castShadow>

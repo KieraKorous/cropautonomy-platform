@@ -118,6 +118,14 @@ Invariants worth knowing:
   **recharge** (`spec.chargeRate`) — which is what makes the battery model matter.
   Unlike the sim-only overlays, the shed renders on the default layer: it's a real
   structure, so device cameras and captured frames see it.
+- **Energy is a closed loop, and it's coupled to the weather.** Devices drain while
+  working (a drone also pays to *hover*), gain from **solar panels** scaled by the live
+  sun, return to the depot on a **reserve** sized to actually get them home, charge off
+  mains while docked, and resume where they left off. `solarFactor()` derives panel yield
+  from the *same* effective sun intensity that lights the scene — so if it looks dark
+  out, the devices really are charging slowly, and a night or rain shift means shorter
+  runs and more trips home. This matters: a rover drains in ~250s but a full sweep is
+  ~1600s of driving, so the field only gets covered *because* of the charge cycle.
 - **The drone's survey swath is derived, not tuned.** `surveySwath()` computes its
   camera's ground footprint at cruise, so changing the altitude changes the flight plan
   to match (~12m strips at 12m vs the rover's ~0.75m alleys).

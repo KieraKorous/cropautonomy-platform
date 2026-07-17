@@ -66,6 +66,18 @@ export const ENV_PRESETS: Record<TimeOfDay, EnvPreset> = {
   }
 };
 
+/**
+ * How much sun the panels are getting, 0–1, relative to clear midday.
+ *
+ * Derived from the *same* effective sun intensity that lights the scene, so the
+ * energy model and the visuals can't disagree: if it looks dark out, the devices
+ * really are charging slowly. Night ≈ 0.09, rain ≈ 0.3, clear day = 1.
+ */
+export function solarFactor(t: TimeOfDay, w: Weather): number {
+  const sun = applyWeather(ENV_PRESETS[t], w).sunIntensity;
+  return Math.max(0, Math.min(1, sun / ENV_PRESETS.day.sunIntensity));
+}
+
 // Layer a weather condition over the time-of-day base: weather dims the sun,
 // thickens/colours the fog, and tints the sky. Kept as a pure transform of the
 // preset so Lighting/Ground/Scene stay weather-agnostic — they just consume the
