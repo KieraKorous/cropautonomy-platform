@@ -7,15 +7,17 @@ import { observeAi, resetAnalytics } from "../ai/analytics";
 import { runInference } from "../ai/inference";
 import { devicePose } from "./deviceState";
 import { onboardCameraRef } from "./onboardCamera";
-import { PIP } from "./OnboardView";
+import { CAPTURE_ASPECT } from "./OnboardView";
 import type { Crop } from "../crop";
 import { deviceSpec, type DeviceSpec } from "../device";
 import { useSimStore } from "../store/simStore";
 import { projectDetections } from "../vision/detections";
 
 const OVERLAY_INTERVAL = 0.12; // s → ~8Hz detection overlay refresh
+// Fixed capture resolution — independent of how the user has sized the on-screen
+// feed, so exported dataset frames stay consistent.
 const CAPTURE_W = 640;
-const CAPTURE_H = Math.round((CAPTURE_W * PIP.h) / PIP.w);
+const CAPTURE_H = Math.round(CAPTURE_W / CAPTURE_ASPECT);
 
 function triggerDownload(href: string, filename: string) {
   const a = document.createElement("a");

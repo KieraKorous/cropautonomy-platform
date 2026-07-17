@@ -30,6 +30,10 @@ const DEFAULT_FIELD: FieldConfig = fieldForSpecies(FIELD_SIZE, DEFAULT_SPECIES);
 
 const OBSTACLE_COUNT = 12;
 
+function clampNum(v: number, lo: number, hi: number) {
+  return Math.max(lo, Math.min(hi, v));
+}
+
 const FULL_BATTERY: RobotTelemetry = {
   position: { x: 0, y: 0, z: 0 },
   heading: 0,
@@ -105,6 +109,13 @@ export interface SimState {
   /** True while the user is dragging the rover — suspends nav + freezes the camera. */
   dragging: boolean;
 
+  /**
+   * The onboard camera feed's placement, in CSS px from the bottom-right corner.
+   * User-movable and resizable, so it's state rather than a constant — the WebGL
+   * inset and the HUD frame both read it, which is what keeps them aligned.
+   */
+  pip: { w: number; h: number; right: number; bottom: number };
+
   /** Sensor simulation. */
   showLidar: boolean;
   sensorNoise: boolean; // gaussian noise + dropout on
@@ -166,6 +177,8 @@ export interface SimState {
   regenerateObstacles: () => void;
   clearObstacles: () => void;
   setDragging: (d: boolean) => void;
+  /** Move/resize the camera feed (clamped to something usable + on-screen). */
+  setPip: (patch: Partial<SimState["pip"]>) => void;
   toggleLidar: () => void;
   toggleSensorNoise: () => void;
   toggleRtk: () => void;
@@ -223,6 +236,8 @@ export const useSimStore = create<SimState>((set) => ({
   obstacleSeed: 1,
 
   dragging: false,
+
+  pip: { w: 340, h: 210, right: 16, bottom: 16 },
 
   showLidar: true,
   sensorNoise: true,
@@ -296,6 +311,18 @@ export const useSimStore = create<SimState>((set) => ({
     }),
   clearObstacles: () => set({ obstacles: [] }),
   setDragging: (dragging) => set({ dragging }),
+  setPip: (patch) =>
+    set((s) => {
+      const p = { ...s.pip, ...patch };
+      return {
+        pip: {
+          w: clampNum(p.w, 200, 900),
+          h: clampNum(p.h, 130, 640),
+          right: Math.max(8, p.right),
+          bottom: Math.max(8, p.bottom)
+        }
+      };
+    }),
   toggleLidar: () => set((s) => ({ showLidar: !s.showLidar })),
   toggleSensorNoise: () => set((s) => ({ sensorNoise: !s.sensorNoise })),
   toggleRtk: () => set((s) => ({ rtk: !s.rtk })),

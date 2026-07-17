@@ -6,13 +6,12 @@ import type { Group, PerspectiveCamera } from "three";
 import { DroneBody } from "./bodies/DroneBody";
 import { RoverBody } from "./bodies/RoverBody";
 import { deviceRuntimes, devicePose, dragTarget, type DeviceRuntime } from "./deviceState";
-import { blockLanes, rowHalfLength, surveyLanes } from "./field";
+import { blockLanes, driveLanes, rowHalfLength, surveyLanes } from "./field";
 import { driveInput } from "./driveInput";
 import { onboardCameraRef } from "./onboardCamera";
-import { depotBay } from "../depot";
+import { depotBay, depotFrontZ } from "../depot";
 import { deviceSpec, surveySwath, type DeviceKind, type DeviceSpec } from "../device";
 import { peerIndex } from "../devices/fleet";
-import { planPath } from "../nav/astar";
 import { useSimStore } from "../store/simStore";
 import type { NavMode } from "../store/simStore";
 import type { Waypoint } from "../types";
@@ -108,9 +107,13 @@ function Device({ index, kind }: { index: number; kind: DeviceKind }) {
   const homing = useRef(false);
   const homeIndex = useRef(0);
   const homePath = useRef<Waypoint[]>([]);
-  /** Parked at the pad after a Home — stays put until told to work again. */
+  /** Parked in the depot bay — stays put (and charges) until told to work again. */
   const docked = useRef(false);
   const prevRunning = useRef(false);
+  /** Which passes of this device's section have been run. */
+  const covered = useRef<boolean[]>([]);
+  /** Section fully covered → it has headed home. */
+  const swept = useRef(false);
 
   const flight = useRef<FlightPhase>("grounded");
 
@@ -157,6 +160,8 @@ function Device({ index, kind }: { index: number; kind: DeviceKind }) {
       }
     }
     const zDir: 1 | -1 = p.z <= 0 ? 1 : -1;
+    covered.current = new Array(lanes.length).fill(false);
+    swept.current = false;
     nav.current = {
       ready: true,
       rowIndex,
@@ -168,15 +173,35 @@ function Device({ index, kind }: { index: number; kind: DeviceKind }) {
     };
   }
 
+  /** Nearest pass we haven't run yet, or -1 when the section is fully covered. */
+  function nextUncovered(from: number): number {
+    let best = -1;
+    let bestD = Infinity;
+    for (let i = 0; i < lanes.length; i++) {
+      if (covered.current[i]) continue;
+      const d = Math.abs(i - from);
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    }
+    return best;
+  }
+
   function nextWaypoint() {
     const half = rowHalfLength(field);
     const n = nav.current;
     if (n.phase === "traverse") {
-      let next = n.rowIndex + n.stepDir;
-      if (next < 0 || next > lanes.length - 1) {
-        n.stepDir = (n.stepDir * -1) as 1 | -1;
-        next = n.rowIndex + n.stepDir;
+      // That pass is done. Sweep to the nearest one still outstanding; when there
+      // are none left the section is covered and the device heads for the depot.
+      covered.current[n.rowIndex] = true;
+      const next = nextUncovered(n.rowIndex);
+      if (next === -1) {
+        swept.current = true;
+        beginReturn();
+        return;
       }
+      n.stepDir = next > n.rowIndex ? 1 : -1;
       n.rowIndex = next;
       n.phase = "step";
       n.tx = lanes[n.rowIndex] ?? n.tx;
@@ -189,6 +214,50 @@ function Device({ index, kind }: { index: number; kind: DeviceKind }) {
     }
   }
 
+  /**
+   * The route back to the depot bay.
+   *
+   * Ground devices must not cut across the crop beds, so they don't plan a
+   * straight-line/A* path across the field: they drive *out along their alley* to
+   * the headland, run the headland across to their bay, and turn in — which is
+   * what real equipment does. (A* only knows about obstacles, not crops, so it
+   * would happily route diagonally through the rows.) Nothing is generated on the
+   * headland, so this leg needs no planning; reactive avoidance still handles any
+   * obstacle met on the way out.
+   *
+   * Aerial devices just fly straight to the pad — they're above all of it.
+   */
+  function homeRoute(): Waypoint[] {
+    if (spec.flies) return [{ x: start.x, z: start.z }];
+
+    const p = pose.current;
+    const headZ = depotFrontZ(field);
+    const all = driveLanes(field);
+
+    // Snap to the nearest alley so the exit leg runs *between* beds, not over them.
+    let exitX = p.x;
+    let best = Infinity;
+    for (const lx of all) {
+      const d = Math.abs(lx - p.x);
+      if (d < best) {
+        best = d;
+        exitX = lx;
+      }
+    }
+
+    const route: Waypoint[] = [];
+    if (p.z > headZ + 1) route.push({ x: exitX, z: headZ }); // out along the row
+    route.push({ x: start.x, z: headZ }); // along the headland to the bay
+    route.push({ x: start.x, z: start.z }); // turn in
+    return route;
+  }
+
+  function beginReturn() {
+    homePath.current = homeRoute();
+    homeIndex.current = 0;
+    homing.current = homePath.current.length > 0;
+  }
+
   /** Wipe every derived nav decision so the device re-plans from where it is. */
   function replan() {
     nav.current.ready = false;
@@ -196,6 +265,7 @@ function Device({ index, kind }: { index: number; kind: DeviceKind }) {
     wp.current.index = 0;
     homing.current = false;
     docked.current = false;
+    swept.current = false; // initNav rebuilds `covered`
   }
 
   useFrame((_, rawDelta) => {
@@ -252,8 +322,12 @@ function Device({ index, kind }: { index: number; kind: DeviceKind }) {
     clock.current.frameTime += rawDelta;
 
     // Un-park when the operator asks for work again (Run after a pause, a mode
-    // switch, or a fresh command).
-    if (running && !prevRunning.current) docked.current = false;
+    // switch, or a fresh command). If it already finished its section, Run means
+    // "go again" — start a fresh sweep rather than instantly re-homing.
+    if (running && !prevRunning.current) {
+      if (swept.current) replan();
+      docked.current = false;
+    }
     prevRunning.current = running;
     if (wp.current.mode !== navMode && navMode !== "coverage") docked.current = false;
 
@@ -282,11 +356,7 @@ function Device({ index, kind }: { index: number; kind: DeviceKind }) {
       if (homeToken !== lastHome.current) {
         lastHome.current = homeToken;
         docked.current = false;
-        homePath.current = spec.flies
-          ? [{ x: start.x, z: start.z }]
-          : planPath(field, obstacles, { x: p.x, z: p.z }, start);
-        homeIndex.current = 0;
-        homing.current = homePath.current.length > 0;
+        beginReturn();
       }
 
       // Battery failsafe: bring a dying drone down under control rather than

@@ -10,7 +10,7 @@ import {
   type Weather
 } from "../crop";
 import { DEVICE_SPECS, MAX_DEVICES, deviceName, deviceSpec } from "../device";
-import { PIP } from "../scene/OnboardView";
+
 import { useSimStore } from "../store/simStore";
 import type { TimeOfDay } from "../types";
 
@@ -70,6 +70,8 @@ export function Hud() {
   const sensorNoise = useSimStore((s) => s.sensorNoise);
   const rtk = useSimStore((s) => s.rtk);
   const cameraMode = useSimStore((s) => s.cameraMode);
+  const pip = useSimStore((s) => s.pip);
+  const setPip = useSimStore((s) => s.setPip);
   const showDetections = useSimStore((s) => s.showDetections);
   const detections = useSimStore((s) => s.detections);
   const captureCount = useSimStore((s) => s.captureCount);
@@ -112,10 +114,58 @@ export function Hud() {
 
   const [isFullscreen, setIsFullscreen] = useState(false);
   useEffect(() => {
-    const onChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    const onChange = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement));
+      // The canvas is sized from a measured container. Entering/leaving fullscreen
+      // resizes it outside the normal layout flow, and the measurement can settle
+      // on the old size — leaving the view stretched after exiting. Nudge a
+      // re-measure once the browser has finished the transition.
+      requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
+    };
     document.addEventListener("fullscreenchange", onChange);
     return () => document.removeEventListener("fullscreenchange", onChange);
   }, []);
+
+  // Move / resize the camera feed. Pointer capture on the window means the drag
+  // keeps tracking even when the cursor outruns the small handle.
+  const pipDrag = useRef<{ x: number; y: number; right: number; bottom: number } | null>(null);
+  const onPipDragStart = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    pipDrag.current = { x: e.clientX, y: e.clientY, right: pip.right, bottom: pip.bottom };
+    const move = (ev: PointerEvent) => {
+      const s = pipDrag.current;
+      if (!s) return;
+      // Anchored bottom-right, so rightward/downward cursor motion *reduces* the offsets.
+      setPip({ right: s.right - (ev.clientX - s.x), bottom: s.bottom + (ev.clientY - s.y) });
+    };
+    const up = () => {
+      pipDrag.current = null;
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
+  const pipResize = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
+  const onPipResizeStart = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    pipResize.current = { x: e.clientX, y: e.clientY, w: pip.w, h: pip.h };
+    const move = (ev: PointerEvent) => {
+      const s = pipResize.current;
+      if (!s) return;
+      // Grip is the top-left corner of a bottom-right-anchored box: dragging left
+      // widens it, dragging down shrinks its height.
+      setPip({ w: s.w - (ev.clientX - s.x), h: s.h - (ev.clientY - s.y) });
+    };
+    const up = () => {
+      pipResize.current = null;
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
 
   // Scenario save/load (digital-twin snapshot of the whole world).
   const fileRef = useRef<HTMLInputElement>(null);
@@ -317,12 +367,18 @@ export function Hud() {
       </div>
 
       {/* Top-right: performance + field/environment controls */}
-      <div className="absolute right-4 top-4 flex w-56 flex-col items-end gap-2">
+      {/* Right-hand panels. A column-direction flex box with `flex-wrap-reverse`
+          and a bounded height: panels fill the right column top-to-bottom, then
+          wrap into a *second column to the left* once they run out of room. So a
+          windowed field gets two columns automatically and fullscreen gets one,
+          with no breakpoint. The max-height stops the stack short of the camera
+          feed in the bottom-right corner. */}
+      <div className="absolute right-4 top-4 flex max-h-[calc(100%-16rem)] flex-col flex-wrap-reverse content-start items-end gap-2">
         <div className="pointer-events-auto rounded-lg border border-base-content/10 bg-base-100/80 px-3 py-1.5 backdrop-blur">
           <span className="font-mono text-xs tabular-nums text-base-content/70">{fps} FPS</span>
         </div>
 
-        <div className="pointer-events-auto w-full rounded-lg border border-base-content/10 bg-base-100/80 p-3 backdrop-blur">
+        <div className="pointer-events-auto w-56 rounded-lg border border-base-content/10 bg-base-100/80 p-3 backdrop-blur">
           <div className="mb-2 flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-[0.12em] text-base-content/60">
               Field
@@ -401,7 +457,7 @@ export function Hud() {
         </div>
 
         {/* Vision / dataset capture */}
-        <div className="pointer-events-auto w-full rounded-lg border border-base-content/10 bg-base-100/80 p-3 backdrop-blur">
+        <div className="pointer-events-auto w-56 rounded-lg border border-base-content/10 bg-base-100/80 p-3 backdrop-blur">
           <div className="mb-2 flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-[0.12em] text-base-content/60">
               Vision
@@ -428,7 +484,7 @@ export function Hud() {
         </div>
 
         {/* AI perception layer */}
-        <div className="pointer-events-auto w-full rounded-lg border border-base-content/10 bg-base-100/80 p-3 backdrop-blur">
+        <div className="pointer-events-auto w-56 rounded-lg border border-base-content/10 bg-base-100/80 p-3 backdrop-blur">
           <div className="mb-2 flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-[0.12em] text-base-content/60">
               AI scout
@@ -475,7 +531,7 @@ export function Hud() {
         </div>
 
         {/* Scenario manager — snapshot / restore the whole world */}
-        <div className="pointer-events-auto w-full rounded-lg border border-base-content/10 bg-base-100/80 p-3 backdrop-blur">
+        <div className="pointer-events-auto w-56 rounded-lg border border-base-content/10 bg-base-100/80 p-3 backdrop-blur">
           <div className="mb-2 flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-[0.12em] text-base-content/60">
               Scenario
@@ -647,25 +703,26 @@ export function Hud() {
         </div>
       </div>
 
-      {/* Bottom-right: onboard camera feed. This is just the labelled frame — the
-          live image is the WebGL picture-in-picture drawn by <OnboardView />,
-          which anchors to the exact same corner + size (see PIP in OnboardView). */}
+      {/* Onboard camera feed. This is just the labelled frame — the live image is
+          the WebGL picture-in-picture drawn by <OnboardView />, which reads the
+          same `pip` values, so the frame lands exactly around the feed. Drag the
+          caption bar to move it; drag the top-left grip to resize. */}
       <div
-        className="pointer-events-none absolute bottom-4 right-4 overflow-hidden rounded-md border border-base-content/25 shadow-lg"
-        style={{ width: PIP.w, height: PIP.h }}
+        className="pointer-events-none absolute overflow-hidden rounded-md border border-base-content/25 shadow-lg"
+        style={{ width: pip.w, height: pip.h, right: pip.right, bottom: pip.bottom }}
       >
         {aiRunning ? (
           <svg
-            viewBox={`0 0 ${PIP.w} ${PIP.h}`}
+            viewBox={`0 0 ${pip.w} ${pip.h}`}
             className="absolute inset-0 h-full w-full"
             preserveAspectRatio="none"
           >
             {aiPredictions.map((p, i) => {
               const color = p.predictedDiseased ? "#ef6f5e" : "#6fe0a0";
-              const bx = p.x * PIP.w;
-              const by = p.y * PIP.h;
-              const bw = p.w * PIP.w;
-              const bh = p.h * PIP.h;
+              const bx = p.x * pip.w;
+              const by = p.y * pip.h;
+              const bw = p.w * pip.w;
+              const bh = p.h * pip.h;
               return (
                 <g key={i}>
                   <rect
@@ -689,16 +746,16 @@ export function Hud() {
           </svg>
         ) : showDetections ? (
           <svg
-            viewBox={`0 0 ${PIP.w} ${PIP.h}`}
+            viewBox={`0 0 ${pip.w} ${pip.h}`}
             className="absolute inset-0 h-full w-full"
             preserveAspectRatio="none"
           >
             {detections.map((d, i) => {
               const color = d.diseased ? "#f6b73c" : "#7fe6ff";
-              const bx = d.x * PIP.w;
-              const by = d.y * PIP.h;
-              const bw = d.w * PIP.w;
-              const bh = d.h * PIP.h;
+              const bx = d.x * pip.w;
+              const by = d.y * pip.h;
+              const bw = d.w * pip.w;
+              const bh = d.h * pip.h;
               return (
                 <g key={i}>
                   <rect
@@ -721,12 +778,27 @@ export function Hud() {
             })}
           </svg>
         ) : null}
-        <div className="absolute left-0 top-0 flex items-center gap-1.5 rounded-br-md bg-base-100/80 px-2 py-1 backdrop-blur">
+        {/* Caption doubles as the drag handle */}
+        <div
+          onPointerDown={onPipDragStart}
+          title="Drag to move the camera feed"
+          className="pointer-events-auto absolute left-0 top-0 flex cursor-move items-center gap-1.5 rounded-br-md bg-base-100/80 px-2 py-1 backdrop-blur"
+        >
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-error" />
           <span className="text-[10px] font-semibold uppercase tracking-wider text-base-content/70">
             {cameraMode === "depth" ? "Depth" : "RGB"}
             {activeSpec.flies ? " · Nadir" : ""} · {deviceName(devices[activeDevice] ?? "gaia_r", activeDevice)}
           </span>
+        </div>
+
+        {/* Resize grip. The feed is anchored bottom-right, so the top-left corner
+            is the one that changes its size. */}
+        <div
+          onPointerDown={onPipResizeStart}
+          title="Drag to resize the camera feed"
+          className="pointer-events-auto absolute bottom-0 left-0 h-4 w-4 cursor-nesw-resize"
+        >
+          <div className="absolute bottom-1 left-1 h-2 w-2 border-b-2 border-l-2 border-base-content/40" />
         </div>
         <div className="pointer-events-auto absolute right-0 top-0 flex rounded-bl-md bg-base-100/80 backdrop-blur">
           <button

@@ -5,10 +5,12 @@ import { MeshDepthMaterial } from "three";
 import { onboardCameraRef } from "./onboardCamera";
 import { useSimStore } from "../store/simStore";
 
-// Picture-in-picture size (CSS px). Kept in sync with the DOM frame the HUD draws
-// around it (CameraFeed in Hud.tsx) — both anchor to the bottom-right with the
-// same 16px margin, so the WebGL feed sits exactly inside the labelled frame.
-export const PIP = { w: 340, h: 210, margin: 16 };
+/**
+ * Aspect of *captured* dataset frames. Deliberately a constant rather than the
+ * live feed's aspect: the user can resize the on-screen feed freely, and that must
+ * not change the resolution/framing of the data you export.
+ */
+export const CAPTURE_ASPECT = 16 / 10;
 
 // Takes over the render loop (priority 1 disables R3F's auto-render) to draw two
 // passes each frame: the full orbit view, then the rover's onboard camera into a
@@ -29,22 +31,25 @@ export function OnboardView() {
     gl.setViewport(0, 0, size.width, size.height);
     gl.render(scene, camera);
 
-    // Onboard feed — bottom-right inset. WebGL's origin is bottom-left, so y is
-    // just the margin.
+    // Onboard feed — an inset anchored to the bottom-right, sized and placed by
+    // the user (store `pip`). WebGL's origin is bottom-left, so `bottom` maps to y
+    // directly. The HUD frame reads the same values, which is what keeps the
+    // labelled frame exactly around the feed.
     const cam = onboardCameraRef.current;
     if (!cam) return;
-    const aspect = PIP.w / PIP.h;
+    const { pip, cameraMode } = useSimStore.getState();
+    const aspect = pip.w / pip.h;
     if (cam.aspect !== aspect) {
       cam.aspect = aspect;
       cam.updateProjectionMatrix();
     }
-    const x = size.width - PIP.w - PIP.margin;
-    const y = PIP.margin;
-    gl.setViewport(x, y, PIP.w, PIP.h);
-    gl.setScissor(x, y, PIP.w, PIP.h);
+    const x = size.width - pip.w - pip.right;
+    const y = pip.bottom;
+    gl.setViewport(x, y, pip.w, pip.h);
+    gl.setScissor(x, y, pip.w, pip.h);
     gl.setScissorTest(true);
 
-    const depth = useSimStore.getState().cameraMode === "depth";
+    const depth = cameraMode === "depth";
     if (depth) {
       // Compress the camera's far plane so the depth ramp spans the near field,
       // then render the whole scene with the depth override material.
