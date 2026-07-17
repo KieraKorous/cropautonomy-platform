@@ -126,20 +126,25 @@ export function Hud() {
     return () => document.removeEventListener("fullscreenchange", onChange);
   }, []);
 
-  // Move / resize the camera feed. Pointer capture on the window means the drag
-  // keeps tracking even when the cursor outruns the small handle.
-  const pipDrag = useRef<{ x: number; y: number; right: number; bottom: number } | null>(null);
-  const onPipDragStart = (e: React.PointerEvent) => {
+  // Move / resize the camera feed.
+  //
+  // The feed is anchored to the bottom-right, so both offsets run *backwards* from
+  // cursor motion: dragging right must shrink `right`, dragging down must shrink
+  // `bottom` (CSS `bottom` grows upward). Getting that sign wrong is what makes a
+  // drag feel inverted.
+  //
+  // Listeners go on the window so the drag keeps tracking when the cursor outruns
+  // the frame, and it still ends if you release outside the canvas.
+  const startPipGesture = (
+    e: React.PointerEvent,
+    onMove: (dx: number, dy: number) => void
+  ) => {
     e.stopPropagation();
-    pipDrag.current = { x: e.clientX, y: e.clientY, right: pip.right, bottom: pip.bottom };
-    const move = (ev: PointerEvent) => {
-      const s = pipDrag.current;
-      if (!s) return;
-      // Anchored bottom-right, so rightward/downward cursor motion *reduces* the offsets.
-      setPip({ right: s.right - (ev.clientX - s.x), bottom: s.bottom + (ev.clientY - s.y) });
-    };
+    e.preventDefault();
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    const move = (ev: PointerEvent) => onMove(ev.clientX - x0, ev.clientY - y0);
     const up = () => {
-      pipDrag.current = null;
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
     };
@@ -147,24 +152,25 @@ export function Hud() {
     window.addEventListener("pointerup", up);
   };
 
-  const pipResize = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
+  const onPipDragStart = (e: React.PointerEvent) => {
+    const from = { right: pip.right, bottom: pip.bottom };
+    const box = document.getElementById("virtual-field-root")?.getBoundingClientRect();
+    startPipGesture(e, (dx, dy) => {
+      // Keep it inside the field, so the feed can never be dragged off-screen.
+      const maxRight = box ? Math.max(8, box.width - pip.w - 8) : Infinity;
+      const maxBottom = box ? Math.max(8, box.height - pip.h - 8) : Infinity;
+      setPip({
+        right: Math.min(maxRight, from.right - dx),
+        bottom: Math.min(maxBottom, from.bottom - dy)
+      });
+    });
+  };
+
   const onPipResizeStart = (e: React.PointerEvent) => {
-    e.stopPropagation();
-    pipResize.current = { x: e.clientX, y: e.clientY, w: pip.w, h: pip.h };
-    const move = (ev: PointerEvent) => {
-      const s = pipResize.current;
-      if (!s) return;
-      // Grip is the top-left corner of a bottom-right-anchored box: dragging left
-      // widens it, dragging down shrinks its height.
-      setPip({ w: s.w - (ev.clientX - s.x), h: s.h - (ev.clientY - s.y) });
-    };
-    const up = () => {
-      pipResize.current = null;
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
+    const from = { w: pip.w, h: pip.h };
+    // The grip is the top-left corner of a bottom-right-anchored box — the only
+    // corner that's free to move — so dragging up/left grows the feed.
+    startPipGesture(e, (dx, dy) => setPip({ w: from.w - dx, h: from.h - dy }));
   };
 
   // Scenario save/load (digital-twin snapshot of the whole world).
@@ -708,7 +714,9 @@ export function Hud() {
           same `pip` values, so the frame lands exactly around the feed. Drag the
           caption bar to move it; drag the top-left grip to resize. */}
       <div
-        className="pointer-events-none absolute overflow-hidden rounded-md border border-base-content/25 shadow-lg"
+        onPointerDown={onPipDragStart}
+        title="Drag to move · grab the corner grip to resize"
+        className="pointer-events-auto absolute cursor-move overflow-hidden rounded-md border-2 border-base-content/25 shadow-lg hover:border-primary/60"
         style={{ width: pip.w, height: pip.h, right: pip.right, bottom: pip.bottom }}
       >
         {aiRunning ? (
@@ -778,12 +786,9 @@ export function Hud() {
             })}
           </svg>
         ) : null}
-        {/* Caption doubles as the drag handle */}
-        <div
-          onPointerDown={onPipDragStart}
-          title="Drag to move the camera feed"
-          className="pointer-events-auto absolute left-0 top-0 flex cursor-move items-center gap-1.5 rounded-br-md bg-base-100/80 px-2 py-1 backdrop-blur"
-        >
+        {/* Caption sits along the bottom so it doesn't fight the resize grip.
+            pointer-events-none → dragging across it still moves the frame. */}
+        <div className="pointer-events-none absolute bottom-0 left-0 flex items-center gap-1.5 rounded-tr-md bg-base-100/80 px-2 py-1 backdrop-blur">
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-error" />
           <span className="text-[10px] font-semibold uppercase tracking-wider text-base-content/70">
             {cameraMode === "depth" ? "Depth" : "RGB"}
@@ -791,16 +796,23 @@ export function Hud() {
           </span>
         </div>
 
-        {/* Resize grip. The feed is anchored bottom-right, so the top-left corner
-            is the one that changes its size. */}
+        {/* Resize grip — the top-left corner, the only one free to move on a
+            bottom-right-anchored box. Deliberately large and always visible. */}
         <div
           onPointerDown={onPipResizeStart}
           title="Drag to resize the camera feed"
-          className="pointer-events-auto absolute bottom-0 left-0 h-4 w-4 cursor-nesw-resize"
+          className="group absolute left-0 top-0 flex h-6 w-6 cursor-nwse-resize items-center justify-center rounded-br-md bg-base-100/80 backdrop-blur"
         >
-          <div className="absolute bottom-1 left-1 h-2 w-2 border-b-2 border-l-2 border-base-content/40" />
+          <svg viewBox="0 0 10 10" className="h-3 w-3 text-base-content/60 group-hover:text-primary">
+            <path d="M9 1 L1 9 M9 5 L5 9" stroke="currentColor" strokeWidth="1.4" fill="none" />
+          </svg>
         </div>
-        <div className="pointer-events-auto absolute right-0 top-0 flex rounded-bl-md bg-base-100/80 backdrop-blur">
+        {/* Sits inside the draggable frame, so swallow pointerdown or clicking a
+            mode button would start dragging the feed. */}
+        <div
+          onPointerDown={(e) => e.stopPropagation()}
+          className="pointer-events-auto absolute right-0 top-0 flex cursor-default rounded-bl-md bg-base-100/80 backdrop-blur"
+        >
           <button
             type="button"
             onClick={() => setCameraMode("rgb")}
