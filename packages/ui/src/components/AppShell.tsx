@@ -99,7 +99,12 @@ export function AppShell({
       />
       <div className="flex flex-1 items-stretch">
         <AppSidebar collapsed={collapsed} footer={sidebarFooter} navGroups={navGroups} />
-        <main className="flex-1 px-10 py-8">{children}</main>
+        {/* min-w-0 lets this flex item shrink to the content area regardless of a
+            wide child. Without it, min-width defaults to `auto` (the child's
+            intrinsic width), so an element that can size itself in pixels — e.g.
+            the Virtual Field WebGL canvas after a fullscreen exit — pins main wide
+            and the page scrolls horizontally. */}
+        <main className="min-w-0 flex-1 px-10 py-8">{children}</main>
       </div>
     </div>
   );

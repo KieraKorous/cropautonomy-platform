@@ -117,28 +117,16 @@ export function Hud() {
 
   const [isFullscreen, setIsFullscreen] = useState(false);
   useEffect(() => {
-    let timers: number[] = [];
     const onChange = () => {
       setIsFullscreen(Boolean(document.fullscreenElement));
-      // Everything in here — the R3F canvas, the bottom-right camera feed, and the
-      // CSS-positioned HUD panels — is sized off `#virtual-field-root`'s box. The
-      // Fullscreen API resizes that box outside the normal layout flow, and the
-      // exit transition (~250ms) settles a few frames *after* `fullscreenchange`
-      // fires, so a single re-measure reads the still-fullscreen box and leaves the
-      // whole overlay oversized. Dispatching `resize` forces both a CSS reflow (so
-      // `100vh`/`100%`-derived layout recomputes) and an R3F re-measure; fan it out
-      // across the transition so the last one lands after the box has settled.
-      timers.forEach(clearTimeout);
-      timers = [];
-      const remeasure = () => window.dispatchEvent(new Event("resize"));
-      requestAnimationFrame(remeasure);
-      for (const delay of [150, 300, 550]) timers.push(window.setTimeout(remeasure, delay));
+      // The canvas is sized from a measured container. Entering/leaving fullscreen
+      // resizes it outside the normal layout flow, and the measurement can settle
+      // on the old size — leaving the view stretched after exiting. Nudge a
+      // re-measure once the browser has finished the transition.
+      requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
     };
     document.addEventListener("fullscreenchange", onChange);
-    return () => {
-      document.removeEventListener("fullscreenchange", onChange);
-      timers.forEach(clearTimeout);
-    };
+    return () => document.removeEventListener("fullscreenchange", onChange);
   }, []);
 
   // Move / resize the camera feed.
