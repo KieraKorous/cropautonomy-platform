@@ -23,20 +23,25 @@ export function Depot() {
   const c = useMemo(() => depotCenter(field), [field]);
   const { width: W, depth: D, wallHeight: H, roofThickness: RT } = DEPOT;
 
-  // Bay markings + helipads, one per device, laid out exactly where the docks are.
+  // Bay markings + helipads, one per *mobile* device, laid out exactly where the
+  // docks are. Stationary devices (sensor stations) live out in the field, not in the
+  // shed, so they get no bay here.
   const bays = useMemo(
     () =>
-      devices.map((kind, i) => {
-        const spec = deviceSpec(kind);
-        const peer = peerIndex(devices, i);
-        const bay = depotBay(field, peer.ordinal, peer.count, spec);
-        return {
-          x: bay.x,
-          z: bay.z,
-          aerial: spec.flies,
-          color: spec.colors[i % spec.colors.length]
-        };
-      }),
+      devices
+        .map((kind, i) => ({ kind, i }))
+        .filter(({ kind }) => deviceSpec(kind).mobile)
+        .map(({ kind, i }) => {
+          const spec = deviceSpec(kind);
+          const peer = peerIndex(devices, i);
+          const bay = depotBay(field, peer.ordinal, peer.count, spec);
+          return {
+            x: bay.x,
+            z: bay.z,
+            aerial: spec.flies,
+            color: spec.colors[i % spec.colors.length]
+          };
+        }),
     [devices, field]
   );
 

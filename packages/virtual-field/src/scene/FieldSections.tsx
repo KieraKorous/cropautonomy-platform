@@ -26,6 +26,7 @@ export function FieldSections() {
 
     devices.forEach((kind, i) => {
       const spec = deviceSpec(kind);
+      if (!spec.mobile) return; // a stationary station covers no region
       if (spec.flies) return; // aerial assignments aren't ground regions
       const peer = peerIndex(devices, i);
       if (peer.count <= 1) return; // nothing is being divided — don't imply it is

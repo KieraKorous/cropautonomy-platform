@@ -48,7 +48,7 @@ src/
   scenario.ts          Scenario Manager — capture / download / parse a whole world
   store/simStore.ts    Zustand store — single source of truth + throttled telemetry
   nav/astar.ts         grid A* + line-of-sight path smoothing (return home)
-  sensors/             targetIndex.ts (spatial hash) · lidar.ts (analytic ray-vs-circle)
+  sensors/             targetIndex.ts (spatial hash) · lidar.ts (analytic ray-vs-circle) · microclimate.ts (soil/weather model for GAIA-S)
   vision/detections.ts crops → camera-space 2D bounding boxes (dataset labels)
   ai/                  inference.ts (simulated detector) · analytics.ts (running stats)
   scene/               everything inside the <Canvas>
@@ -60,7 +60,7 @@ src/
     Crops.tsx          instanced crop layer rendered FROM the entity records
     Weather.tsx        rain / dust particle layers
     Device.tsx         Device (shared nav/steering/airframe) + Fleet
-    bodies/            RoverBody · DroneBody — meshes that own their own effectors
+    bodies/            RoverBody · DroneBody · SensorStationBody — meshes that own their own effectors
     FieldSections.tsx  per-rover coverage-section tint
     Depot.tsx          the shed — bays, roof helipads, charge posts
     PhysicsWorld.tsx   Rapier: ground collider, obstacles, rover colliders
@@ -93,12 +93,13 @@ src/
 
 The fleet is a list of GAIA devices (`store.devices: DeviceKind[]`), one per slot.
 **`DeviceKind` uses the platform's authoritative `device_family` literals**
-(`gaia_r`, `gaia_d`; `gaia_s` next) from `packages/db/migrations/0012_*.sql` — not
+(`gaia_r`, `gaia_d`, `gaia_s`) from `packages/db/migrations/0012_*.sql` — not
 sim-local names — so a simulated device maps 1:1 to a real registered one.
 
 Everything that differs between device types lives in one `DEVICE_SPECS` table in
 [`device.ts`](src/device.ts): speeds, battery model, collider, camera mount, avoidance,
-manual rates, detection thresholds, dock setback, colors. `Device.tsx` owns only what
+manual rates, detection thresholds, dock setback, colors, and two flags — `flies`
+(ground vs air) and `mobile` (drives/flies vs stationary). `Device.tsx` owns only what
 they share — pose, nav, the steering core, the reset/restore/home token protocol,
 telemetry, drag. Adding a device type is a table entry plus a body component; the
 fleet's add-menu is derived from the table, so it appears in the HUD automatically.
@@ -108,9 +109,17 @@ Invariants worth knowing:
 - **Altitude is real, and ground devices are pinned arithmetically.** `climbRate` /
   `descentRate` are `0` for `gaia_r`, so its `y` provably cannot move no matter what a
   nav command asks for — the rover path is unchanged by the drone's existence.
-- **Coverage splits among peers of the same class** (`devices/fleet.ts`). Rovers divide
-  the field between rovers, drones between drones — so 1 rover + 1 drone each cover
-  everything, which is what you'd actually want.
+- **Stationary devices are pinned both ways.** `gaia_s` has `mobile: false`, which makes
+  the whole nav/coverage/homing/manual block in `Device.tsx` a no-op for it, *and*
+  `speed`/`climbRate`/`turnRate` are `0` — so it holds its deployed pose by policy and by
+  arithmetic. A drag is the only thing that moves it (to redeploy it). It spawns at an
+  in-field monitoring point (`stationDeploy`, not a depot bay), never docks, and lives on
+  its solar panel: a constant `idleDraw` (0 for mobile devices) that the panel must beat
+  to survive the night.
+- **Coverage splits among peers of the same class** (`devices/fleet.ts`, keyed by
+  `deviceClass`). Rovers divide the field between rovers, drones between drones — so 1
+  rover + 1 drone each cover everything, which is what you'd actually want. Sensor
+  stations form their own class, so adding one never shrinks a rover's block.
 - **Home is a real place.** The depot ([`depot.ts`](src/depot.ts)) is a shed at the
   headland: ground devices park in its open-fronted bays, aerial devices land on roof
   helipads directly above them (so the two classes stack vertically rather than fight
@@ -147,12 +156,18 @@ Invariants worth knowing:
 8 ✅ multi-robot coordination (fleet, split coverage, per-rover docks)
 9 ✅ full digital twin (Scenario Manager: save/load the world)
 
-Beyond the roadmap: **GAIA-D (aerial drone)** — flies a camera-derived serpentine
-survey at altitude with a nadir camera feeding the same CV/AI pipeline, overflies
-obstacles, and auto-lands on low battery.
+Beyond the roadmap:
 
-Not yet built: **GAIA-S (sensor station)** — the next device, and where soil /
-microclimate monitoring belongs. (There is no "soil sampler" in GAIA; the letter
-taxonomy is reserved for GAIAbots hardware — see `docs/brand/gaiabots-brand-brief.md`.)
-Also outstanding from the PRD backlog: stereo/thermal/multispectral cameras,
+- **GAIA-D (aerial drone)** — flies a camera-derived serpentine survey at altitude with
+  a nadir camera feeding the same CV/AI pipeline, overflies obstacles, and auto-lands on
+  low battery.
+- **GAIA-S (sensor station)** — a *stationary* field station: deployed at a fixed
+  monitoring point (drag to redeploy), it reports soil moisture + temperature, air
+  temperature, humidity, leaf wetness and PAR, all derived from the same time-of-day /
+  weather the scene shows (`sensors/microclimate.ts`), and carries a fixed oblique mast
+  camera that feeds the same PiP / CV / AI pipeline. It never docks — it lives on its
+  solar panel out in the field. (There is no "soil sampler" in GAIA; the letter taxonomy
+  is reserved for GAIAbots hardware — see `docs/brand/gaiabots-brand-brief.md`.)
+
+Still outstanding from the PRD backlog: stereo/thermal/multispectral cameras,
 segmentation masks + optical flow, radar, RRT, SLAM, calibration/latency modelling.

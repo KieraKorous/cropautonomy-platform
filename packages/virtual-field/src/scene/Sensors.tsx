@@ -73,8 +73,15 @@ export function Sensors() {
     a.prevY = y;
     a.prevZ = z;
 
+    // LiDAR viz belongs only to devices that carry one — a drone or a sensor station
+    // has none, so hide the point cloud + range ring rather than trail stale points.
+    const hasLidar = showLidar && spec.lidar;
+    if (pointsRef.current) pointsRef.current.visible = hasLidar;
     // Range ring follows the device at its own height.
-    if (ringRef.current) ringRef.current.position.set(x, y - spec.restY + 0.06, z);
+    if (ringRef.current) {
+      ringRef.current.position.set(x, y - spec.restY + 0.06, z);
+      ringRef.current.visible = hasLidar;
+    }
 
     a.scanT += rawDelta;
     if (a.scanT < SCAN_INTERVAL) return;

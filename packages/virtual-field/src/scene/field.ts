@@ -64,6 +64,26 @@ export function surveyLanes(
   return Array.from({ length: strips }, (_, i) => minX + step * (i + 0.5));
 }
 
+/**
+ * Where sensor station `ordinal` of `count` deploys — a fixed monitoring point out
+ * in the field. Stations don't dock; they live where they're planted, so this is
+ * their spawn (and reset) pose rather than a depot bay. Spread across the field
+ * width and staggered up/down Z so a bank of stations reads as a monitoring grid
+ * rather than a line. Returns X/Z only; the caller stamps the device's rest height.
+ */
+export function stationDeploy(
+  field: FieldConfig,
+  ordinal: number,
+  count: number
+): { x: number; z: number } {
+  const half = rowHalfLength(field);
+  const span = field.size * 0.55;
+  const step = span / Math.max(1, count);
+  const x = -span / 2 + step * (ordinal + 0.5);
+  const z = (ordinal % 2 === 0 ? -1 : 1) * half * 0.35;
+  return { x, z };
+}
+
 /** The X extent [min, max] a rover's assigned section spans, for the tint overlay. */
 export function blockExtent(field: FieldConfig, index: number, count: number): [number, number] | null {
   const block = blockLanes(field, index, count);

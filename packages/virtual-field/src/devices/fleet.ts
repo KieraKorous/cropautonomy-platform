@@ -1,4 +1,4 @@
-import { deviceSpec, type DeviceKind } from "../device";
+import { deviceClass, deviceSpec, type DeviceKind } from "../device";
 
 // Coverage is partitioned among *peers of the same class*, not across the whole
 // fleet. Rovers divide the field between rovers; drones between drones.
@@ -8,6 +8,10 @@ import { deviceSpec, type DeviceKind } from "../device";
 // peer-class partitioning, 1 rover + 1 drone each cover the whole field, which is
 // what you'd actually want; 2 rovers + 1 drone gives each rover a half and the
 // drone the lot.
+//
+// Sensor stations form their own class (they don't do coverage at all), so a station
+// in the fleet never shrinks a rover's assigned block. For stations, the same
+// ordinal/count just spreads their deploy points across the field.
 
 export interface PeerSlot {
   /** This device's position among its own class. */
@@ -17,11 +21,11 @@ export interface PeerSlot {
 }
 
 export function peerIndex(devices: DeviceKind[], index: number): PeerSlot {
-  const aerial = deviceSpec(devices[index] ?? "gaia_r").flies;
+  const cls = deviceClass(deviceSpec(devices[index] ?? "gaia_r"));
   let ordinal = 0;
   let count = 0;
   for (let i = 0; i < devices.length; i++) {
-    if (deviceSpec(devices[i]).flies !== aerial) continue;
+    if (deviceClass(deviceSpec(devices[i])) !== cls) continue;
     if (i < index) ordinal += 1;
     count += 1;
   }

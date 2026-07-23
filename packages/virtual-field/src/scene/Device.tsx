@@ -5,14 +5,16 @@ import type { Group, PerspectiveCamera } from "three";
 
 import { DroneBody } from "./bodies/DroneBody";
 import { RoverBody } from "./bodies/RoverBody";
+import { SensorStationBody } from "./bodies/SensorStationBody";
 import { deviceRuntimes, devicePose, dragTarget, type DeviceRuntime } from "./deviceState";
 import { solarFactor } from "./environment";
-import { blockLanes, driveLanes, rowHalfLength, surveyLanes } from "./field";
+import { blockLanes, driveLanes, rowHalfLength, stationDeploy, surveyLanes } from "./field";
 import { driveInput } from "./driveInput";
 import { onboardCameraRef } from "./onboardCamera";
 import { depotBay, depotFrontZ } from "../depot";
 import { deviceSpec, surveySwath, type DeviceKind, type DeviceSpec } from "../device";
 import { peerIndex } from "../devices/fleet";
+import { microclimate } from "../sensors/microclimate";
 import { useSimStore } from "../store/simStore";
 import type { NavMode } from "../store/simStore";
 import type { Waypoint } from "../types";
@@ -82,10 +84,14 @@ function Device({ index, kind }: { index: number; kind: DeviceKind }) {
     [field, peer.ordinal, peer.count, spec]
   );
 
-  // Spawn (and return) at this device's bay in the depot: ground devices park
-  // inside the shed, aerial ones on a roof helipad — so `start.y` differs by kind.
+  // Spawn (and return) at this device's home: mobile devices dock in the depot
+  // (ground inside the shed, aerial on a roof helipad — so `start.y` differs by kind);
+  // a stationary station is instead deployed at a fixed monitoring point in the field.
   const start = useMemo(
-    () => depotBay(field, peer.ordinal, peer.count, spec),
+    () =>
+      spec.mobile
+        ? depotBay(field, peer.ordinal, peer.count, spec)
+        : { ...stationDeploy(field, peer.ordinal, peer.count), y: spec.restY },
     [field, peer.ordinal, peer.count, spec]
   );
 
@@ -286,6 +292,7 @@ function Device({ index, kind }: { index: number; kind: DeviceKind }) {
       running,
       resetToken,
       pushTelemetry,
+      pushStation,
       elapsed: storeElapsed,
       navMode,
       waypoints,
@@ -331,6 +338,11 @@ function Device({ index, kind }: { index: number; kind: DeviceKind }) {
     clock.current.frames += 1;
     clock.current.frameTime += rawDelta;
 
+    // Simulated clock: advances whenever the sim is running, independent of whether
+    // this device is moving — so an idle rover or a stationary station still keeps
+    // time when it's the active device driving the HUD clock.
+    if (running) clock.current.elapsed += delta;
+
     // Un-park when the operator asks for work again (Run after a pause, a mode
     // switch, or a fresh command). If it already finished its section, Run means
     // "go again" — start a fresh sweep rather than instantly re-homing.
@@ -360,6 +372,12 @@ function Device({ index, kind }: { index: number; kind: DeviceKind }) {
         replan();
       }
 
+      // A sensor station is stationary: none of the nav machinery below runs for it.
+      // It holds its deployed pose (a drag is the only thing that moves it), leaving
+      // speed 0 and targetY at restY, while the shared energy + telemetry code at the
+      // bottom of the frame still runs. `speed`/`climbRate` are 0 for it too, so this
+      // guard is belt-and-braces, not the only thing pinning it down.
+      if (spec.mobile) {
       // Return-home: plan once per command. A ground device routes around
       // obstacles with A*; an aerial one just flies straight to its pad (it's
       // above everything the planner would route around).
@@ -520,7 +538,6 @@ function Device({ index, kind }: { index: number; kind: DeviceKind }) {
       // --- Shared steering: turn toward the target and drive, biasing away from
       // obstacles and fleetmates. heading 0 = +Z, so forward is (sin h, cos h).
       if (steerX !== null && allowLateral && p.battery > 0) {
-        clock.current.elapsed += delta;
         const dx = steerX - p.x;
         const dz = steerZ - p.z;
         let desired = Math.atan2(dx, dz);
@@ -560,6 +577,7 @@ function Device({ index, kind }: { index: number; kind: DeviceKind }) {
       if (navMode !== "manual") {
         p.y += clamp(targetY - p.y, -spec.descentRate * delta, spec.climbRate * delta);
       }
+      } // end mobile-only nav
     }
 
     // --- Energy, in one place for every mode. Docked in the depot it charges off
@@ -573,7 +591,10 @@ function Device({ index, kind }: { index: number; kind: DeviceKind }) {
         docked.current = false;
       }
     } else if (!isDragged) {
-      const load = Math.abs(speed) > 0.01 ? spec.batteryDrain : 0;
+      // idleDraw is the always-on sensor/radio draw — 0 for mobile devices, so this
+      // stays bit-identical for the rover/drone; a station pays it every second and
+      // has to beat it with solar to survive the night.
+      const load = (Math.abs(speed) > 0.01 ? spec.batteryDrain : 0) + spec.idleDraw;
       // Keyed off `docked`, not height: a drone parked on the *roof* is high up
       // but isn't holding itself there, so it must not pay to hover.
       const hover = spec.flies && p.y > spec.restY + 0.05 ? spec.batteryHover : 0;
@@ -619,6 +640,15 @@ function Device({ index, kind }: { index: number; kind: DeviceKind }) {
         running ? clock.current.elapsed : storeElapsed,
         Number.isFinite(fps) ? Math.round(fps) : 0
       );
+      // The active sensor station also surfaces its soil/microclimate readout — the
+      // HUD panel mirrors the ranging-sensor model (only the active device drives it).
+      // A station reads even while paused, as a real one would, so this is outside
+      // the running gate.
+      if (!spec.mobile && isActive) {
+        pushStation(
+          microclimate(timeOfDay, weather, p.x, p.z, clock.current.elapsed, sensorNoise)
+        );
+      }
       clock.current.sample = 0;
       clock.current.frames = 0;
       clock.current.frameTime = 0;
@@ -652,14 +682,17 @@ function Device({ index, kind }: { index: number; kind: DeviceKind }) {
       onPointerOver={onPointerOver}
       onPointerOut={onPointerOut}
     >
-      {spec.flies ? (
+      {!spec.mobile ? (
+        <SensorStationBody index={index} isActive={isActive} accent={accent} />
+      ) : spec.flies ? (
         <DroneBody index={index} isActive={isActive} accent={accent} />
       ) : (
         <RoverBody index={index} isActive={isActive} accent={accent} />
       )}
-      {/* Onboard camera — parented here so it inherits the device's pose. The
-          rover looks forward; the drone looks straight down (nadir). Rendered as
-          the picture-in-picture feed by <OnboardView />. */}
+      {/* Onboard camera — parented here so it inherits the device's pose. The rover
+          looks forward; the drone looks straight down (nadir); the station's mast
+          camera looks obliquely at the near canopy. Rendered as the picture-in-picture
+          feed by <OnboardView />. */}
       <perspectiveCamera
         ref={(c) => {
           camRef.current = c;

@@ -67,6 +67,7 @@ export function Hud() {
   const obstacleCount = useSimStore((s) => s.obstacles.length);
   const telemetry = useSimStore((s) => s.telemetry);
   const sensors = useSimStore((s) => s.sensors);
+  const station = useSimStore((s) => s.stationReadout);
   const showLidar = useSimStore((s) => s.showLidar);
   const sensorNoise = useSimStore((s) => s.sensorNoise);
   const rtk = useSimStore((s) => s.rtk);
@@ -614,45 +615,58 @@ export function Hud() {
           <div className={`h-full rounded-full ${batteryTone}`} style={{ width: `${batteryPct}%` }} />
         </div>
 
-        {/* Sensors */}
+        {/* Sensors — ranging suite for mobile devices, soil/microclimate for a station */}
         <div className="mt-3 border-t border-base-content/10 pt-2.5">
           <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-base-content/45">
-            Sensors
+            {activeSpec.mobile ? "Sensors" : "Soil & microclimate"}
           </span>
           <dl className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
             <Metric
               label={`GPS ${rtk ? "(RTK)" : ""}`}
               value={`${sensors.gps.lat.toFixed(5)}, ${sensors.gps.lon.toFixed(5)}`}
             />
-            <Metric label="Fix ± m" value={sensors.gps.accuracyM.toFixed(2)} />
-            <Metric label="IMU yaw/s" value={`${sensors.yawRateDeg.toFixed(0)}°`} />
-            <Metric label="Odometer" value={`${sensors.odometerM.toFixed(1)} m`} />
-            <Metric label="Alt AGL" value={`${sensors.altitudeAgl.toFixed(1)} m`} />
-            <Metric
-              label="Solar"
-              value={`${Math.round(solarGain * 100)}%`}
-            />
-            {activeSpec.lidar ? (
-              <Metric
-                label="LiDAR near"
-                value={sensors.lidarNearest === null ? "—" : `${sensors.lidarNearest.toFixed(2)} m`}
-              />
-            ) : null}
-            {activeSpec.lidar ? (
-              <Metric
-                label="Ultrasonic"
-                value={sensors.ultrasonic === null ? "clear" : `${sensors.ultrasonic.toFixed(2)} m`}
-              />
-            ) : null}
+            {activeSpec.mobile ? (
+              <>
+                <Metric label="Fix ± m" value={sensors.gps.accuracyM.toFixed(2)} />
+                <Metric label="IMU yaw/s" value={`${sensors.yawRateDeg.toFixed(0)}°`} />
+                <Metric label="Odometer" value={`${sensors.odometerM.toFixed(1)} m`} />
+                <Metric label="Alt AGL" value={`${sensors.altitudeAgl.toFixed(1)} m`} />
+                <Metric label="Solar" value={`${Math.round(solarGain * 100)}%`} />
+                {activeSpec.lidar ? (
+                  <Metric
+                    label="LiDAR near"
+                    value={sensors.lidarNearest === null ? "—" : `${sensors.lidarNearest.toFixed(2)} m`}
+                  />
+                ) : null}
+                {activeSpec.lidar ? (
+                  <Metric
+                    label="Ultrasonic"
+                    value={sensors.ultrasonic === null ? "clear" : `${sensors.ultrasonic.toFixed(2)} m`}
+                  />
+                ) : null}
+              </>
+            ) : (
+              <>
+                <Metric label="Soil moist" value={`${Math.round(station.soilMoisture * 100)}%`} />
+                <Metric label="Soil temp" value={`${station.soilTempC.toFixed(1)}°C`} />
+                <Metric label="Air temp" value={`${station.airTempC.toFixed(1)}°C`} />
+                <Metric label="Humidity" value={`${Math.round(station.humidity * 100)}%`} />
+                <Metric label="Leaf wet" value={`${Math.round(station.leafWetness * 100)}%`} />
+                <Metric label="PAR" value={station.par.toLocaleString()} />
+                <Metric label="Solar" value={`${Math.round(solarGain * 100)}%`} />
+              </>
+            )}
           </dl>
           <div className="mt-2.5 flex items-center gap-1">
-            <SensorToggle
-              on={showLidar && activeSpec.lidar}
-              onClick={toggleLidar}
-              label="LiDAR"
-              disabled={!activeSpec.lidar}
-              title={activeSpec.lidar ? undefined : `${activeSpec.label} carries no LiDAR`}
-            />
+            {activeSpec.mobile ? (
+              <SensorToggle
+                on={showLidar && activeSpec.lidar}
+                onClick={toggleLidar}
+                label="LiDAR"
+                disabled={!activeSpec.lidar}
+                title={activeSpec.lidar ? undefined : `${activeSpec.label} carries no LiDAR`}
+              />
+            ) : null}
             <SensorToggle on={sensorNoise} onClick={toggleSensorNoise} label="Noise" />
             <SensorToggle on={rtk} onClick={toggleRtk} label="RTK" />
           </div>

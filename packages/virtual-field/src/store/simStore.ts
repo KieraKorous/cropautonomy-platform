@@ -15,6 +15,7 @@ import { generateObstacles, type Obstacle } from "../obstacle";
 // Type-only (erased at build), so this doesn't create a runtime import cycle
 // with scenario.ts, which imports the store to snapshot it.
 import type { DevicePoseSnapshot, Scenario } from "../scenario";
+import type { StationReadout } from "../sensors/microclimate";
 import type { Detection } from "../vision/detections";
 import type { FieldConfig, RobotTelemetry, TimeOfDay, Waypoint } from "../types";
 
@@ -65,6 +66,15 @@ const EMPTY_SENSORS: SensorReadout = {
   lidarNearest: null,
   lidarPoints: 0,
   ultrasonic: null
+};
+
+const EMPTY_STATION: StationReadout = {
+  soilMoisture: 0,
+  soilTempC: 0,
+  airTempC: 0,
+  humidity: 0,
+  leafWetness: 0,
+  par: 0
 };
 
 export interface SimState {
@@ -122,6 +132,8 @@ export interface SimState {
   rtk: boolean; // GPS in RTK-fix precision vs standalone
   cameraMode: CameraMode; // onboard feed: RGB or depth
   sensors: SensorReadout;
+  /** Latest soil/microclimate readout of the active device *when it's a station*. */
+  stationReadout: StationReadout;
 
   /** Computer vision: live detection boxes + dataset capture. */
   showDetections: boolean;
@@ -185,6 +197,8 @@ export interface SimState {
   setCameraMode: (m: CameraMode) => void;
   /** Called from the sensor loop with a fresh (throttled) readout. */
   pushSensors: (r: SensorReadout) => void;
+  /** Called from the active station's render loop with a fresh soil/microclimate readout. */
+  pushStation: (r: StationReadout) => void;
   toggleDetections: () => void;
   pushDetections: (d: Detection[]) => void;
   /** Request a dataset frame capture; the Vision component performs it next frame. */
@@ -244,6 +258,7 @@ export const useSimStore = create<SimState>((set) => ({
   rtk: true,
   cameraMode: "rgb",
   sensors: EMPTY_SENSORS,
+  stationReadout: EMPTY_STATION,
 
   showDetections: false,
   detections: [],
@@ -328,6 +343,7 @@ export const useSimStore = create<SimState>((set) => ({
   toggleRtk: () => set((s) => ({ rtk: !s.rtk })),
   setCameraMode: (cameraMode) => set({ cameraMode }),
   pushSensors: (sensors) => set({ sensors }),
+  pushStation: (stationReadout) => set({ stationReadout }),
   toggleDetections: () => set((s) => ({ showDetections: !s.showDetections })),
   pushDetections: (detections) => set({ detections }),
   requestCapture: () => set({ captureRequested: true }),

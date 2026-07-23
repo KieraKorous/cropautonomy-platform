@@ -5,15 +5,28 @@
 // names — so a simulated device maps 1:1 to a real registered device. Labels match
 // apps/portal-web/app/(dashboard)/devices/deviceDisplay.tsx.
 //
+// Three kinds are modelled: `gaia_r` (rover) and `gaia_d` (drone) are mobile; `gaia_s`
+// (sensor station) is stationary — the `mobile` flag is what forks their behaviour.
+//
 // Everything that varies between devices lives in DEVICE_SPECS. The rover's values
 // are transcribed verbatim from the original Robot.tsx constants, so generalising
 // the code path leaves ground-rover behaviour bit-identical.
 
-export type DeviceKind = "gaia_r" | "gaia_d";
-// `gaia_s` (Sensor station) is the next device — deliberately not modelled yet.
+export type DeviceKind = "gaia_r" | "gaia_d" | "gaia_s";
 
 /** Max devices in a fleet. The single source of truth (was duplicated 3×). */
 export const MAX_DEVICES = 4;
+
+/**
+ * Coverage / deploy partition class. Mobile devices split the field among peers of
+ * the *same locomotion class* (rovers vs drones); stationary devices form their own
+ * class so a sensor station never eats into a rover's ground-coverage split.
+ */
+export type DeviceClass = "ground" | "air" | "station";
+export function deviceClass(spec: DeviceSpec): DeviceClass {
+  if (!spec.mobile) return "station";
+  return spec.flies ? "air" : "ground";
+}
 
 export interface DeviceSpec {
   kind: DeviceKind;
@@ -23,6 +36,13 @@ export interface DeviceSpec {
   short: string;
   /** True if the device operates above the ground (altitude is a state variable). */
   flies: boolean;
+  /**
+   * True if the device drives/flies. **False for a sensor station** — which is what
+   * makes the whole nav/coverage/homing machinery a no-op for it: it's deployed at a
+   * fixed point and only a drag can move it. `speed`/`climbRate` are 0 for it too, so
+   * a stationary device is pinned both by policy (this flag) and arithmetic.
+   */
+  mobile: boolean;
 
   /** Body height when parked/landed — the rover's old CHASSIS_Y. */
   restY: number;
@@ -46,6 +66,13 @@ export interface DeviceSpec {
   batteryDrain: number;
   /** Extra charge per second merely to stay airborne (0 for ground devices). */
   batteryHover: number;
+  /**
+   * Always-on draw per second just for being powered on — sensors + radio. **Zero
+   * for mobile devices** (their draw is motion-based, keeping the rover/drone energy
+   * model bit-identical); a sensor station pays this constantly, docked or not, which
+   * is what its solar panel has to beat to survive the night.
+   */
+  idleDraw: number;
   /**
    * Return-to-depot reserve: at or below this charge the device abandons its task
    * and heads home to recharge. Sized to get it back from the far corner of its
@@ -112,6 +139,8 @@ export const DEVICE_SPECS: Record<DeviceKind, DeviceSpec> = {
     label: "Ground rover",
     short: "GAIA-R",
     flies: false,
+    mobile: true,
+    idleDraw: 0,
     restY: 0.55,
     cruiseY: 0.55,
     climbRate: 0, // ← pins the rover to the ground, arithmetically
@@ -144,6 +173,8 @@ export const DEVICE_SPECS: Record<DeviceKind, DeviceSpec> = {
     label: "Aerial drone",
     short: "GAIA-D",
     flies: true,
+    mobile: true,
+    idleDraw: 0,
     restY: 0.35, // sits low on its pad
     cruiseY: 12,
     climbRate: 3.2,
@@ -171,6 +202,42 @@ export const DEVICE_SPECS: Record<DeviceKind, DeviceSpec> = {
     detect: { maxDistance: 30, minArea: 0.00008, maxCount: 220 },
     dragLift: 0, // it already flies; no lift affordance needed
     colors: ["#4a6fa5", "#7a5aa8", "#3f8fa5", "#5a6fb8"] // cool tones vs the rover's earth
+  },
+  gaia_s: {
+    kind: "gaia_s",
+    label: "Sensor station",
+    short: "GAIA-S",
+    flies: false,
+    mobile: false, // ← deployed at a fixed point; no nav command can move it
+    idleDraw: 0.0011, // soil probes + weather head + radio, always on
+    restY: 0, // the mast is modelled from the ground up, so its origin sits on the soil
+    cruiseY: 0,
+    climbRate: 0,
+    descentRate: 0,
+    speed: 0, // stationary, arithmetically — steering never runs for it anyway
+    turnRate: 0,
+    minSpeedFactor: 1,
+    batteryDrain: 0, // it never moves; its only draw is idleDraw
+    batteryHover: 0,
+    reserveBattery: 0, // it never returns home — it lives out in the field on solar
+    chargeRate: 0, // no depot dock; the panel is its only supply
+    solarRate: 0.0026, // a generous fixed panel: net-positive by day, drains at night
+    radius: 0.9, // fleetmates give it this much clearance
+    waypointRadius: 1,
+    lookahead: 1,
+    collider: { hx: 0.5, hy: 1.1, hz: 0.5 },
+    // Fixed oblique camera on the mast head: forward (+Z), tilted ~30° down at the
+    // nearby canopy. Feeds the same PiP / CV / AI pipeline as the mobile cameras.
+    camera: { offset: [0, 1.95, 0.12], rotation: [-0.52, Math.PI, 0], fov: 58 },
+    avoid: { range: 0, cone: 0, gain: 0 }, // it never steers, so it never avoids
+    avoidsGround: true,
+    manual: { fwd: 0, rev: 0, turn: 0, strafe: 0, climb: 0 },
+    manualHint: "Sensor station is fixed — drag it to redeploy.",
+    lidar: false, // it carries soil probes + a weather head, not a scanning LiDAR
+    // A fixed oblique view frames the canopy a few metres out — closer/larger than nadir.
+    detect: { maxDistance: 16, minArea: 0.0005, maxCount: 90 },
+    dragLift: 0.8,
+    colors: ["#c79a4a", "#7f9b6b", "#9c7b52", "#6f8a97"] // instrument amber / olive
   }
 };
 
