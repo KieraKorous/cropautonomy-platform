@@ -132,6 +132,21 @@ function LabsSection() {
           Open
         </Link>
       </div>
+      <div className="flex items-center justify-between gap-4 rounded-md border border-base-content/10 px-3.5 py-3">
+        <div className="flex min-w-0 flex-col">
+          <span className="text-sm font-medium text-neutral">Plant analysis</span>
+          <span className="text-xs text-base-content/55">
+            Track plants, record observations, and get rule-based health results — stored on this
+            device.
+          </span>
+        </div>
+        <Link
+          href="/virtual-field/analysis"
+          className="flex-shrink-0 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-content transition-colors hover:bg-primary/90"
+        >
+          Open
+        </Link>
+      </div>
     </section>
   );
 }
