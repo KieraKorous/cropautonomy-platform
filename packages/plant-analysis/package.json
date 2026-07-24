@@ -10,6 +10,7 @@
     "./analysis": "./src/analysis/index.ts",
     "./history": "./src/history/index.ts",
     "./image-processing": "./src/image-processing/index.ts",
+    "./backup": "./src/backup/index.ts",
     "./react": "./src/react/index.ts",
     "./utilities": "./src/utilities/index.ts",
     "./knowledge/tomato": "./src/knowledge/crops/tomato/index.ts"

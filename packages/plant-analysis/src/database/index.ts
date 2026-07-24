@@ -17,3 +17,4 @@ export * from "./repositories/sources";
 export * from "./repositories/results";
 export * from "./repositories/findings";
 export * from "./repositories/images";
+export * from "./repositories/maintenance";

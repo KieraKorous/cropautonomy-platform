@@ -21,3 +21,4 @@ export {
   useRule
 } from "./hooks";
 export { ensureTomatoSeeded, useEnsureSeeded } from "./seed";
+export { useOnlineStatus } from "./online";

@@ -35,6 +35,12 @@ export default function AnalysisHomePage() {
             </span>
           ) : null}
           <Link
+            href="/virtual-field/analysis/backup"
+            className="rounded-md border border-base-content/15 px-3.5 py-2 text-sm font-semibold text-neutral transition-colors hover:bg-base-content/[0.05]"
+          >
+            Backup
+          </Link>
+          <Link
             href="/virtual-field/analysis/admin"
             className="rounded-md border border-base-content/15 px-3.5 py-2 text-sm font-semibold text-neutral transition-colors hover:bg-base-content/[0.05]"
           >

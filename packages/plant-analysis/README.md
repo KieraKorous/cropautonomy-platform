@@ -19,7 +19,8 @@ See `docs/decisions/0005-local-rule-based-plant-analysis.md`.
 | `@gaia/plant-analysis/analysis` | Rule engine — pure evaluators + the `analyzePlant` orchestrator (browser-only) |
 | `@gaia/plant-analysis/history` | SSR-safe pure trend calcs (growth rate, deltas, repeated-condition detection) |
 | `@gaia/plant-analysis/image-processing` | **Browser-only** canvas compression + non-AI color analysis (pure classifier exported for tests) |
-| `@gaia/plant-analysis/react` | **Browser-only** live-query hooks + `useEnsureSeeded` |
+| `@gaia/plant-analysis/backup` | Export / validate / import (versioned envelope, optional images) — browser-only |
+| `@gaia/plant-analysis/react` | **Browser-only** live-query hooks + `useEnsureSeeded` + `useOnlineStatus` |
 | `@gaia/plant-analysis/knowledge/tomato` | Tomato crop profile, stages, rules, sources, `tomatoSeed()` |
 
 ## Consumer contract (IMPORTANT)
@@ -54,8 +55,16 @@ opens the database.
 - **Milestone 5** (Admin Knowledge Editor, PRD Phase 12): full CRUD for rules,
   sources, and the crop profile (versioned edits, enable/disable, inline rule
   tester) at `/virtual-field/analysis/admin`. ✅
+- **Milestone 6** (Reliability, PRD Phases 13–14): backup/restore (versioned
+  envelope, per-field or full, optional images, validated import, delete-all) at
+  `/virtual-field/analysis/backup`, plus offline-state messaging. ✅
 
-Backup/restore (13) and offline support (14) land in later phases.
+**Offline scope note:** the data layer is fully offline-capable — observations,
+analysis, history, and images all work with no network once loaded, and persist
+across reopens. Cold-open-while-offline (service-worker page caching) is *not*
+done: the portal is deliberately not a PWA (see CLAUDE.md; field-web is the
+designated PWA). If this feature graduates from Labs to field-web, that app's
+existing Workbox setup gives cold-open offline for free.
 
 Tests: `pnpm --filter @gaia/plant-analysis test` (Vitest + `fake-indexeddb`, the
 repo's only test runner; scoped to this package).
