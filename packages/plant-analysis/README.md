@@ -18,6 +18,7 @@ See `docs/decisions/0005-local-rule-based-plant-analysis.md`.
 | `@gaia/plant-analysis/database` | **Browser-only** Dexie DB + repositories |
 | `@gaia/plant-analysis/analysis` | Rule engine — pure evaluators + the `analyzePlant` orchestrator (browser-only) |
 | `@gaia/plant-analysis/history` | SSR-safe pure trend calcs (growth rate, deltas, repeated-condition detection) |
+| `@gaia/plant-analysis/image-processing` | **Browser-only** canvas compression + non-AI color analysis (pure classifier exported for tests) |
 | `@gaia/plant-analysis/react` | **Browser-only** live-query hooks + `useEnsureSeeded` |
 | `@gaia/plant-analysis/knowledge/tomato` | Tomato crop profile, stages, rules, sources, `tomatoSeed()` |
 
@@ -47,9 +48,12 @@ opens the database.
 - **Milestone 3** (Plant History, PRD Phase 9): trend calculations (growth rate,
   deltas, repeated-condition detection) and the height / soil-moisture / health-score
   charts (Apache ECharts, in the portal). ✅
+- **Milestone 4** (Images, PRD Phases 10–11): canvas compression, a capture/upload
+  gallery with storage-limit handling, and non-AI color analysis (green/yellow/brown
+  % + canopy coverage) shown as supporting evidence. ✅
 
-Images (10–11), the admin editor (12), backup/restore (13), and offline support
-(14) land in later phases.
+The admin editor (12), backup/restore (13), and offline support (14) land in later
+phases.
 
 Tests: `pnpm --filter @gaia/plant-analysis test` (Vitest + `fake-indexeddb`, the
 repo's only test runner; scoped to this package).

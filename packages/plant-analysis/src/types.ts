@@ -220,6 +220,20 @@ export interface FindingRecord {
   confidence?: Confidence;
 }
 
+/**
+ * Result of non-AI, canvas-based color analysis (PRD §10.17). Supporting
+ * evidence only — deliberately NOT a diagnosis. Percentages are of sampled pixels.
+ */
+export interface PlantColorAnalysis {
+  greenPercent: number;
+  yellowPercent: number;
+  brownPercent: number;
+  otherPercent: number;
+  /** green + yellow + brown — the share of the frame that looks like plant material. */
+  vegetationCoveragePercent: number;
+  sampledPixels: number;
+}
+
 export interface ImageRecord {
   id: string;
   plantId: string;
@@ -231,6 +245,8 @@ export interface ImageRecord {
   capturedAt?: string;
   createdAt: string;
   notes?: string;
+  /** Optional non-AI color analysis, computed on demand (PRD §10.17, §11). */
+  analysis?: PlantColorAnalysis;
 }
 
 export interface SourceRecord {

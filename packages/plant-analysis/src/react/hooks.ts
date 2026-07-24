@@ -5,6 +5,7 @@ import type {
   FieldRecord,
   FindingRecord,
   GrowthStageRecord,
+  ImageRecord,
   ObservationRecord,
   PlantRecord,
   SourceRecord
@@ -18,6 +19,7 @@ import {
   listFields,
   listFindingsByResult,
   listGrowthStages,
+  listImagesByPlant,
   listObservationsByPlant,
   listPlantsByField,
   listRecentResultsWithFindings,
@@ -79,6 +81,10 @@ export function useFindings(resultId: string | undefined): FindingRecord[] | und
 
 export function useSources(cropId: string | undefined): SourceRecord[] | undefined {
   return useLiveQuery(() => (cropId ? listSources(cropId) : []), [cropId]);
+}
+
+export function useImagesByPlant(plantId: string | undefined): ImageRecord[] | undefined {
+  return useLiveQuery(() => (plantId ? listImagesByPlant(plantId) : []), [plantId]);
 }
 
 export function useResultsByPlant(

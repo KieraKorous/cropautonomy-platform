@@ -9,6 +9,7 @@ import type { GrowthStageKey } from "@gaia/plant-analysis";
 import { HealthResult } from "../../_components/HealthResult";
 import { ObservationForm } from "../../_components/ObservationForm";
 import { ObservationTimeline } from "../../_components/ObservationTimeline";
+import { PlantImageGallery } from "../../_components/PlantImageGallery";
 import { TrendsPanel } from "../../_components/TrendsPanel";
 
 export default function PlantDetailPage() {
@@ -86,6 +87,8 @@ export default function PlantDetailPage() {
       <ObservationForm plantId={plant.id} fieldId={plant.fieldId} />
 
       <TrendsPanel plantId={plant.id} />
+
+      <PlantImageGallery plantId={plant.id} />
 
       <ObservationTimeline plantId={plant.id} />
     </div>

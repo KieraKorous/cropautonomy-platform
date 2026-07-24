@@ -1,4 +1,4 @@
-import type { ImageRecord } from "../../types";
+import type { ImageRecord, PlantColorAnalysis } from "../../types";
 import { detachBlob, newId, nowIso } from "../../utilities/index";
 import { getDb } from "../db";
 
@@ -26,6 +26,14 @@ export async function listImagesByPlant(plantId: string): Promise<ImageRecord[]>
     .between([plantId, ""], [plantId, "￿"])
     .reverse()
     .toArray();
+}
+
+/** Attaches (or clears) on-demand color analysis for an image. */
+export async function setImageAnalysis(
+  id: string,
+  analysis: PlantColorAnalysis | undefined
+): Promise<void> {
+  await getDb().images.update(id, { analysis });
 }
 
 export async function deleteImage(id: string): Promise<void> {

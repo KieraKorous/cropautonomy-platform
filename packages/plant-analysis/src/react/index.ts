@@ -15,6 +15,7 @@ export {
   useFindings,
   useSources,
   useResultsByPlant,
-  useRecentAnalyses
+  useRecentAnalyses,
+  useImagesByPlant
 } from "./hooks";
 export { ensureTomatoSeeded, useEnsureSeeded } from "./seed";
