@@ -20,6 +20,8 @@ import {
   listGrowthStages,
   listObservationsByPlant,
   listPlantsByField,
+  listRecentResultsWithFindings,
+  listResultsByPlant,
   listSources
 } from "../database/index";
 
@@ -77,4 +79,20 @@ export function useFindings(resultId: string | undefined): FindingRecord[] | und
 
 export function useSources(cropId: string | undefined): SourceRecord[] | undefined {
   return useLiveQuery(() => (cropId ? listSources(cropId) : []), [cropId]);
+}
+
+export function useResultsByPlant(
+  plantId: string | undefined
+): AnalysisResultRecord[] | undefined {
+  return useLiveQuery(() => (plantId ? listResultsByPlant(plantId) : []), [plantId]);
+}
+
+export function useRecentAnalyses(
+  plantId: string | undefined,
+  limit = 5
+): { result: AnalysisResultRecord; findings: FindingRecord[] }[] | undefined {
+  return useLiveQuery(
+    () => (plantId ? listRecentResultsWithFindings(plantId, limit) : []),
+    [plantId, limit]
+  );
 }

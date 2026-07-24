@@ -13,6 +13,8 @@ export {
   useGrowthStages,
   useLatestResult,
   useFindings,
-  useSources
+  useSources,
+  useResultsByPlant,
+  useRecentAnalyses
 } from "./hooks";
 export { ensureTomatoSeeded, useEnsureSeeded } from "./seed";

@@ -39,3 +39,18 @@ export async function latestResultForPlant(
     .between([plantId, ""], [plantId, "￿"])
     .last();
 }
+
+/** The most recent results (newest first) paired with their findings, for trend/repeat detection. */
+export async function listRecentResultsWithFindings(
+  plantId: string,
+  limit = 5
+): Promise<{ result: AnalysisResultRecord; findings: FindingRecord[] }[]> {
+  const results = (await listResultsByPlant(plantId)).slice(0, limit);
+  const db = getDb();
+  return Promise.all(
+    results.map(async (result) => ({
+      result,
+      findings: await db.findings.where("analysisResultId").equals(result.id).toArray()
+    }))
+  );
+}
