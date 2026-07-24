@@ -11,3 +11,13 @@ export function getDb(): PlantAnalysisDatabase {
   if (!db) db = new PlantAnalysisDatabase();
   return db;
 }
+
+/**
+ * Test-only. Closes and drops the memoized instance so the next getDb() opens a
+ * fresh database — used alongside a reset of the fake indexedDB between tests.
+ * Not part of the public surface; never call from app code.
+ */
+export function resetDbForTests(): void {
+  db?.close();
+  db = null;
+}

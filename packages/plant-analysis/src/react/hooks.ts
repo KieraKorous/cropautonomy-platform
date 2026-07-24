@@ -1,20 +1,26 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import type {
+  AnalysisResultRecord,
   CropProfileRecord,
   FieldRecord,
+  FindingRecord,
   GrowthStageRecord,
   ObservationRecord,
-  PlantRecord
+  PlantRecord,
+  SourceRecord
 } from "../types";
 import {
   getCropProfile,
   getField,
   getPlant,
   latestObservationForPlant,
+  latestResultForPlant,
   listFields,
+  listFindingsByResult,
   listGrowthStages,
   listObservationsByPlant,
-  listPlantsByField
+  listPlantsByField,
+  listSources
 } from "../database/index";
 
 // Reactive read hooks over the local Dexie database. Each returns `undefined`
@@ -57,4 +63,18 @@ export function useCropProfile(cropId: string | undefined): CropProfileRecord | 
 
 export function useGrowthStages(cropId: string | undefined): GrowthStageRecord[] | undefined {
   return useLiveQuery(() => (cropId ? listGrowthStages(cropId) : []), [cropId]);
+}
+
+export function useLatestResult(
+  plantId: string | undefined
+): AnalysisResultRecord | undefined {
+  return useLiveQuery(() => (plantId ? latestResultForPlant(plantId) : undefined), [plantId]);
+}
+
+export function useFindings(resultId: string | undefined): FindingRecord[] | undefined {
+  return useLiveQuery(() => (resultId ? listFindingsByResult(resultId) : []), [resultId]);
+}
+
+export function useSources(cropId: string | undefined): SourceRecord[] | undefined {
+  return useLiveQuery(() => (cropId ? listSources(cropId) : []), [cropId]);
 }

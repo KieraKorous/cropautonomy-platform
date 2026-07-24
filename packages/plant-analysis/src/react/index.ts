@@ -10,6 +10,9 @@ export {
   useObservationsByPlant,
   useLatestObservation,
   useCropProfile,
-  useGrowthStages
+  useGrowthStages,
+  useLatestResult,
+  useFindings,
+  useSources
 } from "./hooks";
 export { ensureTomatoSeeded, useEnsureSeeded } from "./seed";

@@ -14,7 +14,10 @@ export const TOMATO_PROFILE: CropProfileRecord = {
   description:
     "First supported crop. Provides a useful range of measurable growth, moisture, temperature, leaf, and visual conditions (PRD §10.3).",
   active: true,
-  version: 1,
+  // Bump when the seeded knowledge (stages/rules/sources) changes so
+  // ensureTomatoSeeded re-seeds existing local databases. v2: leafColor-driven
+  // color rules + stage-agnostic numeric thresholds.
+  version: 2,
   reviewedAt: SEED_TIMESTAMP,
   createdAt: SEED_TIMESTAMP,
   updatedAt: SEED_TIMESTAMP

@@ -52,26 +52,28 @@ Reconciled against the `ObservationRecord` interface (PRD §13). "Required" = th
 
 ---
 
-## 3. Initial rule set (12 rules)
+## 3. Initial rule set (14 rules)
 
-Each row becomes an `AnalysisRuleRecord`. `penalty` is the health-point deduction subtracted from a 100 baseline. Thresholds are starting values; **cited** rules reference `sources.ts`, **provisional** rules are flagged pending review.
+Each row becomes an `AnalysisRuleRecord`. `penalty` is the health-point deduction subtracted from a 100 baseline. A rule fires (generates a finding) when its operator condition is **met** on the observation; rules whose measurement is absent are skipped (they don't fire and don't count as evidence). Numeric thresholds are stage-agnostic in this first set. **cited** rules reference `sources.ts`, **provisional** rules are flagged pending review.
 
-| # | id | measurement | operator | threshold | stage | severity | penalty | source |
-|---|----|-------------|----------|-----------|-------|----------|---------|--------|
-| R1 | `tomato-low-moisture` | soilMoisturePercent | lessThan | 45 | all | warning | 15 | cited (UC IPM irrigation) |
-| R2 | `tomato-high-moisture` | soilMoisturePercent | greaterThan | 85 | all | warning | 10 | provisional |
-| R3 | `tomato-low-temp` | temperatureC | lessThan | 10 | all | warning | 12 | cited (extension temp ranges) |
-| R4 | `tomato-high-temp` | temperatureC | greaterThan | 32 | flowering, fruiting | warning | 15 | cited (pollen viability >32 °C) |
-| R5 | `tomato-low-humidity` | humidityPercent | lessThan | 40 | all | info | 5 | provisional |
-| R6 | `tomato-high-humidity` | humidityPercent | greaterThan | 85 | all | warning | 10 | provisional (disease pressure) |
-| R7 | `tomato-yellowing` | yellowing | isTrue | — | all | warning | 15 | cited (N deficiency / chlorosis) |
-| R8 | `tomato-browning` | browning | isTrue | — | all | warning | 15 | provisional |
-| R9 | `tomato-wilting` | wilting | isTrue | — | all | critical | 20 | cited (water/vascular stress) |
-| R10 | `tomato-leaf-spots` | leafSpots | isTrue | — | vegetative, flowering, fruiting | warning | 18 | cited (early/late blight ID) |
-| R11 | `tomato-leaf-holes` | holesInLeaves | isTrue | — | all | warning | 12 | cited (chewing pest / hornworm) |
-| R12 | `tomato-pest-present` | pestObserved | isTrue | — | all | warning | 15 | cited (IPM scouting) |
+| # | id | measurement | operator | threshold | severity | penalty | source |
+|---|----|-------------|----------|-----------|----------|---------|--------|
+| R1 | `tomato-low-moisture` | soilMoisturePercent | lessThan | 45 | warning | 15 | cited (UC IPM irrigation) |
+| R2 | `tomato-high-moisture` | soilMoisturePercent | greaterThan | 85 | warning | 10 | provisional |
+| R3 | `tomato-low-temp` | temperatureC | lessThan | 10 | warning | 12 | cited (extension temp ranges) |
+| R4 | `tomato-high-temp` | temperatureC | greaterThan | 32 | warning | 15 | cited (heat / fruit set) |
+| R5 | `tomato-low-humidity` | humidityPercent | lessThan | 40 | info | 5 | provisional |
+| R6 | `tomato-high-humidity` | humidityPercent | greaterThan | 85 | warning | 10 | provisional (disease pressure) |
+| R7 | `tomato-leaf-yellow` | leafColor | equals | `yellow` | warning | 15 | cited (N deficiency / chlorosis) |
+| R8 | `tomato-leaf-pale` | leafColor | equals | `pale` | info | 8 | provisional |
+| R9 | `tomato-wilting` | wilting | isTrue | — | critical | 20 | cited (water/vascular stress) |
+| R10 | `tomato-leaf-spots` | leafSpots | isTrue | — | warning | 18 | cited (early/late blight ID) |
+| R11 | `tomato-leaf-holes` | holesInLeaves | isTrue | — | warning | 12 | cited (chewing pest / hornworm) |
+| R12 | `tomato-browning` | browning | isTrue | — | warning | 15 | provisional |
+| R13 | `tomato-curled` | curledLeaves | isTrue | — | info | 8 | provisional |
+| R14 | `tomato-pest-present` | pestObserved | isTrue | — | warning | 15 | cited (IPM scouting) |
 
-The PRD's §33 prototype (moisture 32 %, yellow leaves, temp 34 °C, wilting) trips R1, R7, R4-equivalent (if flowering/fruiting) or a general high-temp, and R9 — yielding a **Critical** status driven by the wilting finding, exactly as the prototype expects.
+The PRD's §33 prototype (moisture 32 %, `leafColor` yellow, temp 34 °C, wilting) at any stage trips R1 (−15), R7 (−15), R4 (−15), and R9 (−20, critical): health score **35 → Critical**, with four findings, exactly as the prototype expects.
 
 ---
 

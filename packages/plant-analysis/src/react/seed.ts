@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
 import { getCropProfile, seedCrop } from "../database/index";
-import { TOMATO_CROP_ID, tomatoSeed } from "../knowledge/crops/tomato/index";
+import { TOMATO_CROP_ID, TOMATO_PROFILE, tomatoSeed } from "../knowledge/crops/tomato/index";
 
 // Seeds the bundled crop knowledge (currently tomato) into the local database.
-// Idempotent — seedCrop puts by primary key, so re-running is safe and cheap. We
-// still short-circuit on an existing profile to avoid rewriting rows every mount.
+// Idempotent — seedCrop puts by primary key. Re-seeds when the bundled profile
+// version is newer than what's stored, so rule/threshold updates reach existing
+// local databases without a manual clear. Historical results are unaffected: they
+// snapshot the rule they used and never re-resolve live rules.
 export async function ensureTomatoSeeded(): Promise<void> {
   const existing = await getCropProfile(TOMATO_CROP_ID);
-  if (existing) return;
+  if (existing && existing.version >= TOMATO_PROFILE.version) return;
   await seedCrop(tomatoSeed());
 }
 

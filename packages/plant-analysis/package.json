@@ -7,13 +7,15 @@
     ".": "./src/index.ts",
     "./types": "./src/types.ts",
     "./database": "./src/database/index.ts",
+    "./analysis": "./src/analysis/index.ts",
     "./react": "./src/react/index.ts",
     "./utilities": "./src/utilities/index.ts",
     "./knowledge/tomato": "./src/knowledge/crops/tomato/index.ts"
   },
   "scripts": {
     "lint": "tsc --noEmit",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "dexie": "4.4.4",
@@ -29,7 +31,9 @@
   },
   "devDependencies": {
     "@types/react": "19.2.7",
+    "fake-indexeddb": "6.2.5",
     "react": "19.2.0",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "vitest": "3.2.4"
   }
 }

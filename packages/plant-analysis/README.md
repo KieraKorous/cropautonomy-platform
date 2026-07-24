@@ -16,6 +16,8 @@ See `docs/decisions/0005-local-rule-based-plant-analysis.md`.
 |---------|------|
 | `@gaia/plant-analysis` | SSR-safe: data `types` + pure `utilities` only |
 | `@gaia/plant-analysis/database` | **Browser-only** Dexie DB + repositories |
+| `@gaia/plant-analysis/analysis` | Rule engine — pure evaluators + the `analyzePlant` orchestrator (browser-only) |
+| `@gaia/plant-analysis/react` | **Browser-only** live-query hooks + `useEnsureSeeded` |
 | `@gaia/plant-analysis/knowledge/tomato` | Tomato crop profile, stages, rules, sources, `tomatoSeed()` |
 
 ## Consumer contract (IMPORTANT)
@@ -36,10 +38,17 @@ opens the database.
 
 ## Status
 
-Milestone 1 (Database Foundation, PRD Phases 1–3): data models, Dexie schema v1 +
-repositories, tomato knowledge base. The analysis engine, UI, charts, images,
-backup, and offline support land in later phases. No test runner yet — Vitest +
-`fake-indexeddb` arrive in Phase 7.
+- **Milestone 1** (Database Foundation, PRD Phases 1–3): data models, Dexie schema
+  v1 + repositories, tomato knowledge base. ✅
+- **Milestone 2** (Manual Analysis Flow, PRD Phases 4–8): field/plant management UI,
+  observation entry + validation, the rule engine (`analyzePlant`), and explainable
+  results (status, health score, evidence). ✅
+
+Charts/trends (Phase 9), images (10–11), the admin editor (12), backup/restore
+(13), and offline support (14) land in later phases.
+
+Tests: `pnpm --filter @gaia/plant-analysis test` (Vitest + `fake-indexeddb`, the
+repo's only test runner; scoped to this package).
 
 ## Conventions
 

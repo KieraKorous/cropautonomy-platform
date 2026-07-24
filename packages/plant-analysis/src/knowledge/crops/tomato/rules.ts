@@ -2,10 +2,15 @@ import type { AnalysisRuleRecord, GrowthStageKey, RuleOperator, Severity } from 
 import { SEED_TIMESTAMP, TOMATO_CROP_ID } from "./profile";
 import { SOURCE_BLIGHT_ID, SOURCE_EXTENSION_TEMP, SOURCE_UC_IPM } from "./sources";
 
-// The 12 initial tomato rules (TOMATO-SCOPE.md §3). Responsible-language messages
+// The initial tomato rules (TOMATO-SCOPE.md §3). Responsible-language messages
 // (PRD §10.9) — "possible", "outside expected range", "needs inspection" — never
 // definitive diagnosis. `provisional: true` marks sensible defaults pending
 // source review so the UI can badge them.
+//
+// Leaf COLOR conditions are driven by the `leafColor` enum (deep-green/green/pale/
+// yellow/purple); discrete SYMPTOMS (wilting, spots, holes, browning, curling,
+// pests) are booleans. Numeric thresholds are stage-agnostic in this first set —
+// simple and matching PRD §16's generic "above/below preferred range".
 
 interface RuleSpec {
   id: string;
@@ -71,26 +76,11 @@ const SPECS: RuleSpec[] = [
     measurement: "temperatureC",
     operator: "greaterThan",
     value: 32,
-    stage: "flowering",
     severity: "warning",
     scorePenalty: 15,
     condition: "Heat stress condition",
-    message: "Temperature is above the range for reliable pollination during flowering.",
-    recommendation: "Provide shade/airflow where possible; watch for blossom drop.",
-    sourceId: SOURCE_EXTENSION_TEMP
-  },
-  {
-    id: "tomato-high-temp-fruiting",
-    name: "High temperature (fruiting)",
-    measurement: "temperatureC",
-    operator: "greaterThan",
-    value: 32,
-    stage: "fruiting",
-    severity: "warning",
-    scorePenalty: 15,
-    condition: "Heat stress condition",
-    message: "Temperature is above the preferred range during fruiting.",
-    recommendation: "Provide shade/airflow where possible; monitor fruit set.",
+    message: "Temperature is above the preferred range; heat can disrupt fruit set.",
+    recommendation: "Provide shade/airflow where possible and watch for blossom drop.",
     sourceId: SOURCE_EXTENSION_TEMP
   },
   {
@@ -119,27 +109,29 @@ const SPECS: RuleSpec[] = [
     provisional: true
   },
   {
-    id: "tomato-yellowing",
+    id: "tomato-leaf-yellow",
     name: "Yellowing leaves",
-    measurement: "yellowing",
-    operator: "isTrue",
+    measurement: "leafColor",
+    operator: "equals",
+    value: "yellow",
     severity: "warning",
     scorePenalty: 15,
     condition: "Yellowing observed",
-    message: "Yellowing leaves were recorded and need inspection.",
-    recommendation: "Inspect lower vs. upper leaves; possible nutrient or watering cause.",
+    message: "Leaf color is yellow, which needs inspection (possible nutrient or watering cause).",
+    recommendation: "Compare lower vs. upper leaves and check recent watering and feeding.",
     sourceId: SOURCE_UC_IPM
   },
   {
-    id: "tomato-browning",
-    name: "Browning leaves",
-    measurement: "browning",
-    operator: "isTrue",
-    severity: "warning",
-    scorePenalty: 15,
-    condition: "Browning observed",
-    message: "Browning was recorded and needs inspection.",
-    recommendation: "Check for scorch, disease, or dieback on affected foliage.",
+    id: "tomato-leaf-pale",
+    name: "Pale leaves",
+    measurement: "leafColor",
+    operator: "equals",
+    value: "pale",
+    severity: "info",
+    scorePenalty: 8,
+    condition: "Pale foliage noted",
+    message: "Leaf color is pale; additional information may be required.",
+    recommendation: "Monitor over the next observations for a trend toward yellowing.",
     provisional: true
   },
   {
@@ -177,6 +169,30 @@ const SPECS: RuleSpec[] = [
     message: "Holes in leaves were recorded, which may indicate chewing pests.",
     recommendation: "Scout for hornworm or other chewing pests on stems and undersides.",
     sourceId: SOURCE_UC_IPM
+  },
+  {
+    id: "tomato-browning",
+    name: "Browning leaves",
+    measurement: "browning",
+    operator: "isTrue",
+    severity: "warning",
+    scorePenalty: 15,
+    condition: "Browning observed",
+    message: "Browning was recorded and needs inspection.",
+    recommendation: "Check for scorch, disease, or dieback on affected foliage.",
+    provisional: true
+  },
+  {
+    id: "tomato-curled",
+    name: "Curled leaves",
+    measurement: "curledLeaves",
+    operator: "isTrue",
+    severity: "info",
+    scorePenalty: 8,
+    condition: "Leaf curling noted",
+    message: "Leaf curling was recorded; additional information may be required.",
+    recommendation: "Note whether curling follows heat, water stress, or herbicide exposure.",
+    provisional: true
   },
   {
     id: "tomato-pest-present",
