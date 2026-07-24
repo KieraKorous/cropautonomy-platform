@@ -15,6 +15,7 @@
     "@gaia/analytics": "workspace:*",
     "@gaia/config": "workspace:*",
     "@gaia/domain": "workspace:*",
+    "@gaia/plant-analysis": "workspace:*",
     "@gaia/realtime": "workspace:*",
     "@gaia/ui": "workspace:*",
     "@gaia/virtual-field": "workspace:*",

@@ -20,6 +20,7 @@ Don't use these for:
 - [0002 — GKE co-tenancy in agconn-prod for v0](./0002-gke-cotenancy-v0.md)
 - [0003 — ML pipeline strategy for the August 2026 prototype](./0003-ml-phase2-strategy.md)
 - [0004 — Portal design extends the landing register](./0004-portal-design-register.md)
+- [0005 — Local, rule-based plant analysis alongside the server AI pipeline](./0005-local-rule-based-plant-analysis.md)
 
 ## ADR Format
 
