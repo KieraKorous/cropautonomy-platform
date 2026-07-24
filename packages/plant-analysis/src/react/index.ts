@@ -16,6 +16,8 @@ export {
   useSources,
   useResultsByPlant,
   useRecentAnalyses,
-  useImagesByPlant
+  useImagesByPlant,
+  useAllRulesByCrop,
+  useRule
 } from "./hooks";
 export { ensureTomatoSeeded, useEnsureSeeded } from "./seed";

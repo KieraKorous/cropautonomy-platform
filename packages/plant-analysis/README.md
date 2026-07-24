@@ -51,9 +51,11 @@ opens the database.
 - **Milestone 4** (Images, PRD Phases 10–11): canvas compression, a capture/upload
   gallery with storage-limit handling, and non-AI color analysis (green/yellow/brown
   % + canopy coverage) shown as supporting evidence. ✅
+- **Milestone 5** (Admin Knowledge Editor, PRD Phase 12): full CRUD for rules,
+  sources, and the crop profile (versioned edits, enable/disable, inline rule
+  tester) at `/virtual-field/analysis/admin`. ✅
 
-The admin editor (12), backup/restore (13), and offline support (14) land in later
-phases.
+Backup/restore (13) and offline support (14) land in later phases.
 
 Tests: `pnpm --filter @gaia/plant-analysis test` (Vitest + `fake-indexeddb`, the
 repo's only test runner; scoped to this package).

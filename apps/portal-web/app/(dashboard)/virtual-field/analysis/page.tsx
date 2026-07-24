@@ -28,11 +28,19 @@ export default function AnalysisHomePage() {
             health results. Everything is stored on this device — no AI service, no upload.
           </p>
         </div>
-        {fields && fields.length > 0 ? (
-          <span className="text-sm text-base-content/55">
-            {fields.length} {fields.length === 1 ? "field" : "fields"}
-          </span>
-        ) : null}
+        <div className="flex items-center gap-4">
+          {fields && fields.length > 0 ? (
+            <span className="text-sm text-base-content/55">
+              {fields.length} {fields.length === 1 ? "field" : "fields"}
+            </span>
+          ) : null}
+          <Link
+            href="/virtual-field/analysis/admin"
+            className="rounded-md border border-base-content/15 px-3.5 py-2 text-sm font-semibold text-neutral transition-colors hover:bg-base-content/[0.05]"
+          >
+            Knowledge editor
+          </Link>
+        </div>
       </header>
 
       <NewFieldForm />

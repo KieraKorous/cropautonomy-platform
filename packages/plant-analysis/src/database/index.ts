@@ -13,6 +13,7 @@ export * from "./repositories/plants";
 export * from "./repositories/observations";
 export * from "./repositories/rules";
 export * from "./repositories/cropProfiles";
+export * from "./repositories/sources";
 export * from "./repositories/results";
 export * from "./repositories/findings";
 export * from "./repositories/images";

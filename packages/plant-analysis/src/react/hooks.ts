@@ -1,6 +1,7 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import type {
   AnalysisResultRecord,
+  AnalysisRuleRecord,
   CropProfileRecord,
   FieldRecord,
   FindingRecord,
@@ -14,6 +15,7 @@ import {
   getCropProfile,
   getField,
   getPlant,
+  getRule,
   latestObservationForPlant,
   latestResultForPlant,
   listFields,
@@ -24,6 +26,7 @@ import {
   listPlantsByField,
   listRecentResultsWithFindings,
   listResultsByPlant,
+  listRulesByCrop,
   listSources
 } from "../database/index";
 
@@ -85,6 +88,15 @@ export function useSources(cropId: string | undefined): SourceRecord[] | undefin
 
 export function useImagesByPlant(plantId: string | undefined): ImageRecord[] | undefined {
   return useLiveQuery(() => (plantId ? listImagesByPlant(plantId) : []), [plantId]);
+}
+
+/** All rules for a crop, INCLUDING disabled ones — for the admin editor. */
+export function useAllRulesByCrop(cropId: string | undefined): AnalysisRuleRecord[] | undefined {
+  return useLiveQuery(() => (cropId ? listRulesByCrop(cropId) : []), [cropId]);
+}
+
+export function useRule(id: string | undefined): AnalysisRuleRecord | undefined {
+  return useLiveQuery(() => (id ? getRule(id) : undefined), [id]);
 }
 
 export function useResultsByPlant(
